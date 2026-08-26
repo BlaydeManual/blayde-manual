@@ -169,19 +169,22 @@ async function listExistingEditions(vehicleSlug, registryUrl) {
   return { checked: true, editions };
 }
 
-// Catches an off-by-one-year generation boundary before it becomes a
-// second, wrong repo for the same vehicle -- vehicle_slug is what
-// determines which repo a manual's content goes into, so a typed
-// "...1999-2003" against an already-registered "...1999-2002" creates
-// a genuinely separate, duplicate vehicle with no warning otherwise
-// (checkEditionCollision only catches an EXACT slug match). Strips the
-// trailing -YYYY-YYYY year range to compare on make-model alone, so
-// "suzuki-sv650-1999-2002" and "suzuki-sv650-2003-2005" both surface
-// as "same vehicle family, different year range -- is this really a
-// different generation?" without the project needing to know or store
-// any real generation-boundary data itself.
+// Catches a mistyped release year before it becomes a second, wrong
+// repo for the same vehicle -- vehicle_slug is what determines which
+// repo a manual's content goes into, so a typed "...2003" against an
+// already-registered "...1999" creates a genuinely separate, duplicate
+// vehicle with no warning otherwise (checkEditionCollision only
+// catches an EXACT slug match). Strips the trailing -YYYY release
+// year to compare on make-model alone, so "suzuki-sv650-1999" and
+// "suzuki-sv650-2003" both surface as "same vehicle family, different
+// release year -- is this really a different generation?" without the
+// project needing to know or store any real generation-boundary data
+// itself. One trailing year now, not a range: see ROADMAP.md's
+// naming-convention note -- a repo is keyed by its own release year
+// alone, since a manual can only ever state when ITS generation
+// started, never when it ends.
 function vehicleSlugPrefix(slug) {
-  return (slug || "").replace(/-\d{4}-\d{4}$/, "");
+  return (slug || "").replace(/-\d{4}$/, "");
 }
 async function findSimilarVehicleSlugs(vehicleSlug, registryUrl) {
   let registryData;
@@ -254,7 +257,7 @@ function suggestVehicleSlugFromFilename(filename) {
 // decision was about entries[].section_heading carrying real manual
 // text hundreds of times into the public manifest -- in aggregate,
 // systematic reproduction of the manual's own structure. A vehicle's
-// make/model/year range is a fact, not the manual's expression --
+// make/model/year is a fact, not the manual's expression --
 // copyright doesn't protect facts, short phrases, or names/titles at
 // all, and this project still has to categorize every manual by that
 // same fact regardless of whether it's OCR'd or typed by hand. The raw
@@ -307,11 +310,16 @@ async function ocrTitlePageForSlug(pdfDoc) {
 //
 // Real, separate limit found in the same test: this document's actual
 // cover text says "SUZUKI 1999 SV650 SERVICE MANUAL" -- one year, no
-// range at all. "1999-2002" is real-world vehicle-generation knowledge,
-// not something printed in this document -- no amount of OCR or extra
-// pages recovers a fact the source text doesn't state. A single year
-// still produces a real, useful starting point (a correct make/model
-// and year), which is what the maintainer confirms/corrects either way.
+// range at all. That's actually the correct shape now: per this
+// project's naming-convention change (see ROADMAP.md), a repo is
+// keyed by its own release year alone, since a manual can only ever
+// state when ITS generation started, never when it ends -- a NEW
+// manual starting some later year is a different generation with its
+// own repo, not evidence this one's range should extend to cover it.
+// So this always takes the FIRST year found, even out of a printed
+// range like "1999-2002" (which really just means this manual's own
+// content spans those years, not that suzuki-sv650-1999 is meant to
+// cover 2002 as well).
 function guessVehicleSlugFromText(text) {
   const isNoiseLine = (line) =>
     /manualslib\.com/i.test(line) ||
@@ -326,28 +334,27 @@ function guessVehicleSlugFromText(text) {
   candidates.sort((a, b) => a.length - b.length);
   const best = candidates[0];
 
-  // A real range (YYYY-YYYY) has to be matched and stripped as ONE
-  // unit -- matching only the first year and leaving the second (plus
-  // its dash) behind in the line was a real regression caught by
-  // re-testing against a range-format title after this fix.
+  // A printed range (YYYY-YYYY) still has to be matched and stripped
+  // as ONE unit -- matching only the first year and leaving the
+  // second (plus its dash) behind in the line was a real regression
+  // caught by re-testing against a range-format title after this fix.
+  // Only the first year of it is ever used for the slug.
   const rangeMatch = best.match(/(?:19|20)\d{2}\s*-\s*(?:19|20)\d{2}/);
-  let year1, year2, yearSpan;
+  let year, matchedSpan;
   if (rangeMatch) {
-    yearSpan = rangeMatch[0];
-    const years = yearSpan.match(/(?:19|20)\d{2}/g);
-    year1 = years[0];
-    year2 = years[1];
+    matchedSpan = rangeMatch[0];
+    year = matchedSpan.match(/(?:19|20)\d{2}/)[0];
   } else {
-    yearSpan = best.match(/(?:19|20)\d{2}/)[0];
-    year1 = year2 = yearSpan;
+    matchedSpan = best.match(/(?:19|20)\d{2}/)[0];
+    year = matchedSpan;
   }
 
   const words = best
-    .replace(yearSpan, " ")
+    .replace(matchedSpan, " ")
     .replace(/\bservice\b|\bmanual\b|\bowners?\b|\brepair\b|\bworkshop\b/gi, " ")
     .trim().split(/\s+/).filter(Boolean);
   if (!words.length) return null;
-  return slugify(`${words.join(" ")} ${year1}-${year2}`, 60);
+  return slugify(`${words.join(" ")} ${year}`, 60);
 }
 
 // Public entry point: OCR guess first, filename guess as the fallback
