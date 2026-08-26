@@ -166,13 +166,19 @@ function slugify(text, maxlen = 40) {
   return (s.slice(0, maxlen).replace(/^-+|-+$/g, "")) || "section";
 }
 
-// Vehicle slug isn't typed in upfront anymore -- it's guessed from the
-// manual's own content (the earliest section heading found), then a
-// maintainer confirms or corrects it. This is a best-effort starting
-// point, not a claim of accuracy.
-function suggestVehicleSlug(manifest) {
-  const firstHeading = manifest.entries[0]?.section_heading;
-  return firstHeading ? slugify(firstHeading, 60) : "manual";
+// Vehicle slug isn't typed in upfront anymore -- it's guessed, then a
+// maintainer confirms or corrects it. Guessed from the PDF's own
+// filename, not the manual's content: entries[].section_heading is
+// deliberately positional-only now (e.g. "Page 17, procedure 1"), not
+// real OCR'd text -- see LEGAL.md's OCR'd-heading-text decision -- so
+// it can't produce a meaningful guess anymore and reusing the real
+// OCR'd text here, even just for a suggestion, would reopen exactly
+// the risk that decision closed. The filename is something the
+// maintainer already named themselves, not manual content at all.
+function suggestVehicleSlug(filename) {
+  if (!filename) return "manual";
+  const stem = filename.replace(/\.pdf$/i, "");
+  return slugify(stem, 60);
 }
 
 // contributed_photo_path is derived, not stored-then-forgotten -- it's
