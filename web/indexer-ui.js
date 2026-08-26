@@ -1,5 +1,6 @@
 let selectedPdfDoc = null;
 let selectedPdfHash = null;
+let selectedPdfFilename = null;
 let lastManifest = null;
 let pendingResume = null; // {jobId, completedPages, totalPages} when a resumable job is found and not yet decided
 // The "picked up from the patcher" greeting (carried fingerprint via a
@@ -19,6 +20,7 @@ document.getElementById("pdfInput").addEventListener("change", async (e) => {
   // hashes an empty buffer (real bug, caught during testing: the
   // resulting fingerprint was SHA-256 of nothing, not the file).
   selectedPdfHash = await pdfFingerprint(buf);
+  selectedPdfFilename = file.name;
   selectedPdfDoc = await pdfjsLib.getDocument({ data: buf }).promise;
   await checkResumeState();
 });
@@ -128,7 +130,9 @@ async function runIndexing(resume) {
   appendLog(`DONE in ${secs}s -- ${manifest.entries.length} entries across ${Object.keys(manifest.page_geometry).length} page(s)`);
   appendLog(`It's up to the community to keep going. Thank you for contributing.`);
 
-  finalizeVehicleSlug(manifest, suggestVehicleSlug(manifest));
+  appendLog(`Reading the manual's own cover page to guess the vehicle...`);
+  const slugGuess = await suggestVehicleSlug(selectedPdfDoc, selectedPdfFilename);
+  finalizeVehicleSlug(manifest, slugGuess);
 
   lastManifest = manifest;
   document.getElementById("downloadBtn").style.display = "inline-block";

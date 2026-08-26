@@ -196,13 +196,83 @@ function slugify(text, maxlen = 40) {
   return (s.slice(0, maxlen).replace(/^-+|-+$/g, "")) || "section";
 }
 
-// Vehicle slug isn't typed in upfront anymore -- it's guessed from the
-// manual's own content (the earliest section heading found), then a
-// maintainer confirms or corrects it. This is a best-effort starting
-// point, not a claim of accuracy.
-function suggestVehicleSlug(manifest) {
-  const firstHeading = manifest.entries[0]?.section_heading;
-  return firstHeading ? slugify(firstHeading, 60) : "manual";
+// Vehicle slug isn't typed in upfront anymore -- it's guessed, then a
+// maintainer confirms or corrects it. Falls back to the PDF's own
+// filename when OCR can't find a usable guess (see suggestVehicleSlug
+// below for why the filename alone isn't good enough on its own).
+function suggestVehicleSlugFromFilename(filename) {
+  if (!filename) return "manual";
+  const stem = filename.replace(/\.pdf$/i, "");
+  return slugify(stem, 60);
+}
+
+// One-off OCR of the manual's own cover/title page(s), used only to
+// seed a vehicle_slug suggestion -- a deliberate, narrower exception
+// to the OCR'd-text decision in LEGAL.md, not a reversal of it. That
+// decision was about entries[].section_heading carrying real manual
+// text hundreds of times into the public manifest -- in aggregate,
+// systematic reproduction of the manual's own structure. A vehicle's
+// make/model/year range is a fact, not the manual's expression --
+// copyright doesn't protect facts, short phrases, or names/titles at
+// all, and this project still has to categorize every manual by that
+// same fact regardless of whether it's OCR'd or typed by hand. The raw
+// OCR'd text here is used once, in this browser, to build a slug
+// guess, then discarded -- never written to the manifest or anywhere
+// else, the same "compute it, use it, don't store it" pattern already
+// used for section-boundary detection (sectionText, never persisted).
+async function ocrTitlePageForSlug(pdfDoc) {
+  const candidatePages = [1, 2, 3].filter((p) => p <= pdfDoc.numPages);
+  let worker = null;
+  try {
+    worker = await Tesseract.createWorker("eng");
+    for (const pageNum of candidatePages) {
+      const page = await pdfDoc.getPage(pageNum);
+      const { canvas } = await renderPageToImageData(page, 3.0);
+      const { data } = await worker.recognize(canvas.toDataURL("image/png"));
+      const guess = guessVehicleSlugFromText(data.text || "");
+      if (guess) return guess;
+    }
+    return null;
+  } catch (e) {
+    return null; // best-effort -- suggestVehicleSlugFromFilename covers this
+  } finally {
+    if (worker) { try { await worker.terminate(); } catch (e) { /* already gone */ } }
+  }
+}
+
+// Heuristic only, not a claim of accuracy -- the maintainer confirms
+// or corrects the result either way, same as the filename guess did.
+// Title pages overwhelmingly read like "MAKE MODEL YYYY-YYYY SERVICE
+// MANUAL" or "MAKE MODEL YYYY" -- find a year (or year range) and take
+// the words immediately before it, which is consistently the actual
+// make/model, not front-matter noise above it (publisher name, "OEM
+// SERVICE MANUAL" header text, etc.).
+function guessVehicleSlugFromText(text) {
+  // Same watermark boilerplate isFlattenedScanPage already strips
+  // elsewhere in this file -- without this, "downloaded from ...
+  // manuals search engine" contaminates the guess (confirmed: it was
+  // winning out over the real make/model on a real scanned cover page).
+  const cleaned = text
+    .replace(/downloaded from.*manuals search engine/i, " ")
+    .replace(/\s+/g, " ").trim();
+  const match = cleaned.match(/([A-Za-z][A-Za-z0-9 ,.'-]{2,40}?)\s+((?:19|20)\d{2})(?:\s*-\s*((?:19|20)\d{2}))?\b/);
+  if (!match) return null;
+  const words = match[1].trim().split(" ").filter(Boolean);
+  const makeModel = words.slice(-4).join(" ");
+  if (!makeModel) return null;
+  const y1 = match[2], y2 = match[3] || match[2];
+  return slugify(`${makeModel} ${y1}-${y2}`, 60);
+}
+
+// Public entry point: OCR guess first, filename guess as the fallback
+// when OCR finds nothing usable (a badly scanned cover page, a cover
+// page that isn't page 1-3, etc.).
+async function suggestVehicleSlug(pdfDoc, filename) {
+  try {
+    const ocrGuess = await ocrTitlePageForSlug(pdfDoc);
+    if (ocrGuess) return ocrGuess;
+  } catch (e) { /* fall through to filename */ }
+  return suggestVehicleSlugFromFilename(filename);
 }
 
 // contributed_photo_path is derived, not stored-then-forgotten -- it's
