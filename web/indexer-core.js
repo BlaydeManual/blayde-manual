@@ -330,7 +330,17 @@ async function indexPdf(pdfDoc, vehicleSlug, {
   const pageNumbers = [];
   for (let p = first; p <= last; p++) pageNumbers.push(p);
 
-  const poolSize = concurrency || Math.max(1, Math.min(8, (navigator.hardwareConcurrency || 4) - 1));
+  // A machine genuinely locked up hard enough to need a power-cycle
+  // running this at hardwareConcurrency-1 (up to 8) -- see CHANGELOG.md.
+  // Tesseract workers are WASM-heavy (real memory + CPU footprint each,
+  // not lightweight threads), so "one worker per free core" is the wrong
+  // heuristic for this specific task even though it's fine for cheap
+  // parallel work. Single-threaded until there's real performance data
+  // (across real devices, not just this one machine) to size a safe
+  // concurrency default from -- no evidence yet on whether a lower
+  // parallel count (e.g. 2-3) is actually safe, so this isn't a tuned
+  // number, it's the only value with zero contention risk.
+  const poolSize = concurrency || 1;
 
   const results = new Array(pageNumbers.length);
   let completed = 0;
