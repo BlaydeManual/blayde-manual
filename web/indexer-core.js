@@ -127,6 +127,36 @@ async function listExistingEditions(vehicleSlug, registryUrl) {
   return { checked: true, editions };
 }
 
+// Catches an off-by-one-year generation boundary before it becomes a
+// second, wrong repo for the same vehicle -- vehicle_slug is what
+// determines which repo a manual's content goes into, so a typed
+// "...1999-2003" against an already-registered "...1999-2002" creates
+// a genuinely separate, duplicate vehicle with no warning otherwise
+// (checkEditionCollision only catches an EXACT slug match). Strips the
+// trailing -YYYY-YYYY year range to compare on make-model alone, so
+// "suzuki-sv650-1999-2002" and "suzuki-sv650-2003-2005" both surface
+// as "same vehicle family, different year range -- is this really a
+// different generation?" without the project needing to know or store
+// any real generation-boundary data itself.
+function vehicleSlugPrefix(slug) {
+  return (slug || "").replace(/-\d{4}-\d{4}$/, "");
+}
+async function findSimilarVehicleSlugs(vehicleSlug, registryUrl) {
+  let registryData;
+  try {
+    registryData = await loadRegistry(registryUrl);
+  } catch (e) {
+    return { checked: false, reason: e.message, similar: [] };
+  }
+  const prefix = vehicleSlugPrefix(vehicleSlug);
+  if (!prefix) return { checked: true, similar: [] };
+  const seen = new Set();
+  const similar = (registryData.vehicles || [])
+    .filter((v) => v.vehicle_slug !== vehicleSlug && vehicleSlugPrefix(v.vehicle_slug) === prefix)
+    .filter((v) => (seen.has(v.vehicle_slug) ? false : (seen.add(v.vehicle_slug), true)));
+  return { checked: true, similar };
+}
+
 async function clearJob(jobId, pageNumbers) {
   const db = await openIndexerDb();
   const tx = db.transaction(["pages", "jobs"], "readwrite");

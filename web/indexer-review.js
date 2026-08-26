@@ -9,7 +9,17 @@
 // total) is built in from the start per Initial Submission Standards.
 
 let reviewManifest = null;
-let reviewPageCache = {}; // pageNum -> {canvas, ctx}
+// pageNum -> {canvas, ctx, scaleUsed}, LRU-capped -- a 400+-page scanned
+// manual rendered at scale 2.5 is a full-resolution canvas per page, and
+// this used to just grow forever for the whole review session. Found via
+// real use: deep into a large manual, thumbnails silently stayed blank
+// and the page modal took a very long time to show anything -- memory
+// pressure from an unbounded cache of full-page canvases, not a hang.
+// Map preserves insertion order, so re-inserting on access (bumping to
+// most-recently-used) and evicting from the front is a correct LRU with
+// no extra bookkeeping.
+let reviewPageCache = new Map();
+const REVIEW_PAGE_CACHE_CAP = 20;
 let nextAddedIdx = 1000000; // added-figure ids sort after real ones, doesn't collide
 
 // A manual can produce hundreds of candidates -- rendering them all
@@ -24,12 +34,16 @@ function startReview(manifest) {
   reviewManifest = manifest;
   manifest.entries.forEach((e) => {
     if (e._touched === undefined) e._touched = false;
+    if (e._seen === undefined) e._seen = false;
   });
   reviewChunkIdx = 0;
   document.getElementById("reviewSection").style.display = "block";
   document.getElementById("vehicleSlugConfirm").value = manifest.vehicle;
+  document.getElementById("vehicleSlugSimilarNote").style.display = "none";
+  checkSimilarVehicleSlugs(manifest.vehicle);
   document.getElementById("editionIdConfirm").value = manifest.edition_id || "";
   document.getElementById("editionIdError").style.display = "none";
+  document.getElementById("editionIdRequiredError").style.display = "none";
   document.getElementById("sourceUrlConfirm").value = manifest.source_markers?.source_identifier || "";
   document.getElementById("sourceUrlError").style.display = "none";
   renderReviewGallery();
@@ -39,12 +53,26 @@ function startReview(manifest) {
 // maintainer edits the confirmed slug -- cheap and idempotent, so it
 // doesn't matter whether this fires before or after new figures get
 // added in the page modal.
-document.getElementById("vehicleSlugConfirm").addEventListener("change", (e) => {
+document.getElementById("vehicleSlugConfirm").addEventListener("change", async (e) => {
   const slug = e.target.value.trim();
   if (!reviewManifest || !slug) return;
   finalizeVehicleSlug(reviewManifest, slug);
   checkEditionIdCollision();
+  await checkSimilarVehicleSlugs(slug);
 });
+
+// Off-by-one-year generation guard -- see findSimilarVehicleSlugs
+// (indexer-core.js) for why this matters: vehicle_slug is what
+// separates one repo from another, and nothing else catches a
+// near-miss year range against something already registered.
+async function checkSimilarVehicleSlugs(slug) {
+  const note = document.getElementById("vehicleSlugSimilarNote");
+  const result = await findSimilarVehicleSlugs(slug, CANONICAL_REGISTRY_URL);
+  if (!result.checked || !result.similar.length) { note.style.display = "none"; return; }
+  const list = result.similar.map((v) => v.vehicle_slug).join(", ");
+  note.textContent = `Already registered for this vehicle, different year range: ${list}. If this is really the same generation, match one of those exactly instead -- if it's genuinely a different generation, this is correct as-is.`;
+  note.style.display = "block";
+}
 
 // Required, not optional -- an org maintainer approving a new vehicle
 // has nothing to verify against without it (see propose_new_vehicle.py's
@@ -82,10 +110,20 @@ async function checkEditionIdCollision() {
   }
 }
 document.getElementById("editionIdConfirm").addEventListener("change", checkEditionIdCollision);
+document.getElementById("editionIdConfirm").addEventListener("input", (e) => {
+  if (e.target.value.trim()) document.getElementById("editionIdRequiredError").style.display = "none";
+});
 
+// "Reviewed" counts a candidate whose real thumbnail was actually seen
+// in the gallery (_seen, set on a successful render below), not just
+// one that got dragged/resized in the page modal (_touched). Confirmed
+// directly: the actual quality bar at this stage is "does this show a
+// real photo, not text or blank space" -- glancing at a real rendered
+// thumbnail and moving on IS that check. The modal is only needed for
+// something that looks wrong, not for every candidate.
 function reviewStats() {
   const total = reviewManifest.entries.length;
-  const touched = reviewManifest.entries.filter((e) => e._touched).length;
+  const touched = reviewManifest.entries.filter((e) => e._touched || e._seen).length;
   const pct = total ? Math.round((touched / total) * 100) : 0;
   return { total, touched, pct };
 }
@@ -158,7 +196,7 @@ function buildFigCard(entry) {
   // completion stat or leave a permanently-unfillable procedure in the
   // shipped manifest. See ROADMAP.md for the full reasoning.
   const card = document.createElement("div");
-  card.className = "fig" + (entry._touched ? " touched" : "");
+  card.className = "fig" + (entry._touched || entry._seen ? " touched" : "");
   card.dataset.id = entry.procedure_id;
   card.innerHTML = `
     <button class="del-btn" title="delete -- not a real photo opportunity, never submitted">×</button>
@@ -174,7 +212,12 @@ function buildFigCard(entry) {
 }
 
 async function getReviewPage(pageNum, scale = 2.5) {
-  if (reviewPageCache[pageNum]) return reviewPageCache[pageNum];
+  if (reviewPageCache.has(pageNum)) {
+    const entry = reviewPageCache.get(pageNum);
+    reviewPageCache.delete(pageNum);
+    reviewPageCache.set(pageNum, entry); // bump to most-recently-used
+    return entry;
+  }
   const page = await selectedPdfDoc.getPage(pageNum);
   const viewport = page.getViewport({ scale });
   const canvas = document.createElement("canvas");
@@ -182,8 +225,12 @@ async function getReviewPage(pageNum, scale = 2.5) {
   canvas.height = Math.round(viewport.height);
   const ctx = canvas.getContext("2d");
   await page.render({ canvasContext: ctx, viewport }).promise;
-  reviewPageCache[pageNum] = { canvas, ctx, scaleUsed: scale };
-  return reviewPageCache[pageNum];
+  const entry = { canvas, ctx, scaleUsed: scale };
+  reviewPageCache.set(pageNum, entry);
+  if (reviewPageCache.size > REVIEW_PAGE_CACHE_CAP) {
+    reviewPageCache.delete(reviewPageCache.keys().next().value); // evict oldest
+  }
+  return entry;
 }
 
 async function refreshFigThumbnail(imgEl, entry) {
@@ -198,7 +245,22 @@ async function refreshFigThumbnail(imgEl, entry) {
     out.width = w; out.height = h;
     out.getContext("2d").drawImage(canvas, x0 * sx, y0 * sy, w, h, 0, 0, w, h);
     imgEl.src = out.toDataURL("image/jpeg", 0.85);
-  } catch (e) { /* leave blank, page might be out of range in a partial test run */ }
+    imgEl.classList.remove("thumb-failed");
+    imgEl.title = "";
+    if (!entry._seen) {
+      entry._seen = true;
+      imgEl.closest(".fig")?.classList.add("touched");
+      updateReviewStats();
+    }
+  } catch (e) {
+    // Was silently left blank before -- a real render failure (or a
+    // page genuinely out of range in a partial test run) looked
+    // identical to "hasn't loaded yet," with no way to tell which.
+    // Now visibly distinct and logged, not just invisible.
+    imgEl.classList.add("thumb-failed");
+    imgEl.title = `Couldn't render page ${entry.page}: ${e.message}`;
+    appendLog?.(`Thumbnail for ${entry.procedure_id} (page ${entry.page}) failed to render: ${e.message}`);
+  }
 }
 
 // ---- page modal: same drag/resize/add pattern proven in generate_review.py
@@ -209,15 +271,29 @@ async function openReviewPageModal(pageNum) {
   modalPageNum = pageNum;
   const modal = document.getElementById("pageModal");
   const img = document.getElementById("pageModalImg");
+  const wrap = document.getElementById("pageModalWrap");
   modal.classList.add("open");
   const onThisPage = reviewManifest.entries.filter((e) => e.page === pageNum).length;
-  document.getElementById("pageModalTitle").textContent =
-    `Page ${pageNum} of ${reviewManifest.page_count} -- ${onThisPage} candidate${onThisPage === 1 ? "" : "s"} on this page`;
+  const baseTitle = `Page ${pageNum} of ${reviewManifest.page_count} -- ${onThisPage} candidate${onThisPage === 1 ? "" : "s"} on this page`;
+  // Was left showing the previous page's image (or nothing) while this
+  // one rendered, indistinguishable from a real failure -- see the
+  // reviewPageCache LRU note above for the underlying cause found via
+  // real use on a 400+-page manual.
+  document.getElementById("pageModalTitle").textContent = `${baseTitle} -- rendering...`;
+  img.removeAttribute("src");
+  wrap.querySelectorAll(".overlay-box").forEach((el) => el.remove());
   document.getElementById("pageModalJumpInput").max = reviewManifest.page_count;
   document.getElementById("pageModalJumpInput").value = pageNum;
-  const { canvas } = await getReviewPage(pageNum);
-  img.src = canvas.toDataURL("image/png");
-  img.onload = renderModalOverlays;
+  try {
+    const { canvas } = await getReviewPage(pageNum);
+    if (modalPageNum !== pageNum) return; // jumped to another page before this one finished
+    img.src = canvas.toDataURL("image/png");
+    img.onload = renderModalOverlays;
+    document.getElementById("pageModalTitle").textContent = baseTitle;
+  } catch (err) {
+    document.getElementById("pageModalTitle").textContent = `${baseTitle} -- couldn't render: ${err.message}`;
+    appendLog?.(`Page ${pageNum} render failed: ${err.message}`);
+  }
 }
 
 document.getElementById("pageModalJumpBtn").addEventListener("click", () => {
@@ -226,11 +302,21 @@ document.getElementById("pageModalJumpBtn").addEventListener("click", () => {
   openReviewPageModal(n);
 });
 
+// Left/Right steps to the adjacent page while the modal is open -- only
+// when not focused in a text input (the jump-to-page field uses the
+// same keys to move the cursor).
+document.addEventListener("keydown", (e) => {
+  if (!document.getElementById("pageModal").classList.contains("open")) return;
+  if (e.target.tagName === "INPUT") return;
+  if (e.key === "ArrowLeft" && modalPageNum > 1) openReviewPageModal(modalPageNum - 1);
+  else if (e.key === "ArrowRight" && modalPageNum < reviewManifest.page_count) openReviewPageModal(modalPageNum + 1);
+});
+
 function renderModalOverlays() {
   const wrap = document.getElementById("pageModalWrap");
   wrap.querySelectorAll(".overlay-box").forEach((el) => el.remove());
   const geo = reviewManifest.page_geometry[String(modalPageNum)];
-  const canvasInfo = reviewPageCache[modalPageNum];
+  const canvasInfo = reviewPageCache.get(modalPageNum);
   const sx = canvasInfo.canvas.width / geo.composite_width_px;
   const sy = canvasInfo.canvas.height / geo.composite_height_px;
   reviewManifest.entries.filter((e) => e.page === modalPageNum).forEach((entry) => {
@@ -291,7 +377,7 @@ function renderModalOverlays() {
       const box = modalDrag.box;
       const entry = reviewManifest.entries.find((x) => x.procedure_id === modalDrag.id);
       const geo = reviewManifest.page_geometry[String(modalPageNum)];
-      const canvasInfo = reviewPageCache[modalPageNum];
+      const canvasInfo = reviewPageCache.get(modalPageNum);
       const sx = canvasInfo.canvas.width / geo.composite_width_px, sy = canvasInfo.canvas.height / geo.composite_height_px;
       const left = parseFloat(box.style.left), top = parseFloat(box.style.top);
       const width = parseFloat(box.style.width), height = parseFloat(box.style.height);
@@ -309,13 +395,23 @@ function renderModalOverlays() {
       const y0 = Math.min(y, modalNewDrag.startY), y1 = Math.max(y, modalNewDrag.startY);
       modalNewDrag = null;
       if (x1 - x0 < 15 || y1 - y0 < 15) return;
-      const label = prompt("What is this figure? (short label)");
-      if (label === null) return;
+      // Positional only, same as every machine-detected figure -- no
+      // free-text prompt. Typing a label while looking at the actual
+      // page is exactly the paraphrase-or-copy risk the rest of this
+      // system was redesigned to avoid (see LEGAL.md's
+      // systematic-extraction concern, and indexer-core.js's
+      // positionalId): a human describing what they see from the
+      // manual is functionally the same act as OCR, just done by hand.
+      // The crop thumbnail itself is the real identifying signal for a
+      // reviewer -- an accidental add costs one click to delete, same
+      // as any other false positive.
       const geo = reviewManifest.page_geometry[String(modalPageNum)];
-      const canvasInfo = reviewPageCache[modalPageNum];
+      const canvasInfo = reviewPageCache.get(modalPageNum);
       const sx = canvasInfo.canvas.width / geo.composite_width_px, sy = canvasInfo.canvas.height / geo.composite_height_px;
       const bbox = [x0 / sx, y0 / sy, x1 / sx, y1 / sy];
-      const pid = `p${String(modalPageNum).padStart(3, "0")}_${slugify(label)}_manualadd${nextAddedIdx++}`;
+      const addedN = nextAddedIdx++;
+      const pid = `p${String(modalPageNum).padStart(3, "0")}_manualadd${addedN}`;
+      const label = `Page ${modalPageNum}, added figure`;
       reviewManifest.entries.push({
         procedure_id: pid, page: modalPageNum, section_heading: label, pixel_bbox: bbox,
         source_layout: "flattened_scan_ocr", content_type: "photo",
@@ -332,6 +428,7 @@ function renderModalOverlays() {
   document.getElementById("submitBtn").addEventListener("click", async () => {
     const editionId = document.getElementById("editionIdConfirm").value.trim();
     if (!editionId) {
+      document.getElementById("editionIdRequiredError").style.display = "block";
       document.getElementById("editionIdConfirm").scrollIntoView({ behavior: "smooth", block: "center" });
       document.getElementById("editionIdConfirm").focus();
       appendLog(`[submit] blocked -- give this edition a short label (OEM, Haynes, etc.) before submitting.`);
