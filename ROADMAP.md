@@ -249,16 +249,17 @@ Remaining/ongoing items from the first pass:
   spoofing vector (tricking a user into pointing at a fake registry);
   worth confirming that holds once the advanced/override field is
   actually exposed to real users.
-- Supply-chain: `@cantoo/pdf-lib` currently loads from a CDN at runtime
-  with no Subresource Integrity hash. Either add SRI or self-host the
-  library before this is something other people run. **Found while
-  auditing this for the third-party-notices pass (2026-08-26):
-  `tesseract.js` is worse off** -- it's loaded via `@5`, a floating
-  major-version tag rather than a pinned exact version, with no SRI
-  hash either. A compromised or malicious CDN release under that tag
-  would run in every visitor's browser with no version pin or hash to
-  catch it. Same fix as pdf-lib: pin the exact version, add SRI, or
-  self-host.
+- Supply-chain: **corrected 2026-08-26** -- `@cantoo/pdf-lib` was checked
+  directly against the live `web/index.html` and is already pinned to
+  an exact version (`2.9.1`) with a verified SRI hash; this entry was
+  stale, the gap it described was already closed and just never
+  marked as such. `tesseract.js` is the real remaining gap: loaded via
+  `@5`, a floating major-version tag rather than a pinned exact
+  version, with no SRI hash. A compromised or malicious CDN release
+  under that tag would run in every visitor's browser with no version
+  pin or hash to catch it. Fix: pin the exact version (currently
+  resolves to `5.1.1`), add SRI, or self-host, matching the pattern
+  pdf-lib already uses.
 - The `--live` paths in `propose_new_vehicle.py` / `approve_registry_entry.py`
   already use list-form `subprocess.run` (no shell injection surface),
   worth re-confirming once those paths actually get exercised for real.
@@ -3134,3 +3135,10 @@ The current OAuth App uses the `public_repo` scope. Checked against GitHub's own
 What actually keeps this site from touching anything outside BlaydeManual today is application-level, not auth-level: the repo-scope validation already built into `review-panel.js`/`org-approval.js` checks any `repo_url` against the registry before making a mutating API call. That's real and it works, but it's "our code chooses not to," not "the token literally can't." A bug in that check, or a leaked token, could act on any public repo the signed-in user can write to.
 
 **Decision: migrate to a GitHub App, installed only on the BlaydeManual org, once there's time for it.** Confirmed with the project owner this is worth doing for real, not just meeting the baseline ("I want 'the best' not just what the standards are") -- GitHub Apps use installation-scoped tokens tied to the specific repos the app was installed on, so the restriction becomes structural instead of app-level. This is real, non-trivial work, not a config toggle: a different auth flow (installation tokens instead of user-authorization tokens), different token lifecycle, likely different permission model for what "signing in as a contributor" even means under an App-based flow. Not blocking the current OAuth App rollout -- logged here as the next real hardening step, not a redo of what just shipped.
+
+**Sequencing decision (2026-08-26): a real hardening item to get to soon, not first.** Checked GitHub's own guidance and real precedent before deciding the order:
+- GitHub's docs are unambiguous that GitHub Apps are "preferred to OAuth apps because they use fine-grained permissions, give more control over which repositories the app can access, and use short-lived tokens" (docs.github.com/en/apps/oauth-apps/building-oauth-apps/differences-between-github-apps-and-oauth-apps) -- naming exactly the three gaps flagged above.
+- Confirmed the actual access mechanism: "A user access token only has access to a resource if both the user and the app have that access" -- sign-in and installation are separate steps, so a person can authorize without the App being installed anywhere, but the resulting token only works on repos where the App is *also* installed. Since every Blayde Manual target repo lives under the BlaydeManual org, one org-wide installation covers everything with no per-contributor friction -- the friction that trips up projects whose target repos are scattered across contributors' own forks.
+- Checked real precedent: Decap CMS (formerly Netlify CMS), the closest real analog -- a browser tool that signs someone in and lets them commit content changes to a repo -- documents a classic OAuth App plus a small server-side token-exchange proxy, the exact pattern already built here. Not a GitHub App. GitHub's "preferred" guidance is aspirational, not yet what the ecosystem has converged on for this specific use case.
+
+**Decided not to do this first, for three real reasons:** GitHub App tokens are short-lived by design, so the Worker would need real refresh-token handling immediately, not later -- more surface area right after two real sign-in bugs were just found and fixed on the current flow (see CHANGELOG's "[Unreleased]" entry, 2026-08-26). The flow that just shipped needs to prove stable in the wild before being rebuilt on a different auth model -- two auth rewrites back to back is how a second, subtler bug slips through under time pressure. And the org-owned-repo structure means most of the security benefit is available later without urgency now: the token-scope gap is real but mitigated today by the app-level check, not wide open. Revisit once the current OAuth flow has run clean for a while.
