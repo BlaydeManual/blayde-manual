@@ -63,10 +63,15 @@ function enterPortal() {
 // survives a page reload -- only closing the tab clears it.
 const existingSession = window.BlaydeAuth ? BlaydeAuth.getSession() : null;
 if (existingSession) enterPortal();
+// A full reload on logout, not a piecemeal reset -- this portal has
+// real state spread across several tabs (loaded PRs, vehicle rosters);
+// starting clean is simpler and safer than trying to unwind all of it.
+BlaydeAuth?.renderAuthStatus(() => location.reload());
 
 document.getElementById("portalSignInBtn").addEventListener("click", async () => {
   try {
     await BlaydeAuth.signInWithGitHub();
+    BlaydeAuth.renderAuthStatus(() => location.reload());
     enterPortal();
   } catch (err) {
     const note = document.getElementById("carriedOverNote");

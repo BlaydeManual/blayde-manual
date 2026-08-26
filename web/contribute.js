@@ -159,6 +159,14 @@ if (existingSession) {
   signedIn = true;
   currentUsername = existingSession.username;
 }
+BlaydeAuth?.renderAuthStatus(handleLoggedOut);
+
+function handleLoggedOut() {
+  signedIn = false;
+  currentUsername = null;
+  if (!hasProcedureContext) document.getElementById("landingSignIn").style.display = "block";
+  renderUploads();
+}
 
 // Two arrival paths: a real (repo, procedure) pair means someone
 // scanned a QR code inside a patched PDF, straight into that one
@@ -193,6 +201,7 @@ async function performSignIn() {
     const session = await BlaydeAuth.signInWithGitHub();
     signedIn = true;
     currentUsername = session.username;
+    BlaydeAuth.renderAuthStatus(handleLoggedOut);
     log(`Signed in with GitHub as @${currentUsername}.`);
     return true;
   } catch (err) {

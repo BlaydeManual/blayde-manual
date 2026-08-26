@@ -28,6 +28,31 @@ function signOut() {
   sessionStorage.removeItem(SESSION_KEY);
 }
 
+// Shows "@username Logout" in a page's #authStatus element when
+// signed in, hides it otherwise -- one implementation both contribute.js
+// and maintainer-portal.js call, rather than each page building its own
+// version. onLoggedOut is optional -- most pages just want to reflect
+// signed-out state, but a page mid-flow (e.g. the maintainer portal)
+// may need to actually reset its own UI, not just hide this element.
+function renderAuthStatus(onLoggedOut) {
+  const el = document.getElementById("authStatus");
+  if (!el) return;
+  const session = getSession();
+  if (!session) {
+    el.style.display = "none";
+    el.innerHTML = "";
+    return;
+  }
+  el.style.display = "inline-flex";
+  el.innerHTML = `<span class="auth-username">@${session.username}</span> <a href="#" id="authLogoutLink">Logout</a>`;
+  document.getElementById("authLogoutLink").addEventListener("click", (e) => {
+    e.preventDefault();
+    signOut();
+    renderAuthStatus(onLoggedOut);
+    onLoggedOut?.();
+  });
+}
+
 // Opens the GitHub authorize popup, resolves {username, token} once the
 // callback page reports back. Rejects on a blocked popup, an early
 // close, or an error GitHub/the callback reports.
@@ -115,4 +140,4 @@ function signInWithGitHub() {
   });
 }
 
-window.BlaydeAuth = { signInWithGitHub, signOut, getSession, AUTH_WORKER_URL, STATE_KEY };
+window.BlaydeAuth = { signInWithGitHub, signOut, getSession, renderAuthStatus, AUTH_WORKER_URL, STATE_KEY };

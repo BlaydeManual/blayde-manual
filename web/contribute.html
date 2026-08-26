@@ -32,7 +32,7 @@
     font-family: -apple-system, "Segoe UI", Roboto, sans-serif; line-height: 1.5;
   }
   main { max-width: 640px; margin: 0 auto; }
-  .top-nav { display: flex; justify-content: flex-end; margin-bottom: 14px; }
+  .top-nav { display: flex; justify-content: flex-end; align-items: center; gap: 10px; margin-bottom: 14px; }
   .pill-link {
     font-size: 0.78rem; font-weight: 700; text-decoration: none;
     padding: 5px 14px; border-radius: 999px; letter-spacing: 0.1px;
@@ -41,6 +41,12 @@
     background: var(--black-2); color: var(--text); border: 1px solid var(--steel-dark);
   }
   .pill-link.pill-home:hover { border-color: var(--steel); }
+  #authStatus {
+    display: none; align-items: center; gap: 8px; font-size: 0.78rem; color: var(--steel);
+  }
+  #authStatus .auth-username { color: var(--text); font-weight: 700; }
+  #authStatus a { color: var(--steel); text-decoration: underline; }
+  #authStatus a:hover { color: var(--text); }
   h1 { font-size: 1.3rem; margin: 0 0 4px; }
   h1 span { color: var(--red); text-shadow: var(--red-halo); }
   .sub { color: var(--steel); font-size: 0.85rem; margin: 0 0 20px; }
@@ -123,6 +129,7 @@
 <body>
 <main>
   <div class="top-nav">
+    <span id="authStatus"></span>
     <a class="pill-link pill-home" href="index.html">BlaydeManual Home</a>
   </div>
   <h1>BLAYDE MANUAL <span>// CONTRIBUTE A PHOTO</span></h1>
