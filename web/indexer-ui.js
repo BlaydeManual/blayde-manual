@@ -64,6 +64,32 @@ async function checkResumeState() {
 
   const total = selectedPdfDoc.numPages;
   const jobId = currentJobId();
+
+  // Indexing-complete-but-not-yet-submitted takes priority over the
+  // in-progress-indexing resume path below -- if review state exists,
+  // indexing itself already finished, so there's nothing left to
+  // resume there and re-indexing from scratch would just throw away
+  // real review work (deletions, bbox edits, confirmed fields).
+  const savedReview = await loadReviewState(jobId);
+  if (savedReview) {
+    card.style.display = "block";
+    card.innerHTML = `Found a saved review in progress for this manual (indexing already finished).<br>`
+      + `<button id="continueReviewBtn" style="margin-top:8px;">Continue reviewing</button> `
+      + `<button id="discardReviewBtn" style="margin-top:8px;">Discard and start fresh</button>`;
+    runBtn.disabled = true;
+    document.getElementById("continueReviewBtn").addEventListener("click", () => {
+      lastManifest = savedReview;
+      document.getElementById("downloadBtn").style.display = "inline-block";
+      card.style.display = "none";
+      startReview(savedReview);
+    });
+    document.getElementById("discardReviewBtn").addEventListener("click", async () => {
+      await clearReviewState(jobId);
+      await checkResumeState();
+    });
+    return;
+  }
+
   const job = await findResumableJob(jobId, total);
 
   if (!job) {
