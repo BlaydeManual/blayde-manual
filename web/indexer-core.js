@@ -23,7 +23,7 @@ const CANONICAL_REGISTRY_URL = "https://raw.githubusercontent.com/BlaydeManual/r
 // run of this exact file. ----
 
 const IDB_NAME = "blayde-indexer";
-const IDB_VERSION = 1;
+const IDB_VERSION = 2;
 
 function openIndexerDb() {
   return new Promise((resolve, reject) => {
@@ -36,10 +36,52 @@ function openIndexerDb() {
       if (!db.objectStoreNames.contains("jobs")) {
         db.createObjectStore("jobs", { keyPath: "jobId" });
       }
+      // Real bug found via direct use: indexing finishes, its own
+      // checkpoints get cleared (clearJob, below) since that pass
+      // genuinely completed -- but the review stage that follows
+      // (deletions, bbox adjustments, added figures, the confirmed
+      // vehicle/edition/source fields) lived only in memory, with zero
+      // persistence, until an eventual real submit. A refresh or
+      // accidental navigation lost all of it, forcing a full re-index
+      // (minutes, single-threaded) just to get back to review. This
+      // store persists the review-stage manifest itself, separate from
+      // per-page OCR checkpoints, cleared only once the maintainer
+      // actually downloads or submits.
+      if (!db.objectStoreNames.contains("reviewState")) {
+        db.createObjectStore("reviewState", { keyPath: "jobId" });
+      }
     };
     req.onsuccess = () => resolve(req.result);
     req.onerror = () => reject(req.error);
   });
+}
+
+async function saveReviewState(jobId, manifest) {
+  const db = await openIndexerDb();
+  const tx = db.transaction("reviewState", "readwrite");
+  tx.objectStore("reviewState").put({ jobId, manifest, updatedAt: Date.now() });
+  await new Promise((resolve, reject) => { tx.oncomplete = resolve; tx.onerror = () => reject(tx.error); });
+  db.close();
+}
+
+async function loadReviewState(jobId) {
+  const db = await openIndexerDb();
+  const tx = db.transaction("reviewState", "readonly");
+  const result = await new Promise((resolve, reject) => {
+    const req = tx.objectStore("reviewState").get(jobId);
+    req.onsuccess = () => resolve(req.result || null);
+    req.onerror = () => reject(req.error);
+  });
+  db.close();
+  return result ? result.manifest : null;
+}
+
+async function clearReviewState(jobId) {
+  const db = await openIndexerDb();
+  const tx = db.transaction("reviewState", "readwrite");
+  tx.objectStore("reviewState").delete(jobId);
+  await new Promise((resolve, reject) => { tx.oncomplete = resolve; tx.onerror = () => reject(tx.error); });
+  db.close();
 }
 
 async function pdfFingerprint(arrayBuffer) {

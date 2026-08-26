@@ -30,6 +30,25 @@ let nextAddedIdx = 1000000; // added-figure ids sort after real ones, doesn't co
 const REVIEW_CHUNK_SIZE = 10;
 let reviewChunkIdx = 0;
 
+// Real bug: indexing's own checkpoints get cleared once it genuinely
+// completes, but the review stage that follows -- deletions, bbox
+// adjustments, added figures, confirmed vehicle/edition/source fields
+// -- lived only in memory until an eventual submit, with zero
+// persistence. A refresh lost all of it, forcing a full re-index just
+// to get back to review. Saved to IndexedDB (indexer-core.js's
+// reviewState store) right when review starts and after every
+// meaningful edit -- not on every thumbnail load (_seen changes too
+// often to be worth a write each time; losing that specific detail on
+// a refresh is a minor cosmetic gap, not lost work).
+function saveReviewStateNow() {
+  if (!reviewManifest) return;
+  const jobId = currentJobId();
+  if (!jobId) return;
+  saveReviewState(jobId, reviewManifest).catch((e) => {
+    appendLog?.(`Couldn't save review progress: ${e.message}`);
+  });
+}
+
 function startReview(manifest) {
   reviewManifest = manifest;
   manifest.entries.forEach((e) => {
@@ -46,8 +65,24 @@ function startReview(manifest) {
   document.getElementById("editionIdRequiredError").style.display = "none";
   document.getElementById("sourceUrlConfirm").value = manifest.source_markers?.source_identifier || "";
   document.getElementById("sourceUrlError").style.display = "none";
+  document.getElementById("vehicleClassConfirm").value = manifest.vehicle_class || "";
+  document.getElementById("vehicleClassRequiredError").style.display = "none";
   renderReviewGallery();
+  saveReviewStateNow(); // persist immediately -- don't wait for a first edit
 }
+
+// Same non-guessable field as edition_id/source_url -- OCR can guess
+// make/model/year off the cover page, but nothing in the manual states
+// "this is a motorcycle" in a form worth parsing, so this is always a
+// human pick. Powers registry-browse.js's type filter (see ROADMAP.md's
+// "vehicle_class is used but never actually set anywhere" entry -- this
+// closes that gap on the producing side).
+document.getElementById("vehicleClassConfirm").addEventListener("change", (e) => {
+  if (!reviewManifest) return;
+  reviewManifest.vehicle_class = e.target.value;
+  if (e.target.value) document.getElementById("vehicleClassRequiredError").style.display = "none";
+  saveReviewStateNow();
+});
 
 // Re-derives contributed_photo_path for every entry whenever the
 // maintainer edits the confirmed slug -- cheap and idempotent, so it
@@ -59,6 +94,7 @@ document.getElementById("vehicleSlugConfirm").addEventListener("change", async (
   finalizeVehicleSlug(reviewManifest, slug);
   checkEditionIdCollision();
   await checkSimilarVehicleSlugs(slug);
+  saveReviewStateNow();
 });
 
 // Off-by-one-year generation guard -- see findSimilarVehicleSlugs
@@ -85,6 +121,7 @@ document.getElementById("sourceUrlConfirm").addEventListener("change", (e) => {
   if (!reviewManifest) return;
   reviewManifest.source_markers = { source_identifier: url };
   if (url) document.getElementById("sourceUrlError").style.display = "none";
+  saveReviewStateNow();
 });
 
 // Live collision check -- "Type: OEM -- a document with that type
@@ -100,6 +137,7 @@ async function checkEditionIdCollision() {
   const errEl = document.getElementById("editionIdError");
   if (!reviewManifest) return;
   reviewManifest.edition_id = editionId;
+  saveReviewStateNow();
   if (!slug || !editionId) { errEl.style.display = "none"; return; }
   const result = await checkEditionCollision(slug, editionId, CANONICAL_REGISTRY_URL);
   if (result.checked && result.conflict) {
@@ -180,6 +218,7 @@ function renderReviewGallery() {
   nextBtn.disabled = reviewChunkIdx >= chunkCount - 1;
 
   updateReviewStats();
+  saveReviewStateNow(); // cheap (~1ms, already measured elsewhere) -- covers delete, bbox edits, added figures, all of which end here
 }
 
 document.getElementById("reviewPrevBtn").addEventListener("click", () => {
@@ -426,6 +465,16 @@ function renderModalOverlays() {
     document.getElementById("pageModal").classList.remove("open");
   });
   document.getElementById("submitBtn").addEventListener("click", async () => {
+    const vehicleClass = document.getElementById("vehicleClassConfirm").value;
+    if (!vehicleClass) {
+      document.getElementById("vehicleClassRequiredError").style.display = "block";
+      document.getElementById("vehicleClassConfirm").scrollIntoView({ behavior: "smooth", block: "center" });
+      document.getElementById("vehicleClassConfirm").focus();
+      appendLog(`[submit] blocked -- pick a vehicle type before submitting.`);
+      return;
+    }
+    reviewManifest.vehicle_class = vehicleClass;
+
     const editionId = document.getElementById("editionIdConfirm").value.trim();
     if (!editionId) {
       document.getElementById("editionIdRequiredError").style.display = "block";
@@ -457,5 +506,12 @@ function renderModalOverlays() {
     // no exceptions -- delete already removed anything that isn't real,
     // so there's no separate "excluded" set to compute or forget to filter.
     appendLog(`[submit] ${total} candidates submitted, ${pct}% reviewed before submitting -- this is what the org quorum's light review would see`);
+
+    // The whole point of persisting review state was to survive a
+    // refresh before submission -- once actually submitted, keeping it
+    // around would just mean a future re-open of this same PDF offers
+    // to "continue reviewing" something already sent.
+    const jobId = currentJobId();
+    if (jobId) await clearReviewState(jobId).catch(() => {});
   });
 }
