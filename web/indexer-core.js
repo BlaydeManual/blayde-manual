@@ -448,11 +448,26 @@ async function indexPdf(pdfDoc, vehicleSlug, {
 
   if (jobId) await clearJob(jobId, pageNumbers); // completed successfully -- no need to keep checkpoints
 
+  // Real performance data, decentralized -- every vehicle repo's own
+  // manifest.json carries how long its own indexing run actually took,
+  // on what hardware, at what pool size. No telemetry pipeline, nothing
+  // sent anywhere -- just what's already public in the repo, the same
+  // way everything else in this project works. Lets a future concurrency
+  // decision be based on real numbers across real devices instead of
+  // one incident (see the pool-size hotfix note above).
+  const indexingMetrics = {
+    elapsed_sec: Math.round((performance.now() - t0) / 10) / 100,
+    pages_indexed: pageNumbers.length,
+    pool_size: poolSize,
+    hardware_concurrency: navigator.hardwareConcurrency || null,
+  };
+
   const manifest = {
     vehicle: vehicleSlug,
     source_manual: "browser-indexed",
     page_count: pdfDoc.numPages,
     generated_by: "shop-manual-indexer (browser)",
+    indexing_metrics: indexingMetrics,
     page_geometry: {},
     entries: [],
   };
