@@ -10,16 +10,27 @@
 <p>Signing in&hellip; this window will close automatically.</p>
 <script>
 (async function () {
+  const HANDOFF_KEY = "blayde_auth_handoff_v1";
   const params = new URLSearchParams(location.search);
   const code = params.get("code");
   const state = params.get("state");
   const expectedState = sessionStorage.getItem("blayde_oauth_state_v1");
 
+  // Primary handoff: localStorage, picked up by the opener's "storage"
+  // listener (auth.js). Doesn't depend on window.opener surviving the
+  // round trip through github.com, which some browsers sever even on a
+  // same-origin landing. postMessage is a secondary attempt only.
   function done(payload) {
+    const full = { state, ...payload };
+    try { localStorage.setItem(HANDOFF_KEY, JSON.stringify(full)); } catch (e) { /* storage unavailable */ }
     if (window.opener) {
-      window.opener.postMessage({ source: "blayde-auth-callback", ...payload }, window.location.origin);
+      try { window.opener.postMessage({ source: "blayde-auth-callback", ...full }, window.location.origin); } catch (e) { /* opener gone or cross-origin */ }
     }
     document.body.textContent = payload.error ? `Sign-in failed: ${payload.error}` : "Signed in. You can close this window.";
+    // Give the opener a moment to pick up the handoff and close this
+    // window itself; if it's still open after that (opener reference
+    // lost), close it from here instead.
+    setTimeout(() => { try { window.close(); } catch (e) {} }, 1500);
   }
 
   if (params.get("error")) {

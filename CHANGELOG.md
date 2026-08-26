@@ -18,6 +18,30 @@ and corrections in both directions -- see
 
 ## [Unreleased]
 
+- **Real GitHub sign-in went live, and broke two things the first pass
+  didn't catch until testing against the actual deployed site.**
+  1. **The popup-to-opener handoff.** The original implementation told
+     the tab that started sign-in about a successful login only via
+     `window.opener.postMessage(...)`. In production, that reference
+     doesn't reliably survive the popup's round trip through
+     `github.com` and back -- some browsers sever it even on a
+     same-origin landing. The symptom: the popup would show "signed
+     in," and the original tab would just sit there. Fixed by moving
+     the primary handoff to `localStorage` plus the `storage` event
+     (which fires in every other same-origin window watching it,
+     independent of any opener reference), keeping `postMessage` only
+     as a secondary path.
+  2. **The site's build output directory is `web/`, not the repo
+     root.** Every link built as `../docs/faq.html`, `../LEGAL.md`,
+     `../README.md`, `../ROADMAP.md` was reaching for a `../` that
+     doesn't exist on the live site -- Cloudflare Pages' SPA-style
+     fallback silently served the homepage instead of a 404, so this
+     wasn't obvious until someone actually clicked "More in the FAQ."
+     Fixed by moving `docs/` inside `web/` (so it deploys with
+     everything else) and pointing the three `.md` file links at their
+     real GitHub-hosted URLs instead of a local path that was never
+     part of the deployed site.
+
 - **Accessibility review, ahead of the real domain going live.** Three
   real fixes, one already-good pattern confirmed rather than assumed:
   1. The missing `<meta name="viewport">` tag, see the SEO entry below
