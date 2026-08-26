@@ -1,0 +1,14 @@
+# Cloudflare Pages headers config (https://developers.cloudflare.com/pages/configuration/headers/).
+#
+# This site changes multiple times a day and doesn't get heavy traffic --
+# freshness matters a lot more than shaving a revalidation round-trip off
+# page loads. no-cache still lets the browser cache a response, it just
+# forces a conditional revalidation (If-None-Match against the ETag) on
+# every load instead of trusting a max-age window blindly. Real bug this
+# fixes: the previous default (Cloudflare Pages' own max-age=14400) meant
+# a returning maintainer could load stale JS for up to 4 hours after a
+# deploy with zero indication anything was wrong -- reported directly as
+# "Vivaldi won't let go of this old site" even after manually clearing
+# site data, which only clears storage, not the browser's own HTTP cache.
+/*
+  Cache-Control: no-cache
