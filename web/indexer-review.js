@@ -9,7 +9,17 @@
 // total) is built in from the start per Initial Submission Standards.
 
 let reviewManifest = null;
-let reviewPageCache = {}; // pageNum -> {canvas, ctx}
+// pageNum -> {canvas, ctx, scaleUsed}, LRU-capped -- a 400+-page scanned
+// manual rendered at scale 2.5 is a full-resolution canvas per page, and
+// this used to just grow forever for the whole review session. Found via
+// real use: deep into a large manual, thumbnails silently stayed blank
+// and the page modal took a very long time to show anything -- memory
+// pressure from an unbounded cache of full-page canvases, not a hang.
+// Map preserves insertion order, so re-inserting on access (bumping to
+// most-recently-used) and evicting from the front is a correct LRU with
+// no extra bookkeeping.
+let reviewPageCache = new Map();
+const REVIEW_PAGE_CACHE_CAP = 20;
 let nextAddedIdx = 1000000; // added-figure ids sort after real ones, doesn't collide
 
 // A manual can produce hundreds of candidates -- rendering them all
@@ -30,6 +40,7 @@ function startReview(manifest) {
   document.getElementById("vehicleSlugConfirm").value = manifest.vehicle;
   document.getElementById("editionIdConfirm").value = manifest.edition_id || "";
   document.getElementById("editionIdError").style.display = "none";
+  document.getElementById("editionIdRequiredError").style.display = "none";
   document.getElementById("sourceUrlConfirm").value = manifest.source_markers?.source_identifier || "";
   document.getElementById("sourceUrlError").style.display = "none";
   renderReviewGallery();
@@ -82,6 +93,9 @@ async function checkEditionIdCollision() {
   }
 }
 document.getElementById("editionIdConfirm").addEventListener("change", checkEditionIdCollision);
+document.getElementById("editionIdConfirm").addEventListener("input", (e) => {
+  if (e.target.value.trim()) document.getElementById("editionIdRequiredError").style.display = "none";
+});
 
 function reviewStats() {
   const total = reviewManifest.entries.length;
@@ -174,7 +188,12 @@ function buildFigCard(entry) {
 }
 
 async function getReviewPage(pageNum, scale = 2.5) {
-  if (reviewPageCache[pageNum]) return reviewPageCache[pageNum];
+  if (reviewPageCache.has(pageNum)) {
+    const entry = reviewPageCache.get(pageNum);
+    reviewPageCache.delete(pageNum);
+    reviewPageCache.set(pageNum, entry); // bump to most-recently-used
+    return entry;
+  }
   const page = await selectedPdfDoc.getPage(pageNum);
   const viewport = page.getViewport({ scale });
   const canvas = document.createElement("canvas");
@@ -182,8 +201,12 @@ async function getReviewPage(pageNum, scale = 2.5) {
   canvas.height = Math.round(viewport.height);
   const ctx = canvas.getContext("2d");
   await page.render({ canvasContext: ctx, viewport }).promise;
-  reviewPageCache[pageNum] = { canvas, ctx, scaleUsed: scale };
-  return reviewPageCache[pageNum];
+  const entry = { canvas, ctx, scaleUsed: scale };
+  reviewPageCache.set(pageNum, entry);
+  if (reviewPageCache.size > REVIEW_PAGE_CACHE_CAP) {
+    reviewPageCache.delete(reviewPageCache.keys().next().value); // evict oldest
+  }
+  return entry;
 }
 
 async function refreshFigThumbnail(imgEl, entry) {
@@ -198,7 +221,17 @@ async function refreshFigThumbnail(imgEl, entry) {
     out.width = w; out.height = h;
     out.getContext("2d").drawImage(canvas, x0 * sx, y0 * sy, w, h, 0, 0, w, h);
     imgEl.src = out.toDataURL("image/jpeg", 0.85);
-  } catch (e) { /* leave blank, page might be out of range in a partial test run */ }
+    imgEl.classList.remove("thumb-failed");
+    imgEl.title = "";
+  } catch (e) {
+    // Was silently left blank before -- a real render failure (or a
+    // page genuinely out of range in a partial test run) looked
+    // identical to "hasn't loaded yet," with no way to tell which.
+    // Now visibly distinct and logged, not just invisible.
+    imgEl.classList.add("thumb-failed");
+    imgEl.title = `Couldn't render page ${entry.page}: ${e.message}`;
+    appendLog?.(`Thumbnail for ${entry.procedure_id} (page ${entry.page}) failed to render: ${e.message}`);
+  }
 }
 
 // ---- page modal: same drag/resize/add pattern proven in generate_review.py
@@ -209,15 +242,29 @@ async function openReviewPageModal(pageNum) {
   modalPageNum = pageNum;
   const modal = document.getElementById("pageModal");
   const img = document.getElementById("pageModalImg");
+  const wrap = document.getElementById("pageModalWrap");
   modal.classList.add("open");
   const onThisPage = reviewManifest.entries.filter((e) => e.page === pageNum).length;
-  document.getElementById("pageModalTitle").textContent =
-    `Page ${pageNum} of ${reviewManifest.page_count} -- ${onThisPage} candidate${onThisPage === 1 ? "" : "s"} on this page`;
+  const baseTitle = `Page ${pageNum} of ${reviewManifest.page_count} -- ${onThisPage} candidate${onThisPage === 1 ? "" : "s"} on this page`;
+  // Was left showing the previous page's image (or nothing) while this
+  // one rendered, indistinguishable from a real failure -- see the
+  // reviewPageCache LRU note above for the underlying cause found via
+  // real use on a 400+-page manual.
+  document.getElementById("pageModalTitle").textContent = `${baseTitle} -- rendering...`;
+  img.removeAttribute("src");
+  wrap.querySelectorAll(".overlay-box").forEach((el) => el.remove());
   document.getElementById("pageModalJumpInput").max = reviewManifest.page_count;
   document.getElementById("pageModalJumpInput").value = pageNum;
-  const { canvas } = await getReviewPage(pageNum);
-  img.src = canvas.toDataURL("image/png");
-  img.onload = renderModalOverlays;
+  try {
+    const { canvas } = await getReviewPage(pageNum);
+    if (modalPageNum !== pageNum) return; // jumped to another page before this one finished
+    img.src = canvas.toDataURL("image/png");
+    img.onload = renderModalOverlays;
+    document.getElementById("pageModalTitle").textContent = baseTitle;
+  } catch (err) {
+    document.getElementById("pageModalTitle").textContent = `${baseTitle} -- couldn't render: ${err.message}`;
+    appendLog?.(`Page ${pageNum} render failed: ${err.message}`);
+  }
 }
 
 document.getElementById("pageModalJumpBtn").addEventListener("click", () => {
@@ -226,11 +273,21 @@ document.getElementById("pageModalJumpBtn").addEventListener("click", () => {
   openReviewPageModal(n);
 });
 
+// Left/Right steps to the adjacent page while the modal is open -- only
+// when not focused in a text input (the jump-to-page field uses the
+// same keys to move the cursor).
+document.addEventListener("keydown", (e) => {
+  if (!document.getElementById("pageModal").classList.contains("open")) return;
+  if (e.target.tagName === "INPUT") return;
+  if (e.key === "ArrowLeft" && modalPageNum > 1) openReviewPageModal(modalPageNum - 1);
+  else if (e.key === "ArrowRight" && modalPageNum < reviewManifest.page_count) openReviewPageModal(modalPageNum + 1);
+});
+
 function renderModalOverlays() {
   const wrap = document.getElementById("pageModalWrap");
   wrap.querySelectorAll(".overlay-box").forEach((el) => el.remove());
   const geo = reviewManifest.page_geometry[String(modalPageNum)];
-  const canvasInfo = reviewPageCache[modalPageNum];
+  const canvasInfo = reviewPageCache.get(modalPageNum);
   const sx = canvasInfo.canvas.width / geo.composite_width_px;
   const sy = canvasInfo.canvas.height / geo.composite_height_px;
   reviewManifest.entries.filter((e) => e.page === modalPageNum).forEach((entry) => {
@@ -291,7 +348,7 @@ function renderModalOverlays() {
       const box = modalDrag.box;
       const entry = reviewManifest.entries.find((x) => x.procedure_id === modalDrag.id);
       const geo = reviewManifest.page_geometry[String(modalPageNum)];
-      const canvasInfo = reviewPageCache[modalPageNum];
+      const canvasInfo = reviewPageCache.get(modalPageNum);
       const sx = canvasInfo.canvas.width / geo.composite_width_px, sy = canvasInfo.canvas.height / geo.composite_height_px;
       const left = parseFloat(box.style.left), top = parseFloat(box.style.top);
       const width = parseFloat(box.style.width), height = parseFloat(box.style.height);
@@ -312,7 +369,7 @@ function renderModalOverlays() {
       const label = prompt("What is this figure? (short label)");
       if (label === null) return;
       const geo = reviewManifest.page_geometry[String(modalPageNum)];
-      const canvasInfo = reviewPageCache[modalPageNum];
+      const canvasInfo = reviewPageCache.get(modalPageNum);
       const sx = canvasInfo.canvas.width / geo.composite_width_px, sy = canvasInfo.canvas.height / geo.composite_height_px;
       const bbox = [x0 / sx, y0 / sy, x1 / sx, y1 / sy];
       const pid = `p${String(modalPageNum).padStart(3, "0")}_${slugify(label)}_manualadd${nextAddedIdx++}`;
@@ -332,6 +389,7 @@ function renderModalOverlays() {
   document.getElementById("submitBtn").addEventListener("click", async () => {
     const editionId = document.getElementById("editionIdConfirm").value.trim();
     if (!editionId) {
+      document.getElementById("editionIdRequiredError").style.display = "block";
       document.getElementById("editionIdConfirm").scrollIntoView({ behavior: "smooth", block: "center" });
       document.getElementById("editionIdConfirm").focus();
       appendLog(`[submit] blocked -- give this edition a short label (OEM, Haynes, etc.) before submitting.`);
