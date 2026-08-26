@@ -301,7 +301,7 @@ function performMaintainRequest(vehicleKey) {
   renderUploads();
 }
 
-function performAction(action) {
+async function performAction(action) {
   const upload = {
     id: `${procedureId}_${Date.now()}`,
     repoUrl, procedureId,
@@ -317,68 +317,192 @@ function performAction(action) {
     photoDataUrl: selectedPhotoDataUrl,
     photoFilename: selectedPhotoFilename,
     author: currentUsername,
-    status: action === "submit" ? "submitted" : "draft",
+    status: "draft",
     // Real attestation, captured at the moment of action, not assumed
     // from a PR template checkbox nobody was forced to actually tick --
     // see ROADMAP.md's direct-to-git contribution audit. Both are
     // already required to be true before this function is even
     // reachable (updateSubmitEnabled gates it), recorded here for the
-    // traceable record once real PRs carry this in their body.
+    // traceable record now carried in the real PR body too.
     consentOwnPhoto: true,
     consentLicenseCcBy4: true,
   };
-  if (action === "submit") upload.prNumber = submitToReviewQueue(upload);
+
+  if (action === "submit") {
+    log(`Opening a pull request on ${repoUrl}...`);
+    try {
+      const pr = await submitPhotoToGitHub(upload);
+      upload.status = "submitted";
+      upload.prNumber = pr.number;
+      upload.prUrl = pr.url;
+      log(`Submitted -- pull request #${pr.number} opened: ${pr.url}`);
+    } catch (err) {
+      log(`Submit failed: ${err.message} -- saved as a draft instead, try Submit again from My uploads.`);
+    }
+  } else {
+    log(`Saved to your uploads -- not submitted yet.`);
+  }
+
   uploads.push(upload);
   saveUploads();
   renderUploads();
-  log(action === "submit" ? `Saved and submitted for review.` : `Saved to your uploads -- not submitted yet.`);
 }
 
-// ---- feeds directly into the same queue review-panel.js already reads
-// -- a contributor's photo becomes a Photo Request, reviewed through the
-// exact accept/reject mechanism that already exists, not a new one ----
-function submitToReviewQueue(upload) {
-  const prs = loadMockPrs(MOCK_PRS_SEED);
-  const number = nextMockPrNumber(prs);
-  prs.push({
-    number,
-    title: `Add photo: ${upload.sectionHeading}`,
-    author: upload.author,
-    repo_url: upload.repoUrl,
-    edition_id: upload.editionId,
-    procedure_id: upload.procedureId,
-    page: upload.page,
-    section_heading: upload.sectionHeading,
-    photo_filename: upload.photoFilename,
-    original_bbox: upload.pixelBbox,
-    composite_width_px: upload.compositeWidthPx,
-    composite_height_px: upload.compositeHeightPx,
-    page_width_pt: upload.pageWidthPt,
-    page_height_pt: upload.pageHeightPt,
+// ---- real submission: fork the vehicle repo into the contributor's own
+// account, push the photo there, open a cross-repo PR back to the
+// vehicle repo. A signed-in contributor essentially never has push
+// access to BlaydeManual/<vehicle> directly -- only collaborators do --
+// so pushing straight to it would only work for maintainers testing
+// their own repos. Fork-then-PR is the actual standard GitHub pattern
+// for this (the same one GitHub's own "propose changes" UI uses), not
+// a shortcut. Verified against GitHub's REST API docs before building
+// this, not assumed from memory: POST .../forks is async (202,
+// "may have to wait a short period" -- github.com/en/rest/repos/forks),
+// and a cross-repo PR's `head` must be "username:branch"
+// (github.com/en/rest/pulls/pulls). ----
+function ownerRepoFromUrl(repoUrl) {
+  const parts = repoUrl.replace(/\/$/, "").split("/");
+  return [parts[parts.length - 2], parts[parts.length - 1]];
+}
+
+function dataUrlToBase64(dataUrl) {
+  return dataUrl.split(",")[1];
+}
+
+async function githubApi(path, token, options = {}) {
+  const resp = await fetch(`https://api.github.com${path}`, {
+    ...options,
+    headers: {
+      Authorization: `Bearer ${token}`,
+      Accept: "application/vnd.github+json",
+      ...(options.headers || {}),
+    },
   });
-  saveMockPrs(prs);
-  return number;
+  if (!resp.ok) {
+    const body = await resp.json().catch(() => ({}));
+    const err = new Error(body.message || `GitHub API error (${resp.status})`);
+    err.status = resp.status;
+    throw err;
+  }
+  return resp.status === 204 ? null : resp.json();
 }
 
-function markSubmitted(uploadId) {
+// Polls the fork for its default branch ref, since fork creation is
+// async on GitHub's side -- the fork can 200 on a plain GET before its
+// git refs are actually queryable. GitHub says up to 5 minutes in rare
+// cases; 30s/1.5s-interval covers the overwhelming majority without
+// hanging the UI indefinitely on the rare slow one.
+async function waitForForkRef(forkOwner, repo, branch, token) {
+  for (let i = 0; i < 20; i++) {
+    try {
+      return await githubApi(`/repos/${forkOwner}/${repo}/git/ref/heads/${branch}`, token);
+    } catch (e) {
+      await new Promise((r) => setTimeout(r, 1500));
+    }
+  }
+  throw new Error(`Fork of ${repo} is still being created on GitHub's side -- try submitting again in a minute.`);
+}
+
+async function submitPhotoToGitHub(upload) {
+  const session = BlaydeAuth.getSession();
+  if (!session) throw new Error("Not signed in.");
+  const [owner, repo] = ownerRepoFromUrl(upload.repoUrl);
+  const ext = (upload.photoFilename.match(/\.(jpe?g|png|webp)$/i)?.[0] || ".jpg").toLowerCase();
+
+  let defaultBranch = null, upstreamSha = null;
+  for (const branch of ["main", "master"]) {
+    try {
+      const ref = await githubApi(`/repos/${owner}/${repo}/git/ref/heads/${branch}`, session.token);
+      defaultBranch = branch;
+      upstreamSha = ref.object.sha;
+      break;
+    } catch (e) { /* try next */ }
+  }
+  if (!defaultBranch) throw new Error(`Could not find a main or master branch on ${owner}/${repo}.`);
+
+  // POST is safe to call even if a fork already exists from a previous
+  // submission -- GitHub just returns the existing one.
+  await githubApi(`/repos/${owner}/${repo}/forks`, session.token, { method: "POST" });
+  const forkOwner = session.username;
+  const forkRef = await waitForForkRef(forkOwner, repo, defaultBranch, session.token);
+
+  const branchName = `contribute/${upload.procedureId}-${Date.now()}`;
+  await githubApi(`/repos/${forkOwner}/${repo}/git/refs`, session.token, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ ref: `refs/heads/${branchName}`, sha: forkRef.object.sha }),
+  });
+
+  // <procedure_id>__by_<username>[__altN].ext -- the exact convention
+  // patcher.js's parsePhotoFilename expects. Alt-numbering only kicks
+  // in if this same contributor already has a photo at this exact path
+  // (a genuine resubmission), not on any other kind of failure.
+  const content = dataUrlToBase64(upload.photoDataUrl);
+  let path = `images/${upload.procedureId}__by_${forkOwner}${ext}`;
+  for (let altN = 2; ; altN++) {
+    try {
+      await githubApi(`/repos/${forkOwner}/${repo}/contents/${path}`, session.token, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ message: `Add photo for ${upload.procedureId}`, content, branch: branchName }),
+      });
+      break;
+    } catch (e) {
+      if (e.status === 422 && altN <= 5) {
+        path = `images/${upload.procedureId}__by_${forkOwner}__alt${altN}${ext}`;
+        continue;
+      }
+      throw e;
+    }
+  }
+
+  const prBody = [
+    `Photo for \`${upload.procedureId}\` (${upload.sectionHeading}).`,
+    ``,
+    `Submitted via the Contributor Portal. Both required attestations were checked before this was allowed to submit:`,
+    `- This is the contributor's own photo, not sourced from elsewhere.`,
+    `- Licensed CC-BY 4.0.`,
+  ].join("\n");
+
+  const pr = await githubApi(`/repos/${owner}/${repo}/pulls`, session.token, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      title: `Add photo: ${upload.sectionHeading}`,
+      head: `${forkOwner}:${branchName}`,
+      base: defaultBranch,
+      body: prBody,
+    }),
+  });
+
+  return { number: pr.number, url: pr.html_url };
+}
+
+async function markSubmitted(uploadId) {
   const upload = uploads.find((u) => u.id === uploadId);
   if (!upload || upload.status === "submitted") return;
-  upload.status = "submitted";
-  upload.prNumber = submitToReviewQueue(upload);
-  saveUploads();
-  renderUploads();
-  log(`Submitted for review.`);
+  log(`Opening a pull request on ${upload.repoUrl}...`);
+  try {
+    const pr = await submitPhotoToGitHub(upload);
+    upload.status = "submitted";
+    upload.prNumber = pr.number;
+    upload.prUrl = pr.url;
+    saveUploads();
+    renderUploads();
+    log(`Submitted -- pull request #${pr.number} opened: ${pr.url}`);
+  } catch (err) {
+    log(`Submit failed: ${err.message}`);
+  }
 }
 
-// Live outcome, looked up by the PR number stashed at submit time --
-// this is what actually answers "did I get accepted or rejected," not
-// just a status string frozen at the moment of submission.
+// Submissions are real pull requests now (submitPhotoToGitHub), so
+// there's nothing in the local mock PR store to look an outcome up
+// against anymore -- this always reads as "still pending" until
+// review-panel.js/org-approval.js go real too and can report an actual
+// accept/reject back here. upload.prUrl (set at submit time) is the
+// honest interim answer: a direct link to check status on GitHub.
 function outcomeFor(upload) {
-  if (upload.status !== "submitted" || upload.prNumber == null) return null;
-  const prs = loadMockPrs(MOCK_PRS_SEED);
-  const pr = prs.find((p) => p.number === upload.prNumber);
-  if (!pr || !pr.status) return null; // still pending review
-  return { status: pr.status, note: pr.maintainerNote || "" };
+  return null;
 }
 
 // ---- My uploads -- grouped by vehicle (collapsible, since this list
@@ -444,7 +568,7 @@ function renderUploads() {
             <img class="upload-thumb" src="${u.photoDataUrl}" alt="">
             <div>
               <div class="upload-title">${pageLabel}${u.sectionHeading}<span class="upload-status ${displayStatus}">${displayStatus}</span></div>
-              <div class="upload-meta">${u.procedureId}${u.prNumber != null ? ` &middot; Request #${u.prNumber}` : ""}</div>
+              <div class="upload-meta">${u.procedureId}${u.prNumber != null ? ` &middot; ${u.prUrl ? `<a href="${u.prUrl}" target="_blank" rel="noopener" style="color:inherit;">Request #${u.prNumber}</a>` : `Request #${u.prNumber}`}` : ""}</div>
               ${outcome && outcome.note ? `<div class="upload-note">&ldquo;${outcome.note}&rdquo; &mdash; maintainer note</div>` : ""}
             </div>
           </div>
