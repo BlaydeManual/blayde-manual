@@ -8,7 +8,8 @@
 const UPLOADS_STORAGE_KEY = "blayde_my_uploads_v1";
 const MAINTAINER_REQUESTS_KEY = "blayde_maintainer_requests_v1";
 const REMOVAL_REQUESTS_KEY = "blayde_removal_requests_v1";
-const MOCK_USERNAME = "you"; // single mock identity, same convention as MOCK_MAINTAINER elsewhere
+// Real GitHub sign-in (auth.js) as of 2026-08-25 -- currentUsername
+// comes from the actual signed-in account, not a fixed mock identity.
 
 // No live registry.json/manifest.json exists yet (nothing's been pushed
 // anywhere, see LEGAL.md) -- this mirrors the two real seed procedures
@@ -51,6 +52,7 @@ const repoUrl = params.get("repo") || "https://github.com/BlaydeManual/suzuki-sv
 const procedureId = params.get("procedure") || "p040_2-10-periodic-maintenance_fig1";
 
 let signedIn = false;
+let currentUsername = null;
 let pendingAction = null; // "draft" | "submit" -- what to actually do once sign-in completes
 let pendingMaintainRequest = null; // vehicle key -- same deferred-sign-in pattern, separate action
 let context = null;
@@ -89,7 +91,7 @@ function saveMaintainerRequests() {
   try { localStorage.setItem(MAINTAINER_REQUESTS_KEY, JSON.stringify(maintainerRequests)); } catch (e) { /* best-effort */ }
 }
 function hasRequestedMaintain(vehicleKey) {
-  return maintainerRequests.some((r) => r.vehicleKey === vehicleKey && r.requestedBy === MOCK_USERNAME);
+  return maintainerRequests.some((r) => r.vehicleKey === vehicleKey && r.requestedBy === currentUsername);
 }
 
 // The "gitless" answer to "can I revoke a photo I contributed" (see
@@ -116,7 +118,7 @@ function hasRequestedRemoval(uploadId) {
 function requestRemoval(uploadId) {
   if (hasRequestedRemoval(uploadId)) return;
   const upload = uploads.find((u) => u.id === uploadId);
-  removalRequests.push({ uploadId, procedureId: upload?.procedureId, requestedBy: MOCK_USERNAME, requestedAt: new Date().toISOString().slice(0, 10) });
+  removalRequests.push({ uploadId, procedureId: upload?.procedureId, requestedBy: currentUsername, requestedAt: new Date().toISOString().slice(0, 10) });
   saveRemovalRequests();
   log(`[mock] requested removal of ${upload?.photoFilename || uploadId} -- the repo maintainer(s) take it out of the active images/ folder. It stops being offered to anyone from that point forward; copies already patched into someone else's manual aren't reachable (see the FAQ on why).`);
   renderUploads();
@@ -149,6 +151,15 @@ async function loadContext() {
   return null;
 }
 
+// A session set by a previous sign-in this tab (auth.js, sessionStorage)
+// survives a page reload without forcing sign-in again -- only closing
+// the tab clears it.
+const existingSession = window.BlaydeAuth ? BlaydeAuth.getSession() : null;
+if (existingSession) {
+  signedIn = true;
+  currentUsername = existingSession.username;
+}
+
 // Two arrival paths: a real (repo, procedure) pair means someone
 // scanned a QR code inside a patched PDF, straight into that one
 // procedure's photo picker. No params means the site's own
@@ -172,14 +183,29 @@ if (hasProcedureContext) {
   })();
 } else {
   document.getElementById("procedureFlow").style.display = "none";
-  document.getElementById("landingSignIn").style.display = "block";
+  document.getElementById("landingSignIn").style.display = signedIn ? "none" : "block";
 }
 
-document.getElementById("landingSignInBtn").addEventListener("click", () => {
-  signedIn = true;
-  document.getElementById("landingSignIn").style.display = "none";
-  log(`[mock] signed in with GitHub as @${MOCK_USERNAME} (real flow: OAuth redirect + proxy token exchange)`);
-  renderUploads();
+// Shared by both sign-in buttons -- one real GitHub OAuth flow, not two
+// separate implementations that could drift.
+async function performSignIn() {
+  try {
+    const session = await BlaydeAuth.signInWithGitHub();
+    signedIn = true;
+    currentUsername = session.username;
+    log(`Signed in with GitHub as @${currentUsername}.`);
+    return true;
+  } catch (err) {
+    log(`Sign-in failed: ${err.message}`);
+    return false;
+  }
+}
+
+document.getElementById("landingSignInBtn").addEventListener("click", async () => {
+  if (await performSignIn()) {
+    document.getElementById("landingSignIn").style.display = "none";
+    renderUploads();
+  }
 });
 
 renderUploads();
@@ -251,10 +277,9 @@ function requestAction(action) {
   performAction(action);
 }
 
-document.getElementById("mockSignInBtn").addEventListener("click", () => {
-  signedIn = true;
+document.getElementById("promptSignInBtn").addEventListener("click", async () => {
+  if (!(await performSignIn())) return;
   document.getElementById("signInPrompt").style.display = "none";
-  log(`[mock] signed in with GitHub as @${MOCK_USERNAME} (real flow: OAuth redirect + proxy token exchange)`);
   if (pendingAction) { performAction(pendingAction); pendingAction = null; }
   if (pendingMaintainRequest) { performMaintainRequest(pendingMaintainRequest); pendingMaintainRequest = null; }
 });
@@ -270,7 +295,7 @@ function requestToMaintain(vehicleKey) {
 
 function performMaintainRequest(vehicleKey) {
   if (hasRequestedMaintain(vehicleKey)) return;
-  maintainerRequests.push({ vehicleKey, requestedBy: MOCK_USERNAME, requestedAt: new Date().toISOString().slice(0, 10) });
+  maintainerRequests.push({ vehicleKey, requestedBy: currentUsername, requestedAt: new Date().toISOString().slice(0, 10) });
   saveMaintainerRequests();
   log(`[mock] requested to help maintain ${vehicleKey} -- notifies the current maintainer(s) and the org quorum. If there's no response within the grace period, it escalates automatically.`);
   renderUploads();
@@ -291,7 +316,7 @@ function performAction(action) {
     pageHeightPt: context?.page_height_pt || null,
     photoDataUrl: selectedPhotoDataUrl,
     photoFilename: selectedPhotoFilename,
-    author: MOCK_USERNAME,
+    author: currentUsername,
     status: action === "submit" ? "submitted" : "draft",
     // Real attestation, captured at the moment of action, not assumed
     // from a PR template checkbox nobody was forced to actually tick --

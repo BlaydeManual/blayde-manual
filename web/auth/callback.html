@@ -1,0 +1,57 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex">
+<title>Signing in - Blayde Manual</title>
+</head>
+<body>
+<p>Signing in&hellip; this window will close automatically.</p>
+<script>
+(async function () {
+  const params = new URLSearchParams(location.search);
+  const code = params.get("code");
+  const state = params.get("state");
+  const expectedState = sessionStorage.getItem("blayde_oauth_state_v1");
+
+  function done(payload) {
+    if (window.opener) {
+      window.opener.postMessage({ source: "blayde-auth-callback", ...payload }, window.location.origin);
+    }
+    document.body.textContent = payload.error ? `Sign-in failed: ${payload.error}` : "Signed in. You can close this window.";
+  }
+
+  if (params.get("error")) {
+    done({ error: params.get("error_description") || params.get("error") });
+    return;
+  }
+  if (!code || !state || state !== expectedState) {
+    done({ error: "Sign-in state mismatch -- please try again." });
+    return;
+  }
+
+  try {
+    const exchangeResp = await fetch("https://auth.blaydemanual.com/", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ code }),
+    });
+    const exchangeData = await exchangeResp.json();
+    if (!exchangeResp.ok || exchangeData.error) {
+      done({ error: exchangeData.error || "Token exchange failed." });
+      return;
+    }
+
+    const userResp = await fetch("https://api.github.com/user", {
+      headers: { Authorization: `Bearer ${exchangeData.access_token}` },
+    });
+    const userData = await userResp.json();
+    done({ token: exchangeData.access_token, username: userData.login });
+  } catch (err) {
+    done({ error: "Network error during sign-in." });
+  }
+})();
+</script>
+</body>
+</html>

@@ -1,0 +1,7 @@
+name = "blayde-auth"
+main = "src/index.js"
+compatibility_date = "2026-08-25"
+
+routes = [
+  { pattern = "auth.blaydemanual.com/*", zone_name = "blaydemanual.com" }
+]
