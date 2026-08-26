@@ -3110,3 +3110,12 @@ Both `blayde-manual`, `registry`, and `vehicle-scaffold` now have CODEOWNERS and
 
 1. **Branch protection does not carry over when a new vehicle repo is generated from the `vehicle-scaffold` template.** GitHub's "generate from template" copies files, not repo settings. Every new vehicle repo needs branch protection configured as its own explicit step, or this needs an org-level Ruleset instead of per-repo branch protection -- rulesets can apply automatically to every repo matching a pattern, but creating one needs `admin:org` scope, which the current token does not have (`gh auth refresh -h github.com -s admin:org` would add it).
 2. **The `manifest.json` CI-validation job still does not exist.** `scaffold/checker.py`'s CI workflow only validates photos (`paths: images/**`). A PR touching only `manifest.json` -- a moved bbox, a changed status, an edited edition label -- gets zero automated checking today, in `vehicle-scaffold` or in any repo generated from it. This is the same gap already logged in the "Direct-to-git contribution" audit above; repeating it here because the branch-protection rollout made it concrete on a real repo instead of a hypothetical one.
+
+## OAuth App registered; expire-user-access-tokens deferred until the worker handles refresh (2026-08-25)
+
+OAuth App registered under the BlaydeManual org. Client ID: `Ov23lijpNHggDgWfwxWa` (public, not sensitive -- safe to record here). Client secret is not recorded anywhere in this repo; it belongs only in the Cloudflare Worker's secret bindings once that worker exists.
+
+Two registration settings decided, checked against GitHub's real OAuth App docs rather than assumed:
+
+- **Device Flow: off.** That flow is for browserless/limited-input devices (CLI tools, smart TVs) authorizing without a redirect URL. Blayde Manual is a browser web app with a real callback URL, so it doesn't apply.
+- **Expire user access tokens: off, for now.** GitHub's own guidance is to disable this only if the app's authentication code hasn't yet been updated to handle short-lived tokens -- exactly this project's situation, since the Cloudflare Worker that will do the token exchange doesn't exist yet and has no refresh-token logic. Turning this on today would mean tokens silently expire once real sign-in ships, logging people out with no way to refresh. **Flip this on once the worker is built with refresh-token handling** -- GitHub calls expiring tokens the preferred long-term posture, this is a temporary deferral, not a permanent decision.
