@@ -396,11 +396,12 @@ needed a real mechanism, not just a policy sentence.
 **Not yet built:** the actual workflow YAML, the "Request to help
 maintain" UI action, and the org-repo scaffold it would live in (only
 the per-vehicle repo scaffold exists today, at `scaffold/`). This
-entry is the design answer, not the implementation -- matches this
-project's standing pin that nothing gets built and pushed to a real
-repo until LEGAL.md's own review happens. Priority relative to
-v1.0.0: not explicitly re-sequenced yet -- worth deciding in the same
-pass as the rest of the pre-launch cut line, not assumed here.
+entry is the design answer, not the implementation -- simply not
+built yet, not gated on anything else at this point (LEGAL.md's
+pre-push review, which this used to be gated on, is done -- see its
+cleared pin). Priority relative to v1.0.0: not explicitly re-sequenced
+yet -- worth deciding in the same pass as the rest of the pre-launch
+cut line, not assumed here.
 
 ## Possible revenue streams -- logged for reaction, not decided
 

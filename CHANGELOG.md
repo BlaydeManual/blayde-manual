@@ -5,9 +5,11 @@ follows [Keep a Changelog](https://keepachangelog.com/); versioning is
 milestone-based rather than strict SemVer while pre-1.0.0 (see
 ROADMAP.md for the planned path to v1.0.0).
 
-Nothing in this project has been pushed, published, or posted anywhere
-off this computer -- see LEGAL.md's standing pin. Tags below mark local
-milestones only.
+As of 2026-08-25, this project is public at
+`github.com/BlaydeManual/blayde-manual` -- see LEGAL.md for the pre-push
+legal review that gated that. Everything before that date describes work
+done locally, pre-push; entries after it describe the live, public
+project.
 
 This is the *what changed* record. For *who steered what* -- which
 decisions originated with the project owner versus Claude's synthesis,
