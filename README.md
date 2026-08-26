@@ -35,7 +35,7 @@ step, no server required beyond serving the files.
 
 | Page | What it's for |
 |---|---|
-| `web/index.html` | Patch your own copy of a manual. Pick a PDF, it's fingerprinted locally and checked against the registry, then patched with whatever approved community photos exist. |
+| `web/index.html` | Patch your own copy of a manual. Pick a PDF, it's identified locally and checked against the registry, then patched with whatever approved community photos exist. |
 | `web/registry-browse.html` | Browse every registered vehicle, see how far along each manual is. |
 | `web/contribute.html` | Contribute a photo for a specific procedure. Requires signing in with GitHub only at the point of actually submitting. |
 | `web/maintainer.html` | Everything a maintainer or org reviewer does: index a brand-new vehicle (real in-browser OCR/figure detection, no Python), review photo submissions, approve new vehicles/editions, manage a vehicle's maintainer team, raise or resolve structural issues. |

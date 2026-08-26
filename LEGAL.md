@@ -95,5 +95,7 @@ Public at `github.com/BlaydeManual/blayde-manual` as of 2026-08-25.
 - CLA/DCO for outside *code* contributions -- hard gate, blocks
   accepting any code PR until it exists. Not yet needed with a single
   author.
-- Branch protection / CODEOWNERS on the real repo -- designed, not
-  yet configured on GitHub itself.
+- Org-level Ruleset so branch protection auto-applies to every new
+  vehicle repo generated from `vehicle-scaffold` -- needs `admin:org`
+  scope not currently granted. Branch protection/CODEOWNERS on the
+  three org repos themselves is already configured.
