@@ -1,0 +1,210 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Blayde Manual: Contribute a Photo</title>
+<meta name="description" content="Have a photo of a repair or maintenance step from your own vehicle? Contribute it to help improve a community-maintained service manual. Credited by name, licensed CC-BY 4.0.">
+<link rel="canonical" href="https://blaydemanual.com/contribute.html">
+<link rel="icon" type="image/svg+xml" href="favicon.svg">
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="Blayde Manual">
+<meta property="og:title" content="Blayde Manual: contribute a photo">
+<meta property="og:description" content="Help replace a low-resolution scan with a real photo from your own vehicle. Credited by name, licensed CC-BY 4.0.">
+<meta property="og:url" content="https://blaydemanual.com/contribute.html">
+<meta property="og:image" content="https://blaydemanual.com/images/hero-after.jpg">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="Blayde Manual: contribute a photo">
+<meta name="twitter:description" content="Help replace a low-resolution scan with a real photo from your own vehicle. Credited by name, licensed CC-BY 4.0.">
+<meta name="twitter:image" content="https://blaydemanual.com/images/hero-after.jpg">
+<style>
+  :root {
+    --red: #c8102e; --black: #0c0d0f; --black-2: #16181c; --black-3: #1e2126;
+    --steel: #8a8f98; --steel-dark: #666c76; --text: #e8e8ea; --mint: #9fe1cb;
+    /* Soft dark halo behind red text on a dark background -- see
+       web/index.html for the full reasoning (real optical effect, not
+       just style). */
+    --red-halo: 0 0 3px rgba(0,0,0,0.9), 0 0 1px rgba(0,0,0,0.9);
+  }
+  * { box-sizing: border-box; }
+  body {
+    background: var(--black); color: var(--text); margin: 0; padding: 32px 24px;
+    font-family: -apple-system, "Segoe UI", Roboto, sans-serif; line-height: 1.5;
+  }
+  main { max-width: 640px; margin: 0 auto; }
+  .top-nav { display: flex; justify-content: flex-end; margin-bottom: 14px; }
+  .pill-link {
+    font-size: 0.78rem; font-weight: 700; text-decoration: none;
+    padding: 5px 14px; border-radius: 999px; letter-spacing: 0.1px;
+  }
+  .pill-link.pill-home {
+    background: var(--black-2); color: var(--text); border: 1px solid var(--steel-dark);
+  }
+  .pill-link.pill-home:hover { border-color: var(--steel); }
+  h1 { font-size: 1.3rem; margin: 0 0 4px; }
+  h1 span { color: var(--red); text-shadow: var(--red-halo); }
+  .sub { color: var(--steel); font-size: 0.85rem; margin: 0 0 20px; }
+  .card {
+    background: var(--black-2); border: 1px solid var(--steel-dark);
+    border-left: 3px solid var(--red); border-radius: 8px;
+    padding: 18px 22px; margin-bottom: 14px;
+  }
+  .card h2 { font-size: 0.95rem; margin: 0 0 8px; }
+  label { display: block; font-size: 0.82rem; color: var(--steel); margin: 10px 0 5px; }
+  input[type=file] { color: var(--text); font-size: 0.82rem; }
+  button {
+    background: var(--red); color: #fff; border: none; padding: 9px 18px;
+    font-size: 0.85rem; font-weight: 700; border-radius: 6px; cursor: pointer;
+    margin-top: 12px; margin-right: 8px;
+  }
+  button.secondary { background: var(--black-3); color: var(--steel); border: 1px solid var(--steel-dark); }
+  button:disabled { background: var(--steel-dark); opacity: 0.6; cursor: default; }
+
+  #signInPrompt { display: none; background: #000; border: 1px solid var(--steel-dark); border-radius: 6px; padding: 14px; margin-top: 12px; }
+  #signInPrompt p { margin: 0 0 10px; font-size: 0.82rem; color: var(--steel); }
+
+  /* Arriving with no specific procedure (e.g. the landing page's
+     "Contributors" pill, not an in-PDF QR code) has nothing to show a
+     photo picker for -- sign in first, same pattern as the Maintainer
+     Portal, then land on My uploads instead of a procedure card. */
+  #landingSignIn { display: none; }
+
+  .preview-thumb { width: 120px; height: 90px; object-fit: cover; border-radius: 6px; border: 1px solid var(--steel-dark); margin-top: 10px; display: none; }
+
+  #uploadsSection { display: none; }
+  .vehicle-group { margin-bottom: 12px; }
+  .vehicle-group:last-child { margin-bottom: 0; }
+  /* Full-bleed light-grey separator bar, same treatment as the
+     Maintainer Portal's vehicle grouping -- also the <details> toggle,
+     since this list can span every vehicle someone's ever contributed to. */
+  .vehicle-bar {
+    font-size: 1.05rem; font-weight: 700; color: #16181c; background: #c8ccd1;
+    margin: 0 -22px 10px; padding: 9px 22px; cursor: pointer; list-style: none;
+  }
+  .vehicle-bar::-webkit-details-marker { display: none; }
+  .vehicle-bar::before { content: "\25B8  "; }
+  details[open] > .vehicle-bar::before { content: "\25BE  "; }
+  /* One tier down from .vehicle-bar -- see maintainer.html's matching
+     comment. A vehicle repo can hold more than one edition now. */
+  /* Full-bleed too, same as .vehicle-bar -- one shade darker so the two
+     tiers read as nested, not identical. */
+  .edition-bar { font-size: 0.8rem; font-weight: 700; color: #16181c; background: #aeb3ba; margin: 10px -22px 6px; padding: 6px 22px; }
+  .upload-row {
+    display: flex; justify-content: space-between; align-items: center;
+    padding: 10px 0; border-bottom: 1px solid var(--steel-dark); gap: 10px;
+  }
+  .upload-row:last-child { border-bottom: none; }
+  .upload-title { font-size: 0.86rem; }
+  .upload-meta { color: var(--steel); font-size: 0.74rem; margin-top: 2px; }
+  .upload-status { font-size: 0.68rem; font-weight: 700; padding: 2px 7px; border-radius: 4px; margin-left: 6px; }
+  .upload-status.draft { background: rgba(138,143,152,0.15); color: var(--steel); }
+  .upload-status.submitted { background: rgba(159,225,203,0.12); color: var(--mint); }
+  .upload-status.accepted { background: rgba(159,225,203,0.18); color: var(--mint); }
+  .upload-status.rejected { background: rgba(200,16,46,0.14); color: #ff6b6b; }
+  .upload-note { font-size: 0.74rem; color: var(--steel); font-style: italic; margin-top: 3px; }
+  .upload-actions button { font-size: 0.76rem; padding: 6px 12px; margin: 0 0 0 6px; }
+  .upload-thumb { width: 50px; height: 38px; object-fit: cover; border-radius: 4px; flex-shrink: 0; }
+  .maintain-request-row { margin-top: 10px; padding-top: 10px; border-top: 1px solid var(--steel-dark); }
+  .maintain-request-row button { font-size: 0.78rem; padding: 6px 12px; margin: 0; }
+  .upload-left { display: flex; align-items: center; gap: 10px; }
+
+  .compare-area { display: none; margin-top: 14px; border-top: 1px solid var(--steel-dark); padding-top: 14px; }
+  .compare-grid { display: flex; gap: 12px; margin-top: 10px; }
+  .compare-col { flex: 1; }
+  .compare-col h3 { font-size: 0.75rem; color: var(--steel); margin: 0 0 6px; font-weight: 700; }
+  .compare-col img { width: 100%; border-radius: 6px; border: 1px solid var(--steel-dark); display: block; }
+
+  #log {
+    font-family: ui-monospace, monospace; font-size: 0.76rem; color: var(--mint);
+    white-space: pre-wrap; margin-top: 10px;
+  }
+</style>
+</head>
+<body>
+<main>
+  <div class="top-nav">
+    <a class="pill-link pill-home" href="index.html">BlaydeManual Home</a>
+  </div>
+  <h1>BLAYDE MANUAL <span>// CONTRIBUTE A PHOTO</span></h1>
+  <p class="sub">Thank you for contributing. We hope you enjoy.</p>
+
+  <div class="card" id="landingSignIn">
+    <h2>Sign in to get started</h2>
+    <p class="sub" style="margin:0 0 10px;">Review your saved uploads, send them for approval, manage issues.</p>
+    <button id="landingSignInBtn">Sign in with GitHub (mock)</button>
+  </div>
+
+  <div id="procedureFlow">
+    <div class="card" id="contextCard">
+      <h2 id="contextTitle">Loading what's needed&hellip;</h2>
+      <p class="sub" id="contextMeta" style="margin:0;"></p>
+    </div>
+
+    <div class="card">
+      <h2>Propose a photo for this procedure</h2>
+      <label>Pick a photo from your device</label>
+      <input type="file" id="photoInput" accept="image/*">
+      <img id="previewThumb" class="preview-thumb" alt="preview">
+      <div id="consentRow" style="display:none; margin:10px 0;">
+        <label style="display:flex; align-items:flex-start; gap:8px; font-size:0.82rem; color:var(--steel); margin:6px 0;">
+          <input type="checkbox" id="consentOwnPhoto" style="margin-top:2px;">
+          <span>This is my own photo. It was not sourced from a forum post, someone else's build thread, or the original manual. I have complete rights over this submission.</span>
+        </label>
+        <label style="display:flex; align-items:flex-start; gap:8px; font-size:0.82rem; color:var(--steel); margin:6px 0;">
+          <input type="checkbox" id="consentLicense" style="margin-top:2px;">
+          <span>I license this photo under <a href="https://creativecommons.org/licenses/by/4.0/" target="_blank" rel="noopener" style="color:var(--mint);"><strong>CC-BY 4.0</strong></a>. Anyone may use this photo, with attribution to me.</span>
+        </label>
+      </div>
+      <div>
+        <button id="saveDraftBtn" disabled>Save to my uploads</button>
+        <button class="secondary" id="submitNowBtn" disabled>Submit now</button>
+      </div>
+      <p class="sub" style="margin:8px 0 0;">Submitting now skips checking your framing against the original page first. You can also save it, view it side by side, then submit from your uploads.</p>
+      <div id="signInPrompt">
+        <p>Signing in links this (and anything else you contribute) to your GitHub account, so it can actually be proposed as a real photo request -- and so you can find it again later.</p>
+        <button id="mockSignInBtn">Sign in with GitHub (mock)</button>
+      </div>
+      <div id="log"></div>
+    </div>
+  </div>
+
+  <div class="card" id="uploadsSection">
+    <h2>My uploads</h2>
+    <p class="sub" id="uploadsEmpty" style="margin:0;">Nothing yet -- photos you save or submit will show up here.</p>
+    <div id="uploadsList"></div>
+
+    <div class="compare-area" id="compareArea">
+      <h3 style="font-size:0.85rem; margin:0 0 4px;">Viewing: <span id="compareTitle"></span></h3>
+      <p class="sub" style="margin:0 0 6px;">This repo never stores the manual's own pages -- pick your own copy to see the exact spot you're proposing a photo for.</p>
+      <p class="sub" style="margin:0 0 10px; color:var(--mint);">Don't worry about getting the framing exact -- the maintainer will have an opportunity to position and resize this upon approval.</p>
+      <input type="file" id="comparePdfPicker" accept="application/pdf">
+      <div id="compareToggleRow" style="display:none; margin-top:8px;">
+        <button class="secondary" id="viewWholePageBtn">View whole page</button>
+        <span class="sub" style="margin:0 0 0 8px;">useful if you're reviewing more than one procedure from the same page</span>
+      </div>
+      <div class="compare-grid" id="compareGrid" style="display:none;">
+        <div class="compare-col">
+          <h3>Original scan (this procedure)</h3>
+          <img id="compareOriginal" alt="original scan crop">
+        </div>
+        <div class="compare-col">
+          <h3>Your proposed photo</h3>
+          <img id="comparePhoto" alt="proposed photo">
+        </div>
+      </div>
+      <div id="wholePageArea" style="display:none; position:relative; margin-top:10px;">
+        <img id="wholePageImg" alt="full page" style="width:100%; display:block; border-radius:6px; border:1px solid var(--steel-dark);">
+        <div id="wholePageHighlight" style="position:absolute; border:2px solid var(--red); background:rgba(200,16,46,0.12); box-sizing:border-box;"></div>
+      </div>
+    </div>
+  </div>
+</main>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"
+        integrity="sha384-/1qUCSGwTur9vjf/z9lmu/eCUYbpOTgSjmpbMQZ1/CtX2v/WcAIKqRv+U1DUCG6e"
+        crossorigin="anonymous"></script>
+<script src="registry.js"></script>
+<script src="mock-pr-store.js"></script>
+<script src="contribute.js"></script>
+</body>
+</html>

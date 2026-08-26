@@ -1,0 +1,375 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Blayde Manual: PDF Patcher</title>
+<meta name="description" content="Revive your old vehicle's service manual with real photos from real owners. Free, open source, and entirely browser-based. No account, no upload, nothing sent anywhere.">
+<link rel="canonical" href="https://blaydemanual.com/">
+<link rel="icon" type="image/svg+xml" href="favicon.svg">
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="Blayde Manual">
+<meta property="og:title" content="Blayde Manual: revive your vehicle's service manual">
+<meta property="og:description" content="Free, community-run photo replacement for old, low-resolution vehicle service manual scans. Runs entirely in your browser.">
+<meta property="og:url" content="https://blaydemanual.com/">
+<meta property="og:image" content="https://blaydemanual.com/images/hero-after.jpg">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="Blayde Manual: revive your vehicle's service manual">
+<meta name="twitter:description" content="Free, community-run photo replacement for old, low-resolution vehicle service manual scans. Runs entirely in your browser.">
+<meta name="twitter:image" content="https://blaydemanual.com/images/hero-after.jpg">
+<style>
+  :root {
+    --red: #c8102e; --black: #0c0d0f; --black-2: #16181c;
+    --steel: #8a8f98; --steel-dark: #666c76; --text: #e8e8ea;
+    /* Soft dark halo behind red text on a dark background. Saturated
+       red against near-black causes a real optical effect (the eye's
+       chromatic aberration makes the edge appear to shimmer), not just
+       a stylistic preference. This gives the edge a stable boundary
+       without changing the red itself. */
+    --red-halo: 0 0 3px rgba(0,0,0,0.9), 0 0 1px rgba(0,0,0,0.9);
+    /* Brighter red for small text on dark backgrounds -- #c8102e
+       measures ~3.3:1 on black, below the 4.5:1 AA minimum for text
+       under 18.67px bold. Same hue as --red, no green mixed in (that's
+       what was reading as pink), just less black mixed in -- measures
+       4.89:1. Buttons/pills keep --red since white text on --red
+       already clears 5.88:1. */
+    --red-text: #ff002b;
+  }
+  * { box-sizing: border-box; }
+  body {
+    background: var(--black); color: var(--text); margin: 0; padding: 40px 24px;
+    font-family: -apple-system, "Segoe UI", Roboto, sans-serif; line-height: 1.55;
+  }
+  main { max-width: 640px; margin: 0 auto; }
+  .top-nav { display: flex; justify-content: flex-end; gap: 8px; margin-bottom: 14px; }
+  .pill-link {
+    font-size: 0.78rem; font-weight: 700; text-decoration: none;
+    padding: 5px 14px; border-radius: 999px; letter-spacing: 0.1px;
+  }
+  .pill-link.pill-contributors { background: var(--steel); color: var(--black); }
+  .pill-link.pill-contributors:hover { background: #a3a8b0; }
+  .pill-link.pill-maintainers { background: var(--red); color: #fff; }
+  .pill-link.pill-maintainers:hover { background: #e0122f; }
+  h1 { font-size: 1.4rem; margin: 0 0 6px; }
+  h1 span { color: var(--red); text-shadow: var(--red-halo); }
+  .sub { color: var(--steel); font-size: 0.88rem; margin: 0 0 32px; }
+
+  /* ---- trust strip: two reassurances that used to be plain grey
+     paragraphs, now a compact badge row -- same info, more visual
+     weight, actually less vertical height than two stacked <p>s ---- */
+  .trust-strip { display: flex; gap: 10px; margin: 14px 0 28px; flex-wrap: wrap; }
+  .trust-chip {
+    flex: 1; min-width: 220px; display: flex; gap: 10px; align-items: flex-start;
+    background: var(--black-2); border: 1px solid var(--steel-dark);
+    border-radius: 8px; padding: 11px 13px;
+  }
+  .trust-chip-icon {
+    flex-shrink: 0; width: 30px; height: 30px; border-radius: 7px;
+    display: flex; align-items: center; justify-content: center;
+  }
+  .trust-chip-icon svg { width: 16px; height: 16px; }
+  /* Grey tile stays neutral (no per-chip color coding, no alarm-red
+     background wash); the icon glyph itself carries the brand red,
+     just enough accent to break up four identical grey tiles without
+     reading as a danger signal the way a red-tinted background did. */
+  .trust-chip-icon { background: rgba(138,143,152,0.16); color: var(--red); text-shadow: var(--red-halo); }
+  .trust-chip-title { font-size: 0.95rem; font-weight: 700; color: var(--text); margin: 0 0 2px; }
+  .trust-chip-sub { font-size: 0.76rem; color: var(--steel); line-height: 1.4; margin: 0; }
+  .trust-chip-sub a { color: var(--steel); }
+  .trust-chip-sub a:hover { color: var(--text); }
+  .card {
+    background: var(--black-2); border: 1px solid var(--steel-dark);
+    border-left: 3px solid var(--red); border-radius: 8px;
+    padding: 20px 24px; margin-bottom: 16px;
+  }
+  .card h2 { font-size: 0.95rem; margin: 0 0 12px; }
+  label { display: block; font-size: 0.85rem; color: var(--steel); margin-bottom: 6px; }
+  input[type=file] { color: var(--text); font-size: 0.85rem; margin-bottom: 14px; display: block; }
+  input[type=text] {
+    width: 100%; padding: 8px; margin-bottom: 14px; background: #000;
+    color: var(--text); border: 1px solid var(--steel-dark); border-radius: 4px;
+    font-size: 0.85rem;
+  }
+  button {
+    background: var(--red); color: #fff; border: none; padding: 10px 20px;
+    font-size: 0.9rem; font-weight: 700; border-radius: 6px; cursor: pointer;
+  }
+  button:disabled { background: var(--steel-dark); cursor: default; }
+  details { margin-bottom: 8px; }
+  summary { color: var(--steel); cursor: pointer; font-size: 0.85rem; }
+  details[open] summary { margin-bottom: 10px; }
+
+  /* ---- contributor preference: shown only once a match is found ---- */
+  #contributorPrefWrap { margin-bottom: 14px; }
+  .contributor-list { border: 1px solid var(--steel-dark); border-radius: 6px; overflow: hidden; margin-top: 6px; }
+  .contributor-row {
+    display: flex; align-items: center; gap: 10px; padding: 8px 12px;
+    font-size: 0.85rem; border-bottom: 1px solid var(--steel-dark);
+    background: var(--black-2); cursor: grab; user-select: none;
+  }
+  .contributor-row:active { cursor: grabbing; }
+  .contributor-row.dragging { opacity: 0.35; }
+  .contributor-row:last-child { border-bottom: none; }
+  .contributor-rank {
+    flex-shrink: 0; width: 18px; text-align: center; color: var(--steel);
+    font-family: ui-monospace, monospace; font-size: 0.78rem;
+  }
+  .drag-handle { color: var(--steel-dark); font-size: 0.95rem; letter-spacing: -1px; flex-shrink: 0; }
+  .contributor-handle { color: var(--text); font-weight: 600; flex: 1; }
+  .contributor-count { color: var(--steel); font-size: 0.78rem; font-family: ui-monospace, monospace; }
+  .contributor-hint { color: var(--steel); font-size: 0.78rem; margin: 6px 0 0; }
+
+  /* ---- hero: what this actually does, before the file picker. Same
+     "flyer" energy as docs/faq.html's emoji flow band, condensed down
+     to an eyebrow + bold explainer sitting right on top of the actual
+     before/after photos, instead of a separate plain-text sentence. ---- */
+  .hero-eyebrow {
+    text-align: center; color: var(--red-text); font-size: 0.9rem; font-weight: 700;
+    text-transform: uppercase; letter-spacing: 0.1em; margin: 6px 0 8px;
+    text-shadow: var(--red-halo);
+  }
+  .hero-explainer {
+    text-align: center; color: #fff; font-size: 1.08rem; font-weight: 700;
+    line-height: 1.45; margin: 0 0 20px;
+  }
+  .hero-compare { display: flex; gap: 12px; margin: 4px 0 10px; }
+  .hero-col { flex: 1; }
+  .hero-label { font-size: 1rem; font-weight: 800; letter-spacing: -0.3px; margin: 0 0 8px; text-align: center; color: var(--text); }
+  .hero-label .hl-before { color: var(--steel); }
+  .hero-label .hl-after { color: var(--red-text); text-shadow: var(--red-halo); }
+  /* Fixed shared aspect ratio, not the source photos' native ones --
+     the before/after pair is deliberately shot on different cameras/
+     angles (see CHANGELOG.md), so their native ratios will never match
+     on their own. object-fit: cover crops each to this box instead,
+     which also means a future photo swap never needs manual re-cropping
+     to line back up with its pair. */
+  .hero-col img {
+    width: 100%; aspect-ratio: 4 / 3; object-fit: cover;
+    display: block; border-radius: 8px; border: 1px solid var(--steel-dark);
+  }
+  .hero-tagline { text-align: center; margin: 4px 0 4px; font-size: 1.1rem; font-weight: 800; }
+  .hero-subtagline { text-align: center; margin: 0 0 28px; font-size: 0.85rem; color: var(--steel); }
+
+  /* ---- no-match state: 5-step maintainer onboarding ---- */
+  #maintainerCta h2 { font-size: 1.05rem; }
+  .steps { position: relative; margin: 14px 0 20px; }
+  .step { position: relative; display: flex; gap: 16px; padding-bottom: 22px; }
+  .step:last-child { padding-bottom: 0; }
+  .step-num {
+    flex-shrink: 0; width: 30px; height: 30px; border-radius: 50%;
+    background: var(--black); border: 1px solid var(--steel-dark);
+    display: flex; align-items: center; justify-content: center;
+    font-family: ui-monospace, monospace; font-weight: 700; font-size: 0.85rem;
+    color: var(--steel); z-index: 1;
+  }
+  .step.hot .step-num { background: var(--red); border-color: var(--red); color: #fff; }
+  .step-line { position: absolute; left: 14px; top: 30px; bottom: -22px; width: 2px; background: var(--steel-dark); }
+  .step:last-child .step-line { display: none; }
+  .step-body { padding-top: 3px; }
+  .step-title { font-weight: 700; font-size: 0.9rem; margin: 0 0 3px; }
+  .step-desc { color: var(--steel); font-size: 0.83rem; line-height: 1.55; margin: 0; }
+  .step-desc b { color: var(--text); font-weight: 600; }
+  .step-flag {
+    display: inline-block; margin-top: 7px; font-size: 0.72rem; font-weight: 700;
+    color: #9fe1cb; background: rgba(159,225,203,0.08); border: 1px solid rgba(159,225,203,0.3);
+    padding: 3px 8px; border-radius: 4px;
+  }
+  .step-time {
+    display: inline-block; margin-left: 8px; font-size: 0.68rem; font-weight: 700;
+    color: var(--steel); background: rgba(138,143,152,0.14); padding: 2px 7px;
+    border-radius: 4px; vertical-align: 1px;
+  }
+  #maintainerCta .cta-row { display: flex; align-items: center; gap: 14px; margin-top: 4px; }
+  #maintainerCta .cta-row .fine { font-size: 0.72rem; color: var(--steel); }
+  .out-row { margin-top: 14px; }
+  .out-row a { color: var(--steel); font-size: 0.78rem; text-decoration: none; border-bottom: 1px dotted var(--steel-dark); }
+  .out-row a:hover { color: var(--text); border-bottom-color: var(--steel); }
+  .out-confirm {
+    margin-top: 8px; font-size: 0.76rem; color: #9fe1cb;
+    opacity: 0; height: 0; overflow: hidden; transition: opacity 0.25s ease;
+  }
+  .out-confirm.show { opacity: 1; height: auto; }
+
+  /* old-school patching-progress readout */
+  #progressWrap {
+    font-family: ui-monospace, monospace; font-size: 0.8rem;
+    background: #000; border-radius: 6px; padding: 14px; margin-top: 16px;
+    border: 1px solid var(--steel-dark);
+  }
+  #progressBar {
+    letter-spacing: 1px; color: #9fe1cb; margin-bottom: 4px;
+  }
+  #progressLabel { color: var(--steel); font-size: 0.75rem; margin-bottom: 10px; }
+  #log {
+    white-space: pre-wrap; color: #9fe1cb; min-height: 40px;
+    max-height: 260px; overflow-y: auto;
+  }
+
+  footer { text-align: center; padding: 32px 0 8px; color: var(--steel); font-size: 0.78rem; }
+  footer a { color: var(--steel); }
+  footer a:hover { color: var(--text); }
+</style>
+</head>
+<body>
+<main>
+  <div class="top-nav">
+    <a class="pill-link pill-contributors" href="contribute.html">Contributors</a>
+    <a class="pill-link pill-maintainers" href="maintainer.html">Maintainers</a>
+  </div>
+  <h1>BLAYDE MANUAL <span>// PDF PATCHER</span></h1>
+
+  <p class="hero-eyebrow">the whole idea, in one picture</p>
+  <p class="hero-explainer">Pick your PDF manual. We identify it, check the registry, and patch in contributed photos.</p>
+
+  <div class="hero-compare">
+    <div class="hero-col">
+      <p class="hero-label">Turn <span class="hl-before">this</span></p>
+      <img src="images/hero-before.jpg" alt="degraded scanned manual photo">
+    </div>
+    <div class="hero-col">
+      <p class="hero-label">into <span class="hl-after">THIS!</span></p>
+      <img src="images/hero-after.jpg" alt="sharp contributed photo">
+    </div>
+  </div>
+  <p class="hero-tagline">Revive your old vehicle manuals.</p>
+  <p class="hero-subtagline">Powered by the community.</p>
+
+  <div class="trust-strip">
+    <div class="trust-chip local">
+      <span class="trust-chip-icon" aria-hidden="true">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="5" y="11" width="14" height="10" rx="2"></rect><path d="M8 11V7a4 4 0 0 1 8 0v4"></path></svg>
+      </span>
+      <div>
+        <p class="trust-chip-title">100% local</p>
+        <p class="trust-chip-sub">No PDF content is uploaded anywhere. It stays on your device the whole time.</p>
+      </div>
+    </div>
+    <div class="trust-chip noai">
+      <span class="trust-chip-icon" aria-hidden="true">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="6" y="6" width="12" height="12" rx="2"></rect><path d="M9 2v3M15 2v3M9 19v3M15 19v3M2 9h3M2 15h3M19 9h3M19 15h3"></path><line x1="3" y1="3" x2="21" y2="21"></line></svg>
+      </span>
+      <div>
+        <p class="trust-chip-title">No AI</p>
+        <p class="trust-chip-sub">Just pattern-matching and text recognition, same as any scanner. <a href="../docs/faq.html">More in the FAQ</a>.</p>
+      </div>
+    </div>
+    <div class="trust-chip opensource">
+      <span class="trust-chip-icon" aria-hidden="true">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="8 6 2 12 8 18"></polyline><polyline points="16 6 22 12 16 18"></polyline></svg>
+      </span>
+      <div>
+        <p class="trust-chip-title">Free &amp; open source</p>
+        <p class="trust-chip-sub">No account, no paywall, ever. Fork it, audit it, run your own copy.</p>
+      </div>
+    </div>
+    <div class="trust-chip community">
+      <span class="trust-chip-icon" aria-hidden="true">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path><circle cx="9" cy="7" r="4"></circle><path d="M23 21v-2a4 4 0 0 0-3-3.87"></path><path d="M16 3.13a4 4 0 0 1 0 7.75"></path></svg>
+      </span>
+      <div>
+        <p class="trust-chip-title">Community-run</p>
+        <p class="trust-chip-sub">Maintained by real vehicle owners, not a company. Anyone can become a maintainer.</p>
+      </div>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>Pick your PDF manual</h2>
+    <label>Any PDF you legally own. Identified locally and checked against the registry automatically.</label>
+    <input type="file" id="pdfInput" accept="application/pdf">
+    <p class="sub" style="margin:8px 0 0;">Don't have your PDF handy? <a href="registry-browse.html" style="color:var(--steel);">Browse registered vehicles &rarr;</a></p>
+
+    <div id="contributorPrefWrap" style="display:none;">
+      <label style="margin-top:10px;">Prefer a specific contributor's photos? (optional)</label>
+      <div id="contributorList" class="contributor-list"></div>
+      <p class="contributor-hint">Drag to reorder. For every procedure, we use the top person on this list who has a photo for it, then the next, and so on.</p>
+    </div>
+
+    <details>
+      <summary>Advanced: manual test mode</summary>
+      <label style="margin-top:10px;">Skip the registry entirely and pick one test photo yourself -- for local testing without a published registry to point at.</label>
+      <input type="file" id="photoInput" accept="image/*">
+    </details>
+
+    <button id="patchBtn" disabled>Patch it, client-side</button>
+  </div>
+
+  <div id="progressWrap">
+    <div id="progressBar">[..........] waiting</div>
+    <div id="progressLabel">Pick a PDF to begin</div>
+    <div id="log"></div>
+  </div>
+
+  <div class="card" id="maintainerCta" style="display:none;">
+    <h2>We don't have this one yet. Want to be first?</h2>
+    <p class="sub" style="margin:0 0 6px;">Nobody's indexed this manual yet. Here are the five steps involved, and there are no surprises.</p>
+
+    <div class="steps">
+      <div class="step hot">
+        <div class="step-num">1</div>
+        <div class="step-line"></div>
+        <div class="step-body">
+          <p class="step-title">Sign in with GitHub</p>
+          <p class="step-desc">One sign-in gets you into the <b>Maintainer Portal</b>, where you can index manuals, review submissions, and, once you're approved, manage who else works on this vehicle with you.</p>
+        </div>
+      </div>
+      <div class="step">
+        <div class="step-num">2</div>
+        <div class="step-line"></div>
+        <div class="step-body">
+          <p class="step-title">Index the manual <span class="step-time">~20 min, automatic</span></p>
+          <p class="step-desc">Pick the same PDF here. Indexing reads the whole document and finds where every photo belongs. It can take <b>up to about 20 minutes</b> for a large manual, so feel free to switch tabs while it runs. If you close the browser by accident, just come back and pick the same file again to pick up where you left off.</p>
+        </div>
+      </div>
+      <div class="step">
+        <div class="step-num">3</div>
+        <div class="step-line"></div>
+        <div class="step-body">
+          <p class="step-title">Give it a quick pass <span class="step-time">~15 min</span></p>
+          <p class="step-desc">Confirm the vehicle name, add a link to where you got the manual, and clear out anything the auto-detection obviously got wrong. It <b>doesn't need to be perfect</b>. It just needs to be a real first pass, not raw output nobody's looked at.</p>
+        </div>
+      </div>
+      <div class="step">
+        <div class="step-num">4</div>
+        <div class="step-line"></div>
+        <div class="step-body">
+          <p class="step-title">Submit and wait <span class="step-time">days, mostly waiting</span></p>
+          <p class="step-desc">A small team checks the basics: is the source verifiable, does the name follow convention, was this actually reviewed. It's not a photo-by-photo audit, and it's usually not a long wait.</p>
+        </div>
+      </div>
+      <div class="step">
+        <div class="step-num">5</div>
+        <div class="step-body">
+          <p class="step-title">You're the maintainer <span class="step-time">ongoing</span></p>
+          <p class="step-desc">Once approved, you're the first maintainer for this vehicle. Review photo submissions and steer quality -- that's the whole job.</p>
+          <span class="step-flag">&#9888; You can't approve your own photo contributions, so finding a co-maintainer is your first real task, not an afterthought.</span>
+        </div>
+      </div>
+    </div>
+
+    <p class="sub" style="margin:12px 0 10px;">These 5 steps seem reasonable? <a href="../docs/faq.html#for-maintainers" style="color:var(--steel);">Read the maintainer guidance</a> for a quick list of expectations and support. Then choose:</p>
+
+    <div class="cta-row">
+      <a id="maintainerCtaLink" href="maintainer.html" style="background:var(--red); color:#fff; text-decoration:none; padding:10px 20px; font-size:0.9rem; font-weight:700; border-radius:6px; display:inline-block;">Sign in with GitHub &rarr;</a>
+      <span class="fine">takes you to the Maintainer Portal</span>
+    </div>
+
+    <div class="out-row">
+      <a href="#" id="outLink">Not me, but I know someone who'd be great at this &rarr;</a>
+    </div>
+    <div class="out-confirm" id="outConfirm">Link copied. Send it to them -- this exact page, this exact manual.</div>
+  </div>
+
+  <footer>
+    See <a href="../README.md">README.md</a> for the technical pipeline, <a href="../LEGAL.md">LEGAL.md</a> for the full legal reasoning, and <a href="../ROADMAP.md">ROADMAP.md</a> for what's designed but not yet built.
+  </footer>
+
+  <script src="https://unpkg.com/@cantoo/pdf-lib@2.9.1/dist/pdf-lib.min.js"
+          integrity="sha384-/3WQRYrnKSqeEle9PifMW3d4PqOYDl0xa6x0tLjDmCCcCTAFQ5iYvpNlj/9BtTUG"
+          crossorigin="anonymous"></script>
+  <script src="registry.js"></script>
+  <script src="qrcode.js"></script>
+  <script src="patcher.js"></script>
+</main>
+</body>
+</html>

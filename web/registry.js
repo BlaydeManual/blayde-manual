@@ -1,0 +1,127 @@
+// Blayde Manual -- browser-side registry lookup and repo fetch.
+// Ports registry.py + fetch_repo.py's logic to run client-side: given a
+// PDF's fingerprint, find its approved vehicle repo in the registry, and
+// pull that repo's manifest.json + images/ folder via unauthenticated
+// public reads (raw.githubusercontent.com + the GitHub contents API --
+// same as the Python side, no account tied to anything).
+
+async function loadRegistry(registryUrl) {
+  const resp = await fetch(registryUrl);
+  if (!resp.ok) throw new Error(`could not load registry (${resp.status})`);
+  return resp.json();
+}
+
+function findByFingerprint(registryData, sha256) {
+  return (registryData.vehicles || []).find(e => e.source_pdf_sha256 === sha256) || null;
+}
+
+function ownerRepo(repoUrl) {
+  const parts = repoUrl.replace(/\/$/, "").split("/");
+  return [parts[parts.length - 2], parts[parts.length - 1]];
+}
+
+async function fetchManifest(repoUrl) {
+  const [owner, repo] = ownerRepo(repoUrl);
+  for (const branch of ["main", "master"]) {
+    const url = `https://raw.githubusercontent.com/${owner}/${repo}/${branch}/manifest.json`;
+    const resp = await fetch(url);
+    if (resp.ok) return { manifest: await resp.json(), branch };
+  }
+  throw new Error(`could not fetch manifest.json from ${repoUrl} (tried main, master)`);
+}
+
+async function listRepoImages(repoUrl, branch) {
+  const [owner, repo] = ownerRepo(repoUrl);
+  const url = `https://api.github.com/repos/${owner}/${repo}/contents/images?ref=${branch}`;
+  const resp = await fetch(url, { headers: { Accept: "application/vnd.github+json" } });
+  if (!resp.ok) {
+    if (resp.status === 404) return []; // no images/ folder yet, nothing contributed
+    throw new Error(`GitHub contents API error (${resp.status})`);
+  }
+  const entries = await resp.json();
+  return entries.filter(e => e.type === "file");
+}
+
+// A contributed photo this large is not a real submission -- checker.py
+// enforces a 15MB cap server-side before merge, so any fetched file well
+// past that is either a bug or a compromised/malicious repo entry. Reject
+// before it ever reaches embedJpg/embedPng, don't just trust the extension.
+const MAX_PHOTO_BYTES = 20 * 1024 * 1024;
+
+// Parallel photo fetch -- same fix as indexer-core.js's worker pool for
+// OCR, applied to network I/O instead of CPU work. No actual Web Workers
+// needed here (fetch() is already non-blocking), just a concurrency cap
+// so requests overlap instead of paying full round-trip latency one file
+// at a time -- a manual with a few hundred contributed photos was taking
+// low minutes patching, entirely from this loop being sequential, not
+// from the (cheap, local) embed/draw work. Sized the same way indexer's
+// pool is (capped to hardwareConcurrency), for the same reason: enough
+// to overlap latency without opening more connections than useful.
+async function fetchManifestAndPhotos(repoUrl, onProgress) {
+  const { manifest, branch } = await fetchManifest(repoUrl);
+  const files = await listRepoImages(repoUrl, branch);
+  const photos = new Map(); // filename -> Uint8Array
+  const poolSize = Math.max(1, Math.min(8, (navigator.hardwareConcurrency || 4) - 1));
+
+  let nextIdx = 0, completed = 0;
+  function claimNextIdx() { return nextIdx < files.length ? nextIdx++ : -1; }
+
+  async function fetchOne(f) {
+    if (f.size && f.size > MAX_PHOTO_BYTES) {
+      console.warn(`skipping ${f.name}: ${f.size} bytes exceeds the ${MAX_PHOTO_BYTES}-byte cap`);
+      return;
+    }
+    const resp = await fetch(f.download_url);
+    if (!resp.ok) return;
+    const bytes = new Uint8Array(await resp.arrayBuffer());
+    if (bytes.length > MAX_PHOTO_BYTES) {
+      console.warn(`skipping ${f.name}: downloaded ${bytes.length} bytes exceeds the ${MAX_PHOTO_BYTES}-byte cap`);
+      return;
+    }
+    photos.set(f.name, bytes);
+  }
+
+  async function worker() {
+    while (true) {
+      const idx = claimNextIdx();
+      if (idx < 0) return;
+      const f = files[idx];
+      try {
+        await fetchOne(f);
+      } catch (err) {
+        // One bad/dropped connection isn't the whole batch's problem --
+        // same per-item isolation principle as patcher.js's embed loop.
+        console.warn(`skipping ${f.name}: ${err.message}`);
+      }
+      completed++;
+      if (onProgress) onProgress(completed, files.length, f.name);
+    }
+  }
+
+  await Promise.all(Array.from({ length: Math.min(poolSize, files.length) }, worker));
+  return { manifest, photos, branch };
+}
+
+/** Resolve a loaded PDF's fingerprint against the registry, and if
+ * there's an approved match, fetch its manifest + photos. Returns
+ * {entry, manifest, photos} or throws with a clear message otherwise --
+ * mirrors patch_pdf.py's resolve_via_registry. */
+async function resolveViaRegistry(pdfFingerprint, registryUrl, onProgress) {
+  const registryData = await loadRegistry(registryUrl);
+  const entry = findByFingerprint(registryData, pdfFingerprint);
+  if (!entry) {
+    const err = new Error(`No registry entry for this PDF (fingerprint ${pdfFingerprint.slice(0, 16)}...). ` +
+      `Not registered yet.`);
+    // Distinguished from other failures (network error, still-pending
+    // status) so the patcher UI can offer a "become a maintainer" CTA
+    // specifically here, not on every kind of registry lookup failure.
+    err.reason = "not_registered";
+    throw err;
+  }
+  if (entry.status !== "approved") {
+    throw new Error(`Found '${entry.vehicle_display_name}' (${entry.edition_id}) but it's still ` +
+      `${entry.status}, not approved yet.`);
+  }
+  const { manifest, photos } = await fetchManifestAndPhotos(entry.repo_url, onProgress);
+  return { entry, manifest, photos };
+}

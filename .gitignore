@@ -1,0 +1,38 @@
+# Copyrighted source material -- never enters git history, even locally.
+# See LEGAL.md.
+local_pdfs/
+# Session testing convenience -- real manual pages/slices get copied here
+# so the dev server can serve them to the browser for live testing. Same
+# risk as local_pdfs/, same rule: never enters git history.
+web/_test_assets/
+
+# Dev/test scratch, not real project content
+test_photos/
+
+# The original Python CLI prototype -- fully superseded by the browser
+# implementation (web/*.js), not deleted, kept locally for reference.
+# Never enters the public repo's history -- see CHANGELOG.md.
+legacy-python-local/
+
+# Every indexing tool's output directory -- always dev-test fixture data
+# from whatever local PDF was used to build/test the tool, never a real
+# vehicle's real submission. Ships nothing here on principle: this
+# project launches with zero seeded vehicles, real ones only ever enter
+# through an actual maintainer's actual submission. A single blanket
+# rule replaces several narrower ones that used to live here
+# (local_extracted_images/, page_cache/, review.html, TEST_*.pdf) --
+# those are now redundant, everything under output/ is excluded.
+output/
+
+# Python
+.venv/
+__pycache__/
+*.pyc
+
+# OS
+.DS_Store
+registry_test/
+
+# Local Claude Code session/dev-server config -- machine-specific, not
+# project content.
+.claude/

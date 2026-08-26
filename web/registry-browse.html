@@ -1,0 +1,142 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Blayde Manual: Browse Vehicles</title>
+<meta name="description" content="Browse every vehicle service manual currently being improved by the Blayde Manual community. Find your make and model, and see how far along it is.">
+<link rel="canonical" href="https://blaydemanual.com/registry-browse.html">
+<link rel="icon" type="image/svg+xml" href="favicon.svg">
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="Blayde Manual">
+<meta property="og:title" content="Blayde Manual: browse vehicles">
+<meta property="og:description" content="Find your vehicle's manual, see how far along it is, and grab an updated copy with real community photos.">
+<meta property="og:url" content="https://blaydemanual.com/registry-browse.html">
+<meta property="og:image" content="https://blaydemanual.com/images/hero-after.jpg">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="Blayde Manual: browse vehicles">
+<meta name="twitter:description" content="Find your vehicle's manual, see how far along it is, and grab an updated copy with real community photos.">
+<meta name="twitter:image" content="https://blaydemanual.com/images/hero-after.jpg">
+<style>
+  :root {
+    --red: #c8102e; --black: #0c0d0f; --black-2: #16181c;
+    --steel: #8a8f98; --steel-dark: #666c76; --text: #e8e8ea;
+    --red-text: #ff002b;
+    /* Soft dark halo behind red text on a dark background -- see
+       web/index.html for the full reasoning (real optical effect, not
+       just style). */
+    --red-halo: 0 0 3px rgba(0,0,0,0.9), 0 0 1px rgba(0,0,0,0.9);
+  }
+  * { box-sizing: border-box; }
+  body {
+    background: var(--black); color: var(--text); margin: 0; padding: 40px 24px;
+    font-family: -apple-system, "Segoe UI", Roboto, sans-serif; line-height: 1.55;
+  }
+  main { max-width: 720px; margin: 0 auto; }
+  .top-nav { display: flex; justify-content: flex-end; gap: 8px; margin-bottom: 14px; }
+  .pill-link {
+    font-size: 0.78rem; font-weight: 700; text-decoration: none;
+    padding: 5px 14px; border-radius: 999px; letter-spacing: 0.1px;
+  }
+  .pill-link.pill-home {
+    background: var(--black-2); color: var(--text); border: 1px solid var(--steel-dark);
+  }
+  .pill-link.pill-home:hover { border-color: var(--steel); }
+  .pill-link.pill-contributors { background: var(--steel); color: var(--black); }
+  .pill-link.pill-contributors:hover { background: #a3a8b0; }
+  .pill-link.pill-maintainers { background: var(--red); color: #fff; }
+  .pill-link.pill-maintainers:hover { background: #e0122f; }
+  h1 { font-size: 1.4rem; margin: 0 0 6px; }
+  h1 span { color: var(--red); text-shadow: var(--red-halo); }
+  .sub { color: var(--steel); font-size: 0.88rem; margin: 0 0 20px; }
+
+  .search-row { display: flex; gap: 8px; margin-bottom: 20px; }
+  .search-row input[type=text] {
+    flex: 1; padding: 10px 12px; background: var(--black-2); color: var(--text);
+    border: 1px solid var(--steel-dark); border-radius: 6px; font-size: 0.9rem;
+  }
+  .search-row select {
+    padding: 10px 12px; background: var(--black-2); color: var(--text);
+    border: 1px solid var(--steel-dark); border-radius: 6px; font-size: 0.85rem;
+  }
+
+  /* One card per model name -- when a model has more than one
+     generation (see ROADMAP.md's generations-stay-separate decision),
+     they're grouped here for *finding*, never merged into one row.
+     Each generation keeps its own stats, its own passive indicator,
+     its own link. */
+  .model-group {
+    background: var(--black-2); border: 1px solid var(--steel-dark);
+    border-left: 3px solid var(--red); border-radius: 8px;
+    margin-bottom: 14px; overflow: hidden;
+  }
+  .model-heading {
+    font-size: 0.72rem; font-weight: 700; color: var(--steel);
+    text-transform: uppercase; letter-spacing: 0.08em;
+    padding: 10px 16px 0;
+  }
+  .gen-row {
+    padding: 12px 16px; border-top: 1px solid var(--steel-dark);
+  }
+  .model-group .gen-row:first-of-type { border-top: none; margin-top: 8px; }
+  .gen-header { display: flex; justify-content: space-between; align-items: center; gap: 12px; }
+  .gen-title-link { font-size: 0.95rem; font-weight: 700; color: var(--text); text-decoration: none; }
+  .gen-title-link:hover { color: var(--red-text); text-decoration: underline; text-shadow: var(--red-halo); }
+  .gen-meta { font-size: 0.78rem; color: var(--steel); margin-top: 2px; }
+  .passive-badge {
+    display: inline-block; margin-left: 8px; font-size: 0.65rem; font-weight: 700;
+    color: var(--steel); background: rgba(138,143,152,0.14);
+    padding: 2px 7px; border-radius: 4px; vertical-align: 1px;
+  }
+  /* One row per edition -- each is its own document with its own source
+     link and its own coverage stat. Photos don't carry over between
+     editions (a Haynes manual and an OEM manual for the same vehicle
+     are laid out completely differently), so a single merged percentage
+     here would be actively misleading, not just less detailed. */
+  .gen-editions { margin-top: 10px; display: flex; flex-direction: column; gap: 6px; }
+  .edition-row {
+    display: flex; justify-content: space-between; align-items: center;
+    gap: 12px; padding: 7px 10px; background: rgba(255,255,255,0.03);
+    border-radius: 5px; font-size: 0.82rem;
+  }
+  .edition-name { font-weight: 700; color: var(--steel); flex-shrink: 0; min-width: 60px; }
+  .edition-link {
+    color: var(--text); text-decoration: none; overflow: hidden;
+    text-overflow: ellipsis; white-space: nowrap; flex: 1;
+  }
+  .edition-link:hover { color: var(--red-text); text-decoration: underline; text-shadow: var(--red-halo); }
+  .edition-pct { font-weight: 700; color: var(--text); flex-shrink: 0; }
+  #emptyState { color: var(--steel); font-size: 0.88rem; padding: 20px 0; text-align: center; }
+
+  footer { text-align: center; padding: 32px 0 8px; color: var(--steel); font-size: 0.78rem; }
+  footer a { color: var(--steel); }
+  footer a:hover { color: var(--text); }
+</style>
+</head>
+<body>
+<main>
+  <div class="top-nav">
+    <a class="pill-link pill-home" href="index.html">BlaydeManual Home</a>
+    <a class="pill-link pill-contributors" href="contribute.html">Contributors</a>
+    <a class="pill-link pill-maintainers" href="maintainer.html">Maintainers</a>
+  </div>
+  <h1>BLAYDE MANUAL <span>// BROWSE VEHICLES</span></h1>
+  <p class="sub">Does your vehicle already exist here, and how far along is each manual? No account needed to look -- follow a manual's own source link to grab a copy and patch it yourself.</p>
+
+  <div class="search-row">
+    <input type="text" id="searchInput" placeholder="Search by make, model, or year...">
+    <select id="classFilter">
+      <option value="">All types</option>
+    </select>
+  </div>
+
+  <div id="results"></div>
+  <p id="emptyState" style="display:none;">Nothing matches that search. <a href="index.html" style="color:var(--steel);">Be the first to index your manual &rarr;</a></p>
+
+  <footer>
+    See <a href="../README.md">README.md</a> for the technical pipeline, <a href="../LEGAL.md">LEGAL.md</a> for the full legal reasoning, and <a href="../ROADMAP.md">ROADMAP.md</a> for what's designed but not yet built.
+  </footer>
+</main>
+<script src="registry-browse.js"></script>
+</body>
+</html>

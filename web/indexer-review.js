@@ -1,0 +1,364 @@
+// Blayde Manual -- the browser-only review step (Stage 3 of onboarding).
+// Operates entirely on the in-memory manifest from indexPdf() and the
+// already-loaded PDF -- no server. generate_review.py/review_server.py
+// (the Python tool this replaces) are on the same path to being fully
+// superseded as everything else Python, not a permanent parallel system.
+// Delete-only, no omit: a candidate is either real (stays) or it isn't
+// (gone) -- no third state that ships a permanently-unfillable blank
+// procedure into a live manifest. Completeness tracking (touched vs.
+// total) is built in from the start per Initial Submission Standards.
+
+let reviewManifest = null;
+let reviewPageCache = {}; // pageNum -> {canvas, ctx}
+let nextAddedIdx = 1000000; // added-figure ids sort after real ones, doesn't collide
+
+// A manual can produce hundreds of candidates -- rendering them all
+// flat isn't actually "review the whole document," it's a wall nobody
+// scrolls to the bottom of. Paginated in fixed chunks (in manual page
+// order, so the whole document is still reachable, just not all in one
+// screen) instead of one continuous list.
+const REVIEW_CHUNK_SIZE = 10;
+let reviewChunkIdx = 0;
+
+function startReview(manifest) {
+  reviewManifest = manifest;
+  manifest.entries.forEach((e) => {
+    if (e._touched === undefined) e._touched = false;
+  });
+  reviewChunkIdx = 0;
+  document.getElementById("reviewSection").style.display = "block";
+  document.getElementById("vehicleSlugConfirm").value = manifest.vehicle;
+  document.getElementById("editionIdConfirm").value = manifest.edition_id || "";
+  document.getElementById("editionIdError").style.display = "none";
+  document.getElementById("sourceUrlConfirm").value = manifest.source_markers?.source_identifier || "";
+  document.getElementById("sourceUrlError").style.display = "none";
+  renderReviewGallery();
+}
+
+// Re-derives contributed_photo_path for every entry whenever the
+// maintainer edits the confirmed slug -- cheap and idempotent, so it
+// doesn't matter whether this fires before or after new figures get
+// added in the page modal.
+document.getElementById("vehicleSlugConfirm").addEventListener("change", (e) => {
+  const slug = e.target.value.trim();
+  if (!reviewManifest || !slug) return;
+  finalizeVehicleSlug(reviewManifest, slug);
+  checkEditionIdCollision();
+});
+
+// Required, not optional -- an org maintainer approving a new vehicle
+// has nothing to verify against without it (see propose_new_vehicle.py's
+// matching requirement on the Python side, same field name/shape:
+// manifest.source_markers.source_identifier -- kept consistent so a
+// browser-produced manifest still works with the existing Python
+// tooling unchanged).
+document.getElementById("sourceUrlConfirm").addEventListener("change", (e) => {
+  const url = e.target.value.trim();
+  if (!reviewManifest) return;
+  reviewManifest.source_markers = { source_identifier: url };
+  if (url) document.getElementById("sourceUrlError").style.display = "none";
+});
+
+// Live collision check -- "Type: OEM -- a document with that type
+// already exists for this vehicle" -- catches a duplicate edition
+// label before submission instead of letting the org discover it
+// during review. Same non-blocking-on-network-failure convention as
+// checkAlreadyRegistered: an unreachable registry never blocks
+// someone from continuing, it just means this specific check silently
+// can't run right now.
+async function checkEditionIdCollision() {
+  const slug = document.getElementById("vehicleSlugConfirm").value.trim();
+  const editionId = document.getElementById("editionIdConfirm").value.trim();
+  const errEl = document.getElementById("editionIdError");
+  if (!reviewManifest) return;
+  reviewManifest.edition_id = editionId;
+  if (!slug || !editionId) { errEl.style.display = "none"; return; }
+  const result = await checkEditionCollision(slug, editionId, CANONICAL_REGISTRY_URL);
+  if (result.checked && result.conflict) {
+    errEl.textContent = `Type: ${editionId} -- a document with that type already exists for ${slug}. Pick a different label, or this might be a duplicate submission of an existing edition.`;
+    errEl.style.display = "block";
+  } else {
+    errEl.style.display = "none";
+  }
+}
+document.getElementById("editionIdConfirm").addEventListener("change", checkEditionIdCollision);
+
+function reviewStats() {
+  const total = reviewManifest.entries.length;
+  const touched = reviewManifest.entries.filter((e) => e._touched).length;
+  const pct = total ? Math.round((touched / total) * 100) : 0;
+  return { total, touched, pct };
+}
+
+function updateReviewStats() {
+  const { total, touched, pct } = reviewStats();
+  document.getElementById("statTotal").textContent = total;
+  document.getElementById("statTouched").textContent = touched;
+  document.getElementById("statPct").textContent = pct + "%";
+  const nudge = document.getElementById("reviewNudge");
+  if (pct < 10 && total > 20) {
+    nudge.style.display = "block";
+    nudge.textContent = `You've reviewed ${pct}% of ${total} candidates -- take a pass through obvious false positives before submitting. Doesn't need to be perfect, but a raw, untouched matrix isn't a submission.`;
+  } else {
+    nudge.style.display = "none";
+  }
+}
+
+function sortedEntries() {
+  // Document order, not array-insertion order -- deletes and page-modal
+  // additions would otherwise scramble the chunking between renders.
+  return [...reviewManifest.entries].sort((a, b) => a.page - b.page || a.pixel_bbox[1] - b.pixel_bbox[1]);
+}
+
+function renderReviewGallery() {
+  const wrap = document.getElementById("reviewGallery");
+  wrap.innerHTML = "";
+  const all = sortedEntries();
+  const chunkCount = Math.max(1, Math.ceil(all.length / REVIEW_CHUNK_SIZE));
+  reviewChunkIdx = Math.min(reviewChunkIdx, chunkCount - 1);
+  const start = reviewChunkIdx * REVIEW_CHUNK_SIZE;
+  const chunk = all.slice(start, start + REVIEW_CHUNK_SIZE);
+
+  const byPage = {};
+  chunk.forEach((e) => { (byPage[e.page] = byPage[e.page] || []).push(e); });
+  Object.keys(byPage).map(Number).sort((a, b) => a - b).forEach((pageNum) => {
+    const group = document.createElement("div");
+    group.className = "page-group";
+    group.dataset.page = pageNum;
+    group.innerHTML = `<h3>Page ${pageNum} <button data-view-page="${pageNum}">view / add missing</button></h3><div class="figs"></div>`;
+    const figsWrap = group.querySelector(".figs");
+    byPage[pageNum].forEach((e) => figsWrap.appendChild(buildFigCard(e)));
+    wrap.appendChild(group);
+  });
+  wrap.querySelectorAll("[data-view-page]").forEach((btn) => {
+    btn.addEventListener("click", () => openReviewPageModal(parseInt(btn.dataset.viewPage, 10)));
+  });
+
+  const prevBtn = document.getElementById("reviewPrevBtn");
+  const nextBtn = document.getElementById("reviewNextBtn");
+  document.getElementById("reviewPageLabel").textContent =
+    all.length ? `${start + 1}-${Math.min(start + REVIEW_CHUNK_SIZE, all.length)} of ${all.length} (page ${reviewChunkIdx + 1}/${chunkCount})` : "0 of 0";
+  prevBtn.disabled = reviewChunkIdx === 0;
+  nextBtn.disabled = reviewChunkIdx >= chunkCount - 1;
+
+  updateReviewStats();
+}
+
+document.getElementById("reviewPrevBtn").addEventListener("click", () => {
+  if (reviewChunkIdx > 0) { reviewChunkIdx--; renderReviewGallery(); }
+});
+document.getElementById("reviewNextBtn").addEventListener("click", () => {
+  reviewChunkIdx++; renderReviewGallery();
+});
+
+function buildFigCard(entry) {
+  // Delete-only, final call: a candidate is either real (stays, gets
+  // submitted) or it isn't (deleted, gone, never submitted) -- no
+  // "omitted but still present" third state that could skew a vehicle's
+  // completion stat or leave a permanently-unfillable procedure in the
+  // shipped manifest. See ROADMAP.md for the full reasoning.
+  const card = document.createElement("div");
+  card.className = "fig" + (entry._touched ? " touched" : "");
+  card.dataset.id = entry.procedure_id;
+  card.innerHTML = `
+    <button class="del-btn" title="delete -- not a real photo opportunity, never submitted">×</button>
+    <img alt="${entry.procedure_id}">
+    <div class="id">${entry.procedure_id}</div>`;
+  card.querySelector(".del-btn").addEventListener("click", () => {
+    if (!confirm(`Delete ${entry.procedure_id}? This isn't a real photo opportunity -- it'll never be submitted, and there's no undo (redraw it if you're wrong).`)) return;
+    reviewManifest.entries = reviewManifest.entries.filter((e) => e !== entry);
+    renderReviewGallery();
+  });
+  refreshFigThumbnail(card.querySelector("img"), entry);
+  return card;
+}
+
+async function getReviewPage(pageNum, scale = 2.5) {
+  if (reviewPageCache[pageNum]) return reviewPageCache[pageNum];
+  const page = await selectedPdfDoc.getPage(pageNum);
+  const viewport = page.getViewport({ scale });
+  const canvas = document.createElement("canvas");
+  canvas.width = Math.round(viewport.width);
+  canvas.height = Math.round(viewport.height);
+  const ctx = canvas.getContext("2d");
+  await page.render({ canvasContext: ctx, viewport }).promise;
+  reviewPageCache[pageNum] = { canvas, ctx, scaleUsed: scale };
+  return reviewPageCache[pageNum];
+}
+
+async function refreshFigThumbnail(imgEl, entry) {
+  try {
+    const geo = reviewManifest.page_geometry[String(entry.page)];
+    const { canvas } = await getReviewPage(entry.page);
+    const sx = canvas.width / geo.composite_width_px;
+    const sy = canvas.height / geo.composite_height_px;
+    const [x0, y0, x1, y1] = entry.pixel_bbox;
+    const w = Math.max(1, Math.round((x1 - x0) * sx)), h = Math.max(1, Math.round((y1 - y0) * sy));
+    const out = document.createElement("canvas");
+    out.width = w; out.height = h;
+    out.getContext("2d").drawImage(canvas, x0 * sx, y0 * sy, w, h, 0, 0, w, h);
+    imgEl.src = out.toDataURL("image/jpeg", 0.85);
+  } catch (e) { /* leave blank, page might be out of range in a partial test run */ }
+}
+
+// ---- page modal: same drag/resize/add pattern proven in generate_review.py
+// and review-panel.js, operating on in-memory entries instead of a server ----
+let modalDrag = null, modalPageNum = null, modalNewDrag = null;
+
+async function openReviewPageModal(pageNum) {
+  modalPageNum = pageNum;
+  const modal = document.getElementById("pageModal");
+  const img = document.getElementById("pageModalImg");
+  modal.classList.add("open");
+  const onThisPage = reviewManifest.entries.filter((e) => e.page === pageNum).length;
+  document.getElementById("pageModalTitle").textContent =
+    `Page ${pageNum} of ${reviewManifest.page_count} -- ${onThisPage} candidate${onThisPage === 1 ? "" : "s"} on this page`;
+  document.getElementById("pageModalJumpInput").max = reviewManifest.page_count;
+  document.getElementById("pageModalJumpInput").value = pageNum;
+  const { canvas } = await getReviewPage(pageNum);
+  img.src = canvas.toDataURL("image/png");
+  img.onload = renderModalOverlays;
+}
+
+document.getElementById("pageModalJumpBtn").addEventListener("click", () => {
+  const n = parseInt(document.getElementById("pageModalJumpInput").value, 10);
+  if (!n || n < 1 || n > reviewManifest.page_count) return;
+  openReviewPageModal(n);
+});
+
+function renderModalOverlays() {
+  const wrap = document.getElementById("pageModalWrap");
+  wrap.querySelectorAll(".overlay-box").forEach((el) => el.remove());
+  const geo = reviewManifest.page_geometry[String(modalPageNum)];
+  const canvasInfo = reviewPageCache[modalPageNum];
+  const sx = canvasInfo.canvas.width / geo.composite_width_px;
+  const sy = canvasInfo.canvas.height / geo.composite_height_px;
+  reviewManifest.entries.filter((e) => e.page === modalPageNum).forEach((entry) => {
+    const [x0, y0, x1, y1] = entry.pixel_bbox;
+    const box = document.createElement("div");
+    box.className = "overlay-box" + (entry._touched ? " touched" : "");
+    box.dataset.id = entry.procedure_id;
+    box.style.left = (x0 * sx) + "px"; box.style.top = (y0 * sy) + "px";
+    box.style.width = ((x1 - x0) * sx) + "px"; box.style.height = ((y1 - y0) * sy) + "px";
+    box.innerHTML = `<div class="handle nw" data-corner="nw"></div><div class="handle se" data-corner="se"></div>`;
+    wrap.appendChild(box);
+  });
+}
+
+// Not wrapped in DOMContentLoaded -- this script tag loads at the end of
+// <body>, after all the HTML above it (including #pageModalWrap) is
+// already parsed, so that event has already fired by the time this runs.
+// A DOMContentLoaded listener registered here would never call back --
+// found as a real bug via testing (modalDrag stayed null after a real
+// mousedown, not a simulation artifact).
+{
+  const wrap = document.getElementById("pageModalWrap");
+  wrap.addEventListener("mousedown", (e) => {
+    const handle = e.target.closest(".handle");
+    const box = e.target.closest(".overlay-box");
+    const rect = wrap.getBoundingClientRect();
+    const x = e.clientX - rect.left + wrap.scrollLeft, y = e.clientY - rect.top + wrap.scrollTop;
+    if (handle && box) {
+      modalDrag = { mode: "resize", corner: handle.dataset.corner, id: box.dataset.id, box, startX: x, startY: y,
+        orig: { left: parseFloat(box.style.left), top: parseFloat(box.style.top), width: parseFloat(box.style.width), height: parseFloat(box.style.height) } };
+    } else if (box) {
+      modalDrag = { mode: "move", id: box.dataset.id, box, startX: x, startY: y,
+        orig: { left: parseFloat(box.style.left), top: parseFloat(box.style.top), width: parseFloat(box.style.width), height: parseFloat(box.style.height) } };
+    } else {
+      modalNewDrag = { startX: x, startY: y };
+    }
+  });
+  wrap.addEventListener("mousemove", (e) => {
+    const rect = wrap.getBoundingClientRect();
+    const x = e.clientX - rect.left + wrap.scrollLeft, y = e.clientY - rect.top + wrap.scrollTop;
+    if (modalDrag) {
+      const dx = x - modalDrag.startX, dy = y - modalDrag.startY;
+      const o = modalDrag.orig;
+      let left = o.left, top = o.top, width = o.width, height = o.height;
+      if (modalDrag.mode === "move") { left = o.left + dx; top = o.top + dy; }
+      else {
+        if (modalDrag.corner === "nw") { left = o.left + dx; top = o.top + dy; width = o.width - dx; height = o.height - dy; }
+        else { width = o.width + dx; height = o.height + dy; }
+      }
+      if (width > 8 && height > 8) {
+        modalDrag.box.style.left = left + "px"; modalDrag.box.style.top = top + "px";
+        modalDrag.box.style.width = width + "px"; modalDrag.box.style.height = height + "px";
+      }
+    }
+  });
+  wrap.addEventListener("mouseup", (e) => {
+    if (modalDrag) {
+      const box = modalDrag.box;
+      const entry = reviewManifest.entries.find((x) => x.procedure_id === modalDrag.id);
+      const geo = reviewManifest.page_geometry[String(modalPageNum)];
+      const canvasInfo = reviewPageCache[modalPageNum];
+      const sx = canvasInfo.canvas.width / geo.composite_width_px, sy = canvasInfo.canvas.height / geo.composite_height_px;
+      const left = parseFloat(box.style.left), top = parseFloat(box.style.top);
+      const width = parseFloat(box.style.width), height = parseFloat(box.style.height);
+      entry.pixel_bbox = [left / sx, top / sy, (left + width) / sx, (top + height) / sy];
+      entry._touched = true;
+      box.classList.add("touched");
+      modalDrag = null;
+      renderReviewGallery();
+      return;
+    }
+    if (modalNewDrag) {
+      const rect = wrap.getBoundingClientRect();
+      const x = e.clientX - rect.left + wrap.scrollLeft, y = e.clientY - rect.top + wrap.scrollTop;
+      const x0 = Math.min(x, modalNewDrag.startX), x1 = Math.max(x, modalNewDrag.startX);
+      const y0 = Math.min(y, modalNewDrag.startY), y1 = Math.max(y, modalNewDrag.startY);
+      modalNewDrag = null;
+      if (x1 - x0 < 15 || y1 - y0 < 15) return;
+      const label = prompt("What is this figure? (short label)");
+      if (label === null) return;
+      const geo = reviewManifest.page_geometry[String(modalPageNum)];
+      const canvasInfo = reviewPageCache[modalPageNum];
+      const sx = canvasInfo.canvas.width / geo.composite_width_px, sy = canvasInfo.canvas.height / geo.composite_height_px;
+      const bbox = [x0 / sx, y0 / sy, x1 / sx, y1 / sy];
+      const pid = `p${String(modalPageNum).padStart(3, "0")}_${slugify(label)}_manualadd${nextAddedIdx++}`;
+      reviewManifest.entries.push({
+        procedure_id: pid, page: modalPageNum, section_heading: label, pixel_bbox: bbox,
+        source_layout: "flattened_scan_ocr", content_type: "photo",
+        contributed_photo_path: `images/${reviewManifest.vehicle}/${pid}/`,
+        status: "needs_contributed_photo", _touched: true,
+      });
+      renderModalOverlays();
+      renderReviewGallery();
+    }
+  });
+  document.getElementById("pageModalClose").addEventListener("click", () => {
+    document.getElementById("pageModal").classList.remove("open");
+  });
+  document.getElementById("submitBtn").addEventListener("click", async () => {
+    const editionId = document.getElementById("editionIdConfirm").value.trim();
+    if (!editionId) {
+      document.getElementById("editionIdConfirm").scrollIntoView({ behavior: "smooth", block: "center" });
+      document.getElementById("editionIdConfirm").focus();
+      appendLog(`[submit] blocked -- give this edition a short label (OEM, Haynes, etc.) before submitting.`);
+      return;
+    }
+    await checkEditionIdCollision();
+    if (document.getElementById("editionIdError").style.display === "block") {
+      document.getElementById("editionIdConfirm").scrollIntoView({ behavior: "smooth", block: "center" });
+      appendLog(`[submit] blocked -- resolve the edition-type conflict above before submitting.`);
+      return;
+    }
+    reviewManifest.edition_id = editionId;
+
+    const sourceUrl = document.getElementById("sourceUrlConfirm").value.trim();
+    if (!sourceUrl) {
+      document.getElementById("sourceUrlError").style.display = "block";
+      document.getElementById("sourceUrlConfirm").scrollIntoView({ behavior: "smooth", block: "center" });
+      document.getElementById("sourceUrlConfirm").focus();
+      appendLog(`[submit] blocked -- add a URL to where you got this manual before submitting, so the org team can verify it.`);
+      return;
+    }
+    reviewManifest.source_markers = { source_identifier: sourceUrl };
+
+    const { total, touched, pct } = reviewStats();
+    // Everything in reviewManifest.entries at this point gets submitted,
+    // no exceptions -- delete already removed anything that isn't real,
+    // so there's no separate "excluded" set to compute or forget to filter.
+    appendLog(`[submit] ${total} candidates submitted, ${pct}% reviewed before submitting -- this is what the org quorum's light review would see`);
+  });
+}

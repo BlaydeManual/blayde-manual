@@ -1,0 +1,544 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Blayde Manual: How This Works</title>
+<meta name="description" content="Plain-language answers to the questions people actually ask before deciding whether Blayde Manual is worth their time: what it is, how it works, and whether it's legal.">
+<link rel="canonical" href="https://blaydemanual.com/docs/faq.html">
+<link rel="icon" type="image/svg+xml" href="../web/favicon.svg">
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="Blayde Manual">
+<meta property="og:title" content="Blayde Manual: how this works">
+<meta property="og:description" content="Plain-language answers to the questions people actually ask before deciding whether this is worth their time.">
+<meta property="og:url" content="https://blaydemanual.com/docs/faq.html">
+<meta property="og:image" content="https://blaydemanual.com/images/hero-after.jpg">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="Blayde Manual: how this works">
+<meta name="twitter:description" content="Plain-language answers to the questions people actually ask before deciding whether this is worth their time.">
+<meta name="twitter:image" content="https://blaydemanual.com/images/hero-after.jpg">
+<style>
+  :root {
+    --red: #c8102e;
+    --red-dark: #791f1f;
+    /* Soft dark halo behind red text, only where it sits on the dark
+       header band -- see web/index.html for the full reasoning (real
+       optical effect, not just style). Everywhere else on this page
+       red text sits on the white body background, where this halo
+       would look muddy, not helpful, so it's applied selectively, not
+       globally. */
+    --red-halo: 0 0 3px rgba(0,0,0,0.9), 0 0 1px rgba(0,0,0,0.9);
+    --black: #0c0d0f;
+    --black-2: #16181c;
+    --steel: #8a8f98;
+    --steel-dark: #4a4f57;
+    --text: #22252a;
+    --text-dim: #5f5e5a;
+    --bg: #ffffff;
+    --card: #f7f6f2;
+    --pink: #fcebeb;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--text);
+    font-family: -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    line-height: 1.55;
+  }
+  header {
+    background: var(--black);
+    padding: 48px 24px 40px;
+    text-align: center;
+    border-bottom: 6px solid var(--red);
+    position: relative;
+  }
+  .pill-home {
+    position: absolute; top: 20px; right: 24px;
+    font-size: 0.78rem; font-weight: 700; text-decoration: none;
+    padding: 5px 14px; border-radius: 999px; letter-spacing: 0.1px;
+    background: rgba(255,255,255,0.08); color: #fff;
+    border: 1px solid rgba(255,255,255,0.25);
+  }
+  .pill-home:hover { background: rgba(255,255,255,0.16); }
+  header h1 {
+    color: #fff;
+    margin: 0 0 10px;
+    font-size: 2rem;
+    letter-spacing: 0.02em;
+  }
+  header h1 span { color: var(--red); text-shadow: var(--red-halo); }
+  header p {
+    color: #b9bec6;
+    max-width: 620px;
+    margin: 0 auto;
+    font-size: 1rem;
+  }
+  main {
+    max-width: 780px;
+    margin: 0 auto;
+    padding: 40px 24px 80px;
+  }
+  .section-title {
+    font-size: 0.78rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: var(--red);
+    margin: 48px 0 16px;
+    padding-bottom: 8px;
+    border-bottom: 2px solid var(--red);
+  }
+  .section-title:first-of-type { margin-top: 0; }
+  .qa {
+    background: var(--card);
+    border: 1px solid #ddd9cf;
+    border-left: 4px solid var(--steel-dark);
+    border-radius: 8px;
+    padding: 18px 22px;
+    margin-bottom: 14px;
+  }
+  .qa h3 {
+    margin: 0 0 8px;
+    font-size: 1.02rem;
+    color: var(--black);
+  }
+  .qa p { margin: 0; color: var(--text-dim); font-size: 0.94rem; }
+  .qa p + p { margin-top: 10px; }
+  .highlight {
+    background: var(--pink);
+    border-left-color: var(--red);
+  }
+  .highlight h3 { color: var(--red-dark); }
+  .highlight p { color: #501313; }
+  .diagram-block {
+    margin: 24px 0 40px;
+    text-align: center;
+  }
+  .diagram-block svg {
+    max-width: 100%;
+    height: auto;
+    border: 1px solid #ddd9cf;
+    border-radius: 8px;
+  }
+  .diagram-block figcaption {
+    font-size: 0.82rem;
+    color: var(--text-dim);
+    margin-top: 8px;
+  }
+  footer {
+    text-align: center;
+    padding: 32px 24px 48px;
+    color: var(--steel);
+    font-size: 0.85rem;
+  }
+  footer a { color: var(--red-dark); }
+
+  /* marketing flyer band */
+  .flyer {
+    background: linear-gradient(180deg, var(--black-2), var(--black));
+    padding: 56px 24px 60px;
+    border-bottom: 6px solid var(--red);
+  }
+  .flyer-eyebrow {
+    text-align: center;
+    color: var(--red);
+    font-size: 0.78rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.12em;
+    margin: 0 0 8px;
+  }
+  .flyer-headline {
+    text-align: center;
+    color: #fff;
+    font-size: 1.5rem;
+    font-weight: 700;
+    margin: 0 auto 44px;
+    max-width: 640px;
+  }
+  .flow {
+    display: flex;
+    align-items: flex-start;
+    justify-content: center;
+    gap: 6px;
+    max-width: 1000px;
+    margin: 0 auto;
+    flex-wrap: wrap;
+  }
+  .flow-step {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    width: 190px;
+    text-align: center;
+  }
+  .flow-emoji {
+    font-size: 3.4rem;
+    line-height: 1;
+    background: var(--black-2);
+    border: 2px solid var(--steel-dark);
+    border-radius: 50%;
+    width: 108px;
+    height: 108px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    margin-bottom: 14px;
+  }
+  .flow-step.arrival .flow-emoji { border-color: var(--red); }
+  .flow-title {
+    color: #fff;
+    font-weight: 700;
+    font-size: 0.92rem;
+    margin-bottom: 6px;
+  }
+  .flow-sub {
+    color: #b9bec6;
+    font-size: 0.78rem;
+    line-height: 1.4;
+  }
+  .flow-arrow {
+    color: var(--red);
+    font-size: 1.8rem;
+    align-self: center;
+    margin-top: 40px;
+    flex: 0 0 auto;
+  }
+  .flyer-footnote {
+    text-align: center;
+    color: var(--steel);
+    font-size: 0.8rem;
+    max-width: 560px;
+    margin: 40px auto 0;
+  }
+  @media (max-width: 960px) {
+    .flow { flex-direction: column; align-items: center; }
+    .flow-arrow { transform: rotate(90deg); margin: 4px 0; }
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <a class="pill-home" href="../web/index.html">BlaydeManual Home</a>
+  <h1>BLAYDE MANUAL <span>// HOW THIS WORKS</span></h1>
+  <p>Plain-language answers to the questions people actually ask before deciding whether this is worth their time.</p>
+</header>
+
+<section class="flyer">
+  <p class="flyer-eyebrow">The whole idea, in one picture</p>
+  <p class="flyer-headline">You already own the manual. We just help you make it better, on your own machine, on your own terms.</p>
+  <div class="flow">
+    <div class="flow-step">
+      <div class="flow-emoji">🧑‍🔧📕</div>
+      <div class="flow-title">You bring your manual</div>
+      <div class="flow-sub">A PDF you already legally own. Nothing sent anywhere yet.</div>
+    </div>
+    <div class="flow-arrow">➜</div>
+    <div class="flow-step">
+      <div class="flow-emoji">🔍</div>
+      <div class="flow-title">Scanned, locally</div>
+      <div class="flow-sub">The tool reads its structure on your own device: pages, sections, where each photo belongs.</div>
+    </div>
+    <div class="flow-arrow">➜</div>
+    <div class="flow-step">
+      <div class="flow-emoji">👥📸</div>
+      <div class="flow-title">Matched with real photos</div>
+      <div class="flow-sub">Photos other owners took, doing the same job. Credited, licensed, community-built.</div>
+    </div>
+    <div class="flow-arrow">➜</div>
+    <div class="flow-step arrival">
+      <div class="flow-emoji">✨📗</div>
+      <div class="flow-title">Your manual, enhanced</div>
+      <div class="flow-sub">Still your file, still yours. Just with real photos instead of a 25-year-old scan.</div>
+    </div>
+  </div>
+  <p class="flyer-footnote">Nothing is uploaded, hosted, or redistributed by Blayde Manual. The overlay runs on your own copy, on your own machine (see "Is this legal?" below).</p>
+</section>
+
+<main>
+
+<div class="section-title">The Basics</div>
+
+<div class="qa">
+  <h3>What is this, actually?</h3>
+  <p>Old vehicle manuals (factory manuals, Haynes, Chilton) often have terrible photos: low-resolution scans that get worse every time someone re-scans them. This project replaces those photos with real ones, taken by real owners doing the actual work, and patches them back into your own copy of the manual.</p>
+</div>
+
+<div class="qa">
+  <h3>Is this legal? Manuals are copyrighted, right?</h3>
+  <p>Yes, they are, and that shaped almost every decision here. The public part of this project never contains the manual's own photos or text, only structure (page numbers, where a photo belongs). Photos are contributed by real people, licensed by them, and patched into <em>your own copy</em> of a manual you already own. Nothing copyrighted ever gets redistributed.</p>
+</div>
+
+<div class="qa">
+  <h3>Hasn't someone already done this?</h3>
+  <p>Not quite. Paid services exist that shoot their own manual photos professionally (Cyclepedia is the closest example), but they're closed and centralized. Nobody's built the open, crowd-sourced, legally-clean version. That's the actual gap this fills.</p>
+</div>
+
+<div class="qa">
+  <h3>Was AI used in making this?</h3>
+  <p>Yes, openly. This project was built with Claude (an AI assistant) doing the coding, research, and drafting, guided by a human who made every real call: what to build, which license to use, which tradeoffs to accept, and what to reject or correct along the way. Nothing about that is hidden. There's a full ledger of it in the project repo (<code>ledgers/TheBlayde_AILedger.md</code>), including the places the human caught real mistakes the AI made. If other contributors keep their own ledgers of their AI-assisted work someday, that's the folder where they'd live too, one per contributor.</p>
+</div>
+
+<div class="qa">
+  <h3>Is AI doing something when it patches my manual?</h3>
+  <p>No, and that's on purpose. Building the code used AI (see above); running it doesn't. Patching a manual is plain, predictable software: it reads pixel patterns to find where a photo goes, reads text off the page (OCR, the same kind of tech scanners have used for years) to label it, and swaps the image in. No AI model, no server, no query goes out while it works. That's why it can run entirely in your browser with nothing uploaded, and why it'll still work exactly the same way five years from now.</p>
+</div>
+
+<div class="section-title">Your Photos</div>
+
+<div class="qa highlight">
+  <h3>If I contribute a photo, do I still own it?</h3>
+  <p>Yes, always, no matter where a copy of it ends up. Contributing a photo licenses it (CC-BY 4.0: anyone can use it, they just have to credit you). It doesn't transfer ownership to anyone: not to the vehicle's repo, not to the project, not ever.</p>
+</div>
+
+<div class="qa">
+  <h3>Can I revoke a photo I contributed?</h3>
+  <p>Not retroactively, and that's by design, not an oversight. CC-BY 4.0 is deliberately irrevocable once granted. If it could be pulled back at will, nobody could safely build on it, and every manual already patched with your photo would be sitting on legally shaky ground. What you <em>can</em> do: ask to have it removed from the active <code>images/</code> folder at any time, and it stops being offered to anyone from that point forward. It just can't reach back into copies other people already generated before the removal.</p>
+</div>
+
+<div class="qa">
+  <h3>Do I get credit?</h3>
+  <p>Yes, and visibly, not buried in a commit log. Every photo you contribute gets a small "photo: @you" credit printed directly under it, every time someone enhances their own legal copy with the Blayde Manual overlay.</p>
+</div>
+
+<div class="qa">
+  <h3>Where do photos physically live?</h3>
+  <p>As normal files in a folder called <code>images/</code> inside that vehicle's own repo, nothing fancier than that. No separate photo service, no database. See the diagram below.</p>
+</div>
+
+<div class="diagram-block">
+  <svg viewBox="0 0 900 700" xmlns="http://www.w3.org/2000/svg" role="img">
+<title>Blayde Manual org structure, approvals, and photo ownership</title>
+<desc>Five org maintainers exist as a pool; any two of them approve a new vehicle joining the registry, and different pairs approve different vehicles. Once a vehicle repo exists, it has its own separate pool of maintainers who approve that vehicle's own photo contributions, using the same two-approval rule, and each vehicle's maintainer pool is its own size, not a fixed number. A vehicle can have more than one manual edition, each fully independent. Every contributed photo stays copyrighted by its contributor, licensed CC-BY 4.0, no matter which repo holds a copy of it.</desc>
+
+<rect x="0" y="0" width="900" height="700" fill="#ffffff"/>
+
+<rect x="40" y="16" width="820" height="124" rx="10" fill="#0c0d0f"/>
+<text x="450" y="46" text-anchor="middle" font-family="Helvetica, Arial, sans-serif" font-size="22" font-weight="700" fill="#ffffff">BLAYDE MANUAL <tspan fill="#c8102e">// ORG</tspan></text>
+<text x="450" y="66" text-anchor="middle" font-family="Helvetica, Arial, sans-serif" font-size="12.5" fill="#b9bec6">5 org maintainers, as a pool, any 2 of them approve a new vehicle joining the registry</text>
+
+<g font-family="Helvetica, Arial, sans-serif">
+  <circle cx="330" cy="106" r="13" fill="#4a4f57"/>
+  <text x="330" y="110" text-anchor="middle" font-size="12" font-weight="700" fill="#ffffff">K</text>
+  <circle cx="390" cy="106" r="13" fill="#4a4f57"/>
+  <text x="390" y="110" text-anchor="middle" font-size="12" font-weight="700" fill="#ffffff">D</text>
+  <circle cx="450" cy="106" r="13" fill="#4a4f57"/>
+  <text x="450" y="110" text-anchor="middle" font-size="12" font-weight="700" fill="#ffffff">S</text>
+  <circle cx="510" cy="106" r="13" fill="#4a4f57"/>
+  <text x="510" y="110" text-anchor="middle" font-size="12" font-weight="700" fill="#ffffff">L</text>
+  <circle cx="570" cy="106" r="13" fill="#4a4f57"/>
+  <text x="570" y="110" text-anchor="middle" font-size="12" font-weight="700" fill="#ffffff">M</text>
+</g>
+<text x="450" y="130" text-anchor="middle" font-family="Helvetica, Arial, sans-serif" font-size="9.5" fill="#8a8f98">K=@wrench_kate  D=@torque_dave  S=@sv_steve  L=@admin_lena  M=@caretaker_mo</text>
+
+<line x1="180" y1="140" x2="180" y2="186" stroke="#8a8f98" stroke-width="1.5"/>
+<line x1="450" y1="140" x2="450" y2="186" stroke="#8a8f98" stroke-width="1.5"/>
+<line x1="720" y1="140" x2="720" y2="186" stroke="#8a8f98" stroke-width="1.5"/>
+
+<rect x="68" y="194" width="240" height="102" rx="8" fill="#ffffff" stroke="#b4b2a9" stroke-width="1"/>
+<g>
+  <rect x="60" y="186" width="240" height="102" rx="8" fill="#ffffff" stroke="#4a4f57" stroke-width="1.5"/>
+  <rect x="60" y="186" width="240" height="6" rx="3" fill="#c8102e"/>
+  <rect x="234" y="194" width="66" height="18" rx="9" fill="#c8102e"/>
+  <text x="267" y="207" text-anchor="middle" font-family="Helvetica, Arial, sans-serif" font-size="9" font-weight="700" fill="#ffffff">2 EDITIONS</text>
+  <text x="180" y="226" text-anchor="middle" font-family="Helvetica, Arial, sans-serif" font-size="15" font-weight="700" fill="#0c0d0f">Suzuki SV650</text>
+  <text x="180" y="244" text-anchor="middle" font-family="Helvetica, Arial, sans-serif" font-size="11" fill="#5f5e5a">OEM manual · Haynes manual</text>
+  <text x="180" y="261" text-anchor="middle" font-family="Helvetica, Arial, sans-serif" font-size="11" fill="#5f5e5a">its own repo, dedicated maintainers</text>
+  <text x="180" y="279" text-anchor="middle" font-family="Helvetica, Arial, sans-serif" font-size="11.5" font-weight="700" fill="#c8102e">onboarding approved by: K + S</text>
+</g>
+
+<g>
+  <rect x="330" y="186" width="240" height="102" rx="8" fill="#ffffff" stroke="#4a4f57" stroke-width="1.5"/>
+  <rect x="330" y="186" width="240" height="6" rx="3" fill="#c8102e"/>
+  <text x="450" y="218" text-anchor="middle" font-family="Helvetica, Arial, sans-serif" font-size="15" font-weight="700" fill="#0c0d0f">Nissan 300ZX repo</text>
+  <text x="450" y="238" text-anchor="middle" font-family="Helvetica, Arial, sans-serif" font-size="11" fill="#5f5e5a">dedicated maintainers</text>
+  <text x="450" y="255" text-anchor="middle" font-family="Helvetica, Arial, sans-serif" font-size="11" fill="#5f5e5a">dedicated contributors, own pace</text>
+  <text x="450" y="279" text-anchor="middle" font-family="Helvetica, Arial, sans-serif" font-size="11.5" font-weight="700" fill="#c8102e">onboarding approved by: D + L</text>
+</g>
+
+<g>
+  <rect x="600" y="186" width="240" height="102" rx="8" fill="#ffffff" stroke="#4a4f57" stroke-width="1.5"/>
+  <rect x="600" y="186" width="240" height="6" rx="3" fill="#c8102e"/>
+  <text x="720" y="218" text-anchor="middle" font-family="Helvetica, Arial, sans-serif" font-size="15" font-weight="700" fill="#0c0d0f">Datsun 620 repo</text>
+  <text x="720" y="238" text-anchor="middle" font-family="Helvetica, Arial, sans-serif" font-size="11" fill="#5f5e5a">dedicated maintainers</text>
+  <text x="720" y="255" text-anchor="middle" font-family="Helvetica, Arial, sans-serif" font-size="11" fill="#5f5e5a">dedicated contributors, own pace</text>
+  <text x="720" y="279" text-anchor="middle" font-family="Helvetica, Arial, sans-serif" font-size="11.5" font-weight="700" fill="#c8102e">onboarding approved by: M + K</text>
+</g>
+
+<line x1="180" y1="296" x2="180" y2="336" stroke="#8a8f98" stroke-width="1.5"/>
+<line x1="450" y1="288" x2="450" y2="336" stroke="#8a8f98" stroke-width="1.5"/>
+<line x1="720" y1="288" x2="720" y2="336" stroke="#8a8f98" stroke-width="1.5"/>
+
+<g>
+  <rect x="80" y="336" width="200" height="112" rx="6" fill="#f1efe8" stroke="#b4b2a9" stroke-width="1"/>
+  <text x="180" y="354" text-anchor="middle" font-family="Helvetica, Arial, sans-serif" font-size="11" font-weight="700" fill="#444441">images/</text>
+  <rect x="96" y="362" width="72" height="30" rx="4" fill="#4a4f57"/>
+  <text x="132" y="381" text-anchor="middle" font-family="Helvetica, Arial, sans-serif" font-size="9" fill="#ffffff">@gsxr_greg</text>
+  <rect x="176" y="362" width="88" height="30" rx="4" fill="#4a4f57"/>
+  <text x="220" y="381" text-anchor="middle" font-family="Helvetica, Arial, sans-serif" font-size="9" fill="#ffffff">@haynes_hank</text>
+  <line x1="92" y1="400" x2="268" y2="400" stroke="#b4b2a9" stroke-width="1"/>
+  <text x="180" y="414" text-anchor="middle" font-family="Helvetica, Arial, sans-serif" font-size="9.5" font-weight="700" fill="#444441">maintainers (this repo only)</text>
+  <circle cx="140" cy="432" r="7" fill="#c8102e"/>
+  <circle cx="160" cy="432" r="7" fill="#c8102e"/>
+  <circle cx="180" cy="432" r="7" fill="#d3d1c7"/>
+  <circle cx="200" cy="432" r="7" fill="#d3d1c7"/>
+  <circle cx="220" cy="432" r="7" fill="#d3d1c7"/>
+</g>
+<text x="180" y="464" text-anchor="middle" font-family="Helvetica, Arial, sans-serif" font-size="9.5" fill="#791f1f">5 maintainers here, too: 2 (red) approved these photos</text>
+
+<g>
+  <rect x="350" y="336" width="200" height="112" rx="6" fill="#f1efe8" stroke="#b4b2a9" stroke-width="1"/>
+  <text x="450" y="354" text-anchor="middle" font-family="Helvetica, Arial, sans-serif" font-size="11" font-weight="700" fill="#444441">images/</text>
+  <rect x="366" y="362" width="80" height="30" rx="4" fill="#4a4f57"/>
+  <text x="406" y="381" text-anchor="middle" font-family="Helvetica, Arial, sans-serif" font-size="9" fill="#ffffff">@z31_nate</text>
+  <rect x="454" y="362" width="80" height="30" rx="4" fill="#4a4f57"/>
+  <text x="494" y="381" text-anchor="middle" font-family="Helvetica, Arial, sans-serif" font-size="9" fill="#ffffff">@fairlady_z</text>
+  <line x1="366" y1="400" x2="534" y2="400" stroke="#b4b2a9" stroke-width="1"/>
+  <text x="450" y="414" text-anchor="middle" font-family="Helvetica, Arial, sans-serif" font-size="9.5" font-weight="700" fill="#444441">maintainers (this repo only)</text>
+  <rect x="413" y="425" width="14" height="14" rx="2" fill="#c8102e"/>
+  <rect x="433" y="425" width="14" height="14" rx="2" fill="#c8102e"/>
+  <rect x="453" y="425" width="14" height="14" rx="2" fill="#d3d1c7"/>
+  <rect x="473" y="425" width="14" height="14" rx="2" fill="#d3d1c7"/>
+</g>
+<text x="450" y="464" text-anchor="middle" font-family="Helvetica, Arial, sans-serif" font-size="9.5" fill="#791f1f">4 maintainers here: 2 (red) approved these photos</text>
+
+<g>
+  <rect x="620" y="336" width="200" height="112" rx="6" fill="#f1efe8" stroke="#b4b2a9" stroke-width="1"/>
+  <text x="720" y="354" text-anchor="middle" font-family="Helvetica, Arial, sans-serif" font-size="11" font-weight="700" fill="#444441">images/</text>
+  <rect x="636" y="362" width="82" height="30" rx="4" fill="#4a4f57"/>
+  <text x="677" y="381" text-anchor="middle" font-family="Helvetica, Arial, sans-serif" font-size="9" fill="#ffffff">@620hauler</text>
+  <rect x="722" y="362" width="82" height="30" rx="4" fill="#4a4f57"/>
+  <text x="763" y="381" text-anchor="middle" font-family="Helvetica, Arial, sans-serif" font-size="9" fill="#ffffff">@datsun_dan</text>
+  <line x1="636" y1="400" x2="804" y2="400" stroke="#b4b2a9" stroke-width="1"/>
+  <text x="720" y="414" text-anchor="middle" font-family="Helvetica, Arial, sans-serif" font-size="9.5" font-weight="700" fill="#444441">maintainers (this repo only)</text>
+  <polygon points="690,424 698,438 682,438" fill="#c8102e"/>
+  <polygon points="720,424 728,438 712,438" fill="#c8102e"/>
+  <polygon points="750,424 758,438 742,438" fill="#d3d1c7"/>
+</g>
+<text x="720" y="464" text-anchor="middle" font-family="Helvetica, Arial, sans-serif" font-size="9.5" fill="#791f1f">3 maintainers here: small, dedicated crew, 2 approved</text>
+
+<line x1="180" y1="472" x2="180" y2="510" stroke="#8a8f98" stroke-width="1.5" stroke-dasharray="3 3"/>
+<line x1="450" y1="472" x2="450" y2="510" stroke="#8a8f98" stroke-width="1.5" stroke-dasharray="3 3"/>
+<line x1="720" y1="472" x2="720" y2="510" stroke="#8a8f98" stroke-width="1.5" stroke-dasharray="3 3"/>
+
+<rect x="60" y="510" width="780" height="130" rx="10" fill="#fcebeb" stroke="#c8102e" stroke-width="1.5"/>
+<text x="450" y="542" text-anchor="middle" font-family="Helvetica, Arial, sans-serif" font-size="17" font-weight="700" fill="#791f1f">You always keep the copyright on your own photo</text>
+<text x="450" y="570" text-anchor="middle" font-family="Helvetica, Arial, sans-serif" font-size="12.5" fill="#501313">
+  Every repo above just holds a licensed copy (CC-BY 4.0, credit required, nothing exclusive).
+</text>
+<text x="450" y="590" text-anchor="middle" font-family="Helvetica, Arial, sans-serif" font-size="12.5" fill="#501313">
+  Ownership never transfers to the vehicle repo, the org, or anyone else (not when it's forked,
+</text>
+<text x="450" y="610" text-anchor="middle" font-family="Helvetica, Arial, sans-serif" font-size="12.5" fill="#501313">
+  not when a vehicle's repo moves into the org, not ever). It's still yours, wherever a copy lives.
+</text>
+
+<text x="450" y="662" text-anchor="middle" font-family="Helvetica, Arial, sans-serif" font-size="10.5" fill="#8a8f98">Different pairs, no fixed committee, the org pool never bottlenecks on the same 2 people. Each vehicle's maintainer pool is its own size, too.</text>
+<text x="450" y="682" text-anchor="middle" font-family="Helvetica, Arial, sans-serif" font-size="10.5" fill="#8a8f98">A vehicle can have more than one manual edition (OEM, Haynes, Chilton…), each fully independent. See CONTRIBUTING.md and LICENSE.md.</text>
+</svg>
+  <figcaption>Each vehicle is its own independent repo, with its own community. No matter which repo holds a copy of your photo, it's still yours.</figcaption>
+</div>
+
+<div class="section-title">Contributing</div>
+
+<div class="qa">
+  <h3>Do I have to share my photos publicly?</h3>
+  <p>No, not if you save a photo as a draft instead of submitting it -- it stays tied to your own account, not shared, and you choose if and when that changes. <em>Patching</em> your own manual with photos the community's already approved is the one part that's genuinely device-only, no account needed at all. A fully offline path -- contributing without ever touching a GitHub account, not even for an unshared draft -- isn't built yet; it's a real, logged feature request, not what exists today.</p>
+</div>
+
+<div class="qa">
+  <h3>What if I lose track of what I've already photographed?</h3>
+  <p>That's a real, planned feature: when you're working through several photos in one session, the app shows a live checklist of everything in that section (what's done, what's still needed), so you're never left wondering "wait, did I already do that one?"</p>
+</div>
+
+<div class="qa">
+  <h3>Do I need a computer, or can I do this all from my phone?</h3>
+  <p>The goal is phone-only, camera-in-hand, no download required, same spirit as those "flash a device from your browser" tools. That piece is still being designed, but it's a core goal, not an afterthought.</p>
+</div>
+
+<div class="section-title">Who's In Charge</div>
+
+<div class="qa">
+  <h3>Does a small team have to approve every single photo?</h3>
+  <p>No. That wouldn't scale, and it's not how it works. A small org-level team reviews manual <em>submissions</em> -- is the source verifiable, does the indexing look real, did someone give it an honest pass -- whether that's a brand-new vehicle or another manual joining one that already exists. What differs is what happens next, not the review itself: a new vehicle gets its own repo; another manual for an existing vehicle joins that repo instead. Either way, day-to-day <em>photo</em> review is never the org's job -- that's always each vehicle's own dedicated group of maintainers, at whatever pace that community sets.</p>
+</div>
+
+<div class="qa">
+  <h3>Does approval need everyone to agree?</h3>
+  <p>No, just a small quorum (2 people), not unanimous consent, and not always the same 2 people. That keeps things moving without any single person becoming a bottleneck.</p>
+</div>
+
+<div class="qa">
+  <h3>What if my vehicle has more than one manual, like a factory manual and a Haynes manual?</h3>
+  <p>Both can exist, and both live in the same repo, maintained by the same team -- they're different books about the identical machine, so the community reviewing them is the same community. The photo coordinates can't be shared between the two scans, but that's just separate folders inside one repo, not separate repos or separate maintainer teams.</p>
+  <p>That's different from generations of the same model -- an SV650 from 1999 and one from 2005 might share a name, but they're mechanically different vehicles (different parts, different procedures), not two books about the same bike. Those stay fully separate repos with their own maintainer teams, the same as any two unrelated vehicles would.</p>
+</div>
+
+<div class="qa">
+  <h3>If I submit a brand new vehicle, does that repo belong to me?</h3>
+  <p>Only at first, and only briefly. You create it under your own GitHub account and propose it to the registry. Once it's approved, the org copies the whole repo (full history, all of it) into its own namespace, and that copy becomes the official one from then on, not the one under your account. You get added as a maintainer of that org-owned repo, the same as anyone else who earns that role, rather than staying its owner. That's deliberate: the project's survival shouldn't depend on any one person's account staying active forever.</p>
+</div>
+
+<div class="section-title" id="for-maintainers">For Maintainers</div>
+
+<div class="qa highlight">
+  <h3>What's actually expected of me as a maintainer?</h3>
+  <p>One thing: look at a submitted photo and decide if it's a good, honest, in-focus contribution for that procedure. That's the whole job.</p>
+  <p>A short list of things that are explicitly <em>not</em> on you, so you never end up worrying about them: how big the repo gets, scaling to more contributors or more vehicles across the project, whether the project succeeds, and the legal/copyright architecture (already solved once, at the project level). All of that is the Blayde Manual team's concern, not a repo maintainer's.</p>
+</div>
+
+<div class="qa">
+  <h3>What if I go quiet, or can't keep up?</h3>
+  <p>Try to find someone to hand things off to if you're stepping back. If you can't, don't worry about it -- there are mechanisms for that. A vehicle with no active maintainer still works exactly the same for anyone patching their own copy; it just gets a small, non-alarming "passive" label on the registry so contributors know they might want to step up.</p>
+</div>
+
+<div class="qa">
+  <h3>How many maintainers should a vehicle have?</h3>
+  <p>Somewhere around 2-5 active ones is the healthy range. One is a single point of failure; past five or so, ownership starts feeling like nobody's job in particular, and a new volunteer is usually more useful helping an understaffed vehicle than stacking onto one that already has plenty of coverage.</p>
+</div>
+
+<div class="section-title">The Business Side</div>
+
+<div class="qa">
+  <h3>Is this free?</h3>
+  <p>Yes, and that's not just a nice idea. It's the reason contributing works at all. Nobody's going to photograph their own brake job for a paywall. The free, open version is what makes the whole thing possible.</p>
+</div>
+
+<div class="qa">
+  <h3>What do I actually need to get started? Do I have to sign up for anything?</h3>
+  <p>Depends what you're doing. To just <em>use</em> Blayde Manual, patching your own legally-owned PDF with whatever real photos the community has already approved, you don't need an account of any kind. The repos are public and readable by anyone.</p>
+  <p>To <em>contribute</em> a photo, yes, you do need a free GitHub account, since that's how your credit and your license grant are attached to what you submit. There's no cost involved either way, GitHub accounts are free, but contributing does require that one piece of setup that just using it doesn't.</p>
+</div>
+
+<div class="qa">
+  <h3>What stops a big company from just taking this and selling it?</h3>
+  <p>They could legally reuse credited photos (that's what an open license allows, on purpose), but they can't use the Blayde Manual name or take over the actual living community, and a static copy goes stale the moment it's copied, since it stops getting new contributions. The code itself is also licensed (AGPL) specifically so a company can't quietly turn it into a closed paid product without giving their changes back.</p>
+</div>
+
+<div class="qa">
+  <h3>Could this ever make money?</h3>
+  <p>If it ever does, it's more likely to look like affiliate links to real parts and tools next to a procedure (the way iFixit works) than a paywall on the manual itself. The free core stays free either way.</p>
+</div>
+
+<div class="section-title">Scaling to More Vehicles</div>
+
+<div class="qa">
+  <h3>Won't storing photos for hundreds of vehicles get expensive or slow?</h3>
+  <p>No. Each vehicle is its own separate, independently-sized repo, not one giant shared one. Storage limits apply per-repo, not across the whole project, so adding a 500th vehicle never makes an existing one closer to any kind of limit.</p>
+</div>
+
+<div class="qa">
+  <h3>How do you tell vehicles apart? Is there some official database?</h3>
+  <p>No official database, on purpose. A rigid database would risk excluding exactly the older, rarer vehicles this project is for. Make, model, and year range are taken from what the manual itself says, with a real person checking it makes sense before it's approved.</p>
+</div>
+
+</main>
+
+<footer>
+  See <a href="../README.md">README.md</a> for the technical pipeline, <a href="../LEGAL.md">LEGAL.md</a> for the full legal reasoning, and <a href="../ROADMAP.md">ROADMAP.md</a> for what's designed but not yet built.
+</footer>
+
+</body>
+</html>

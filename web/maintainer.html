@@ -1,0 +1,459 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Blayde Manual: Maintainer Portal</title>
+<meta name="description" content="Review photo submissions, approve new vehicles, and help maintain a community-run vehicle service manual. Anyone can become a maintainer.">
+<link rel="canonical" href="https://blaydemanual.com/maintainer.html">
+<link rel="icon" type="image/svg+xml" href="favicon.svg">
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="Blayde Manual">
+<meta property="og:title" content="Blayde Manual: Maintainer Portal">
+<meta property="og:description" content="Review photo submissions, approve new vehicles, and help maintain a community-run vehicle service manual.">
+<meta property="og:url" content="https://blaydemanual.com/maintainer.html">
+<meta property="og:image" content="https://blaydemanual.com/images/hero-after.jpg">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="Blayde Manual: Maintainer Portal">
+<meta name="twitter:description" content="Review photo submissions, approve new vehicles, and help maintain a community-run vehicle service manual.">
+<meta name="twitter:image" content="https://blaydemanual.com/images/hero-after.jpg">
+<style>
+  :root {
+    --red: #c8102e; --black: #0c0d0f; --black-2: #16181c;
+    --steel: #8a8f98; --steel-dark: #666c76; --text: #e8e8ea;
+    /* Soft dark halo behind red text on a dark background -- see
+       web/index.html for the full reasoning (real optical effect, not
+       just style). */
+    --red-halo: 0 0 3px rgba(0,0,0,0.9), 0 0 1px rgba(0,0,0,0.9);
+  }
+  * { box-sizing: border-box; }
+  body {
+    background: var(--black); color: var(--text); margin: 0; padding: 32px 24px;
+    font-family: -apple-system, "Segoe UI", Roboto, sans-serif; line-height: 1.5;
+  }
+  main { max-width: 960px; margin: 0 auto; }
+  .top-nav { display: flex; justify-content: flex-end; margin-bottom: 14px; }
+  .pill-link {
+    font-size: 0.78rem; font-weight: 700; text-decoration: none;
+    padding: 5px 14px; border-radius: 999px; letter-spacing: 0.1px;
+  }
+  .pill-link.pill-home {
+    background: var(--black-2); color: var(--text); border: 1px solid var(--steel-dark);
+  }
+  .pill-link.pill-home:hover { border-color: var(--steel); }
+  h1 { font-size: 1.3rem; margin: 0 0 4px; }
+  h1 span { color: var(--red); text-shadow: var(--red-halo); }
+  .sub { color: var(--steel); font-size: 0.85rem; margin: 0 0 20px; }
+  .sub code { color: #9fe1cb; background: #000; padding: 1px 4px; border-radius: 3px; font-size: 0.9em; }
+  .card {
+    background: var(--black-2); border: 1px solid var(--steel-dark);
+    border-left: 3px solid var(--red); border-radius: 8px;
+    padding: 18px 22px; margin-bottom: 14px;
+  }
+  label { display: block; font-size: 0.82rem; color: var(--steel); margin: 10px 0 5px; }
+  input[type=text], input[type=number] {
+    width: 100%; padding: 7px 9px; background: #000; color: var(--text);
+    border: 1px solid var(--steel-dark); border-radius: 4px; font-size: 0.85rem;
+  }
+  input[type=file] { color: var(--text); font-size: 0.82rem; }
+  button {
+    background: var(--red); color: #fff; border: none; padding: 9px 18px;
+    font-size: 0.85rem; font-weight: 700; border-radius: 6px; cursor: pointer;
+    margin-top: 14px;
+  }
+  button.secondary { background: var(--steel-dark); }
+  button:disabled { background: var(--steel-dark); opacity: 0.6; cursor: default; }
+
+  /* ---- tab nav: REPO vs ORG is always visible as a badge, not just
+     implied by which tab you're on -- a person can hold both roles at
+     once, so the label has to travel with the action, not the person ---- */
+  #tabNav { display: flex; gap: 8px; margin-bottom: 18px; flex-wrap: wrap; }
+  #tabNav button {
+    margin: 0; background: var(--black-2); color: var(--steel);
+    border: 1px solid var(--steel-dark); padding: 8px 14px; font-size: 0.82rem;
+  }
+  #tabNav button.active { background: var(--red); color: #fff; border-color: var(--red); }
+  #tabNav button:disabled { background: var(--black-2); color: var(--steel-dark); opacity: 1; cursor: not-allowed; }
+  .scope-badge {
+    display: inline-block; font-size: 0.62rem; font-weight: 700; letter-spacing: 0.5px;
+    padding: 1px 5px; border-radius: 3px; margin-right: 6px; vertical-align: 1px;
+  }
+  .scope-badge.org { background: #5f1d3a; color: #ff9fc8; }
+  /* Full-bleed light-grey separator bar -- shared between Review Photo
+     Requests' and My Vehicles' per-vehicle groupings, breaks out of
+     .card's own padding via negative margin. */
+  .vehicle-bar { font-size: 1.1rem; font-weight: 700; color: #16181c; background: #c8ccd1; margin: 0 -22px 12px; padding: 10px 22px; }
+  /* One tier down from .vehicle-bar -- a vehicle repo can hold more
+     than one edition now (see ROADMAP.md's multi-manual correction),
+     so requests/uploads/rosters need a middle heading between "which
+     vehicle" and "which item," not just the two. Inset, not full-bleed,
+     so it visually nests under the vehicle bar rather than competing
+     with it. */
+  /* Full-bleed too, same as .vehicle-bar -- one shade darker so the two
+     tiers read as nested, not identical. */
+  .edition-bar { font-size: 0.85rem; font-weight: 700; color: #16181c; background: #aeb3ba; margin: 0 -22px 8px; padding: 6px 22px; }
+  .tab-panel { display: none; }
+  .tab-panel.active { display: block; }
+  .pinned-note {
+    color: var(--steel); font-size: 0.85rem; font-style: italic;
+  }
+
+  #progressWrap {
+    font-family: ui-monospace, monospace; font-size: 0.8rem;
+    background: #000; border-radius: 6px; padding: 12px; margin-top: 14px;
+  }
+  #progressBar { color: #9fe1cb; margin-bottom: 4px; }
+  #progressLabel { color: var(--steel); font-size: 0.75rem; }
+  #log {
+    font-family: ui-monospace, monospace; font-size: 0.76rem; color: #9fe1cb;
+    white-space: pre-wrap; max-height: 260px; overflow-y: auto; margin-top: 10px;
+  }
+  #downloadBtn { display: none; }
+
+  #reviewSection { display: none; margin-top: 18px; }
+  .review-stats {
+    display: flex; gap: 10px; margin-bottom: 12px; font-family: ui-monospace, monospace; font-size: 0.78rem;
+  }
+  .review-stats .stat {
+    background: #000; border-radius: 6px; padding: 8px 12px; flex: 1;
+  }
+  .review-stats .stat b { color: var(--text); font-size: 1rem; display: block; }
+  .review-stats .stat span { color: var(--steel); }
+  .review-nudge {
+    background: #2a1a00; border: 1px solid #7a5a00; color: #ffcc66;
+    border-radius: 6px; padding: 8px 12px; font-size: 0.78rem; margin-bottom: 12px; display: none;
+  }
+  .page-group { margin-bottom: 14px; }
+  .page-group h3 { font-size: 0.8rem; color: var(--steel); margin: 0 0 6px; display: flex; justify-content: space-between; align-items: center; }
+  .page-group h3 button { margin: 0; padding: 4px 10px; font-size: 0.72rem; }
+  .figs { display: grid; grid-template-columns: repeat(auto-fill, minmax(110px, 1fr)); gap: 8px; }
+  .fig { position: relative; background: #000; border: 1px solid var(--steel-dark); border-radius: 6px; overflow: hidden; }
+  .fig.touched { border-color: #1d9e75; }
+  .fig img { width: 100%; height: 70px; object-fit: cover; display: block; }
+  .fig .id { font-size: 0.62rem; color: var(--steel); padding: 3px 5px; word-break: break-all; }
+  .fig .del-btn {
+    position: absolute; top: 3px; right: 3px; width: 18px; height: 18px; line-height: 16px; text-align: center;
+    padding: 0; margin: 0; font-size: 0.7rem; border-radius: 4px; background: var(--red);
+  }
+
+  #pageModal {
+    display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.85); z-index: 50;
+    align-items: center; justify-content: center; flex-direction: column;
+  }
+  #pageModal.open { display: flex; }
+  #pageModalHeader {
+    width: 90vw; max-width: 900px; display: flex; justify-content: space-between; align-items: center;
+    padding: 8px 4px; color: var(--text); font-size: 0.85rem;
+  }
+  #pageModalHeader .sub { margin: 0; }
+  #pageModalJump { display: flex; align-items: center; gap: 6px; }
+  #pageModalJump input[type=number] {
+    width: 60px; padding: 5px 7px; background: #000; color: var(--text);
+    border: 1px solid var(--steel-dark); border-radius: 4px; font-size: 0.8rem;
+  }
+  #pageModalJump button { margin: 0; padding: 6px 12px; font-size: 0.78rem; background: var(--steel-dark); }
+  #pageModalWrap { position: relative; max-width: 90vw; max-height: 78vh; overflow: auto; border: 1px solid var(--steel-dark); }
+  #pageModalImg { display: block; max-width: none; }
+  .overlay-box { position: absolute; border: 2px solid var(--steel); background: rgba(138,143,152,0.1); cursor: move; box-sizing: border-box; }
+  .overlay-box.touched { border-color: #1d9e75; }
+  .overlay-box .handle { position: absolute; width: 12px; height: 12px; background: var(--red); border: 2px solid #fff; border-radius: 50%; }
+  .overlay-box .handle.nw { top: -6px; left: -6px; cursor: nwse-resize; }
+  .overlay-box .handle.se { bottom: -6px; right: -6px; cursor: nwse-resize; }
+  /* Issue Requests reuses .overlay-box, filled with the real current
+     photo instead of an empty box -- "load the current version" means
+     actually patched, not a synthetic placeholder (see ROADMAP.md). */
+  .overlay-box img { width: 100%; height: 100%; object-fit: cover; display: block; pointer-events: none; }
+  .overlay-box.new-slot { border-color: var(--red); background: rgba(200,16,46,0.12); border-style: dashed; }
+  #issueRightClickMenu button {
+    display: block; width: 100%; text-align: left; margin: 0; padding: 7px 12px;
+    background: transparent; color: var(--text); font-weight: 400; font-size: 0.82rem; border-radius: 3px;
+  }
+  #issueRightClickMenu button:hover { background: var(--steel-dark); }
+  .issue-pending-row {
+    display: flex; justify-content: space-between; align-items: center;
+    padding: 8px 0; border-bottom: 1px solid var(--steel-dark); font-size: 0.85rem;
+  }
+  .issue-pending-row:last-child { border-bottom: none; }
+  #pageModalFooter { padding: 10px; display: flex; gap: 8px; align-items: center; }
+  #pageModalFooter button { margin: 0; }
+
+  /* ---- review-panel.js's PR compare view ---- */
+  .pr-row {
+    display: flex; justify-content: space-between; align-items: center;
+    padding: 10px 0; border-bottom: 1px solid var(--steel-dark);
+  }
+  .pr-row:last-child { border-bottom: none; }
+  .pr-title { font-size: 0.88rem; }
+  .pr-meta { color: var(--steel); font-size: 0.75rem; margin-top: 2px; }
+  .pr-row button { font-size: 0.78rem; padding: 6px 12px; margin-top: 0; }
+  #reviewArea, #orgReviewArea { display: none; }
+  #reviewArea.open, #orgReviewArea.open { display: block; }
+  .compare-wrap {
+    position: relative; border: 1px solid var(--steel-dark); border-radius: 6px;
+    overflow: hidden; margin: 14px 0; max-width: 100%;
+  }
+  #pageCanvas { display: block; max-width: 100%; height: auto; }
+  #targetBox {
+    position: absolute; border: 2px dashed var(--red);
+    background: rgba(200,16,46,0.10); cursor: move; box-sizing: border-box;
+  }
+  #targetBox img {
+    position: absolute; inset: 0; width: 100%; height: 100%;
+    object-fit: contain; pointer-events: none;
+  }
+  #targetBox .handle {
+    position: absolute; width: 14px; height: 14px; background: var(--red);
+    border: 2px solid #fff; border-radius: 50%;
+  }
+  #targetBox .handle.nw { top: -7px; left: -7px; cursor: nwse-resize; }
+  #targetBox .handle.ne { top: -7px; right: -7px; cursor: nesw-resize; }
+  #targetBox .handle.sw { bottom: -7px; left: -7px; cursor: nesw-resize; }
+  #targetBox .handle.se { bottom: -7px; right: -7px; cursor: nwse-resize; }
+  .fit-readout { font-size: 0.75rem; color: var(--steel); margin-top: 6px; }
+  .fit-readout b { color: var(--text); }
+  .actions { display: flex; gap: 10px; margin-top: 14px; }
+</style>
+</head>
+<body>
+<main>
+  <div class="top-nav">
+    <a class="pill-link pill-home" href="index.html">BlaydeManual Home</a>
+  </div>
+  <h1>BLAYDE MANUAL <span>// MAINTAINER PORTAL</span></h1>
+  <p class="sub">Thank you for maintaining. Everything is in one place here.</p>
+
+  <div class="card" id="signInCard">
+    <p class="sub" style="margin:0 0 6px;">Sign in to review photo submissions, manage your vehicle's team, approve new manuals, and index one of your own.</p>
+    <p class="sub" id="carriedOverNote" style="display:none; margin:0 0 10px;"></p>
+    <button id="portalSignInBtn">Sign in with GitHub (mock)</button>
+  </div>
+
+  <div id="portalBody" style="display:none;">
+    <div id="tabNav">
+      <button class="tab-btn active" data-tab="review">Review Photo Requests</button>
+      <button class="tab-btn" data-tab="vehicles">My Vehicles</button>
+      <button class="tab-btn" data-tab="approve">Approve New Vehicles</button>
+      <button class="tab-btn" data-tab="issues">Issue Requests</button>
+      <button class="tab-btn" data-tab="index">Index a New Vehicle</button>
+    </div>
+
+    <!-- ============ Review Photo Requests (review-panel.js) ============ -->
+    <div class="tab-panel active" id="tab-review">
+      <p class="sub" id="repoScopeStatus"></p>
+      <div class="card" id="prListCard" style="display:none;">
+        <h2 style="font-size:0.95rem; margin:0 0 4px;">Photo requests</h2>
+        <div id="prList"></div>
+      </div>
+
+      <div class="card" id="reviewArea">
+        <h2 style="font-size:0.95rem; margin:0 0 4px;" id="reviewTitle"></h2>
+        <p class="sub" id="reviewMeta"></p>
+
+        <div id="pdfPickerRow">
+          <label style="display:block; font-size:0.8rem; color:var(--steel); margin-bottom:6px;">
+            This repo never stores the manual's own pages -- pick your own copy to render real before/after context.
+          </label>
+          <input type="file" id="pdfPicker" accept="application/pdf">
+        </div>
+
+        <div class="compare-wrap" id="compareWrap" style="display:none;">
+          <canvas id="pageCanvas"></canvas>
+          <div id="targetBox">
+            <img id="submittedPhotoImg" alt="submitted photo">
+            <div class="handle nw" data-corner="nw"></div>
+            <div class="handle ne" data-corner="ne"></div>
+            <div class="handle sw" data-corner="sw"></div>
+            <div class="handle se" data-corner="se"></div>
+          </div>
+        </div>
+        <div class="fit-readout" id="fitReadout"></div>
+
+        <div class="actions">
+          <button id="acceptBtn" disabled>Accept &amp; merge</button>
+          <button class="secondary" id="rejectBtn" disabled>Reject</button>
+          <button class="secondary" id="resetBoxBtn" disabled>Reset box to original</button>
+        </div>
+
+        <div id="prLog"></div>
+      </div>
+    </div>
+
+    <!-- ============ My Vehicles (my-vehicles.js) ============ -->
+    <div class="tab-panel" id="tab-vehicles">
+      <p class="sub" style="margin:0 0 6px;">Every vehicle you maintain, who else is on it, and how active they've been -- just for the vehicles you're actually on.</p>
+      <div id="vehicleTeams"></div>
+    </div>
+
+    <!-- ============ Approve New Vehicles (ORG -- org-approval.js) ============ -->
+    <div class="tab-panel" id="tab-approve">
+      <p class="sub" style="margin:0 0 6px;">Visible to every maintainer -- useful to check before you start indexing a vehicle that's already in the queue. Approve/reject only work if you're on the org team.</p>
+      <div class="card">
+        <h2 style="font-size:0.95rem; margin:0 0 4px;">Pending new vehicles</h2>
+        <div id="pendingList"></div>
+      </div>
+
+      <div class="card" id="orgReviewArea">
+        <h2 style="font-size:0.95rem; margin:0 0 4px;" id="orgReviewTitle"></h2>
+        <p class="sub" id="orgReviewMeta"></p>
+        <p class="sub" id="orgReadOnlyNote" style="display:none; color:#ffcc66;">You're not an org maintainer -- read-only view of what's pending.</p>
+
+        <p class="sub" style="margin:0 0 10px;">Submitter's source: <a id="orgSourceLink" href="#" target="_blank" rel="noopener" style="color:#9fe1cb;"></a></p>
+
+        <div class="card" id="orgExistingEditions" style="display:none; background:#000; margin-bottom:14px;">
+          <h2 style="font-size:0.85rem; margin:0 0 6px; color:#ffcc66;">This vehicle already has a repo</h2>
+          <p class="sub" id="orgExistingEditionsSummary" style="margin:0 0 8px;"></p>
+          <div id="orgExistingEditionsList"></div>
+        </div>
+
+        <label style="display:block; font-size:0.8rem; color:var(--steel); margin-bottom:6px;">
+          This repo never stores the manual's own pages -- pick your own copy to render real page context.
+        </label>
+        <input type="file" id="orgPdfPicker" accept="application/pdf">
+
+        <div id="orgGallery" style="margin-top:14px;"></div>
+        <div id="orgPager" style="display:flex; align-items:center; justify-content:center; gap:14px; margin-top:10px; font-size:0.8rem; color:var(--steel);">
+          <button id="orgPrevBtn" style="margin-top:0;">&larr; Prev</button>
+          <span id="orgPageLabel">0 of 0</span>
+          <button id="orgNextBtn" style="margin-top:0;">Next &rarr;</button>
+        </div>
+
+        <div class="actions">
+          <button id="orgApproveBtn" disabled>Approve &amp; create repo</button>
+          <button class="secondary" id="orgRejectBtn" disabled>Reject</button>
+        </div>
+        <div id="orgLog" style="font-family: ui-monospace, monospace; font-size: 0.76rem; color: #9fe1cb; white-space: pre-wrap; margin-top: 12px;"></div>
+      </div>
+    </div>
+
+    <!-- ============ Issue Requests (issue-requests.js) ============ -->
+    <div class="tab-panel" id="tab-issues">
+      <p class="sub" style="margin:0 0 10px;">Raise a specific change -- a photo's position or size, or a missing/wrong slot -- the same way any photo submission gets reviewed. Patch your own copy against the current approved photos, browse it page by page, and any box you adjust becomes the issue.</p>
+
+      <div class="card">
+        <h2 style="font-size:0.95rem; margin:0 0 4px;">Choose a repo to issue against</h2>
+        <select id="issueRepoSelect" style="width:100%; padding:8px; margin-bottom:12px; background:#000; color:var(--text); border:1px solid var(--steel-dark); border-radius:4px; font-size:0.85rem;"></select>
+        <p class="sub" id="issueSourceNote" style="margin:0 0 10px;"></p>
+
+        <label style="display:block; font-size:0.8rem; color:var(--steel); margin-bottom:6px;">
+          Pick your own copy of this exact document -- this repo never stores the manual's own pages.
+        </label>
+        <input type="file" id="issuePdfPicker" accept="application/pdf">
+        <button id="issueOpenEditorBtn" disabled style="margin-top:10px;">Patch &amp; open editor</button>
+      </div>
+
+      <div class="card" id="issueEditorArea" style="display:none;">
+        <div id="issueEditorHeader" style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
+          <p class="sub" id="issueEditorTitle" style="margin:0;"></p>
+          <div style="display:flex; align-items:center; gap:6px;">
+            <span class="sub" style="margin:0;">jump to page:</span>
+            <input type="number" id="issueJumpInput" min="1" style="width:60px; padding:5px 7px; background:#000; color:var(--text); border:1px solid var(--steel-dark); border-radius:4px; font-size:0.8rem;">
+            <button id="issueJumpBtn" style="margin:0; padding:6px 12px; font-size:0.78rem; background:var(--steel-dark);">Open page</button>
+          </div>
+        </div>
+        <div id="issuePageWrap" style="position:relative; max-width:100%; overflow:hidden; border:1px solid var(--steel-dark);">
+          <div id="issuePageInner" style="position:relative; transform-origin: top left;">
+            <img id="issuePageImg" alt="" style="display:block;">
+          </div>
+        </div>
+        <div id="issueEditorFooter" style="padding:10px 0 0; display:flex; gap:8px; align-items:center;">
+          <span class="sub" style="margin:0;">drag empty space to flag a missing/wrong slot &middot; drag an existing box to move it &middot; drag its corner to resize &middot; right-click an existing photo for more options</span>
+        </div>
+        <div id="issueRightClickMenu" style="display:none; position:fixed; z-index:60; background:var(--black-2); border:1px solid var(--steel-dark); border-radius:6px; padding:4px; font-size:0.82rem;"></div>
+      </div>
+
+      <div class="card" id="issuePendingCard" style="display:none;">
+        <h2 style="font-size:0.95rem; margin:0 0 8px;">Issues ready to submit</h2>
+        <div id="issuePendingList"></div>
+        <button id="issueSubmitAllBtn" style="margin-top:10px;">Submit these issues for review</button>
+        <p class="sub" style="margin:8px 0 0;">Submitted issues show up in <b>Review Photo Requests</b> and get reviewed the same way any photo submission does -- by a different maintainer, same accept/reject tool.</p>
+      </div>
+
+      <div id="issueLog" style="font-family:ui-monospace,monospace; font-size:0.76rem; color:#9fe1cb; white-space:pre-wrap; margin-top:10px;"></div>
+    </div>
+
+    <!-- ============ Index a New Vehicle (indexer-core.js / indexer-ui.js / indexer-review.js) ============ -->
+    <div class="tab-panel" id="tab-index">
+      <div class="card">
+        <label>PDF Manual</label>
+        <input type="file" id="pdfInput" accept="application/pdf">
+        <p class="sub" style="margin:6px 0 0;">Indexes the full document -- can take up to 20 minutes for a large manual. You can switch to another tab, it keeps working in the background. If you close this tab or the browser by accident, just come back and re-select the same PDF -- it'll pick up where it left off.</p>
+
+        <div id="resumeCard" style="display:none; background:#000; border:1px solid var(--steel-dark); border-radius:6px; padding:12px; margin-top:10px; font-size:0.82rem;"></div>
+
+        <button id="runBtn" disabled>Index it</button>
+        <button id="downloadBtn">Download manifest.json</button>
+
+        <div id="progressWrap" style="display:none;">
+          <div id="progressBar">[..........] waiting</div>
+          <div id="progressLabel"></div>
+          <div id="log"></div>
+        </div>
+
+        <div id="reviewSection">
+          <h2 style="font-size:0.95rem; margin:18px 0 4px;">Confirm the vehicle</h2>
+          <p class="sub" style="margin:0 0 6px;">Found from the manual itself -- fix it if it's wrong. Should match our naming convention: <code>make-model-year-range</code> (e.g. <code>suzuki-sv650-1999-2002</code>).</p>
+          <input type="text" id="vehicleSlugConfirm" style="margin-bottom:14px;">
+
+          <h2 style="font-size:0.95rem; margin:18px 0 4px;">What kind of manual is this?</h2>
+          <p class="sub" style="margin:0 0 6px;">A short label for this edition -- OEM, Haynes, Chilton, whatever it actually is. If this vehicle already has a repo, this joins it as a new edition alongside whatever's already there.</p>
+          <input type="text" id="editionIdConfirm" placeholder="OEM" style="margin-bottom:6px;">
+          <p class="sub" id="editionIdError" style="display:none; color:#ff6b6b; margin:0 0 14px;"></p>
+
+          <h2 style="font-size:0.95rem; margin:18px 0 4px;">Where can we find this manual?</h2>
+          <p class="sub" style="margin:0 0 6px;">A URL to where you got it (ManualsLib, a forum post, wherever) -- required, so the team can verify the source before approving. Not the file itself, just where to find it.</p>
+          <input type="text" id="sourceUrlConfirm" placeholder="https://www.manualslib.com/manual/..." style="margin-bottom:6px;">
+          <p class="sub" id="sourceUrlError" style="display:none; color:#ff6b6b; margin:0 0 14px;">Required before you can submit.</p>
+
+          <h2 style="font-size:0.95rem; margin:18px 0 4px;">Review photo identification for initial submission</h2>
+          <p class="sub" style="margin:0 0 6px;">Your initial submission must meet Maintainer Standards. Quick reminders: delete anything that isn't actually a photo opportunity (wording, a stray line, a repeated find) &mdash; a blank box that can never be filled just confuses the next contributor &middot; page numbers and running headers/footers aren't figures, delete those too &middot; when unsure, leave it -- a false positive costs a click to delete, a missed real one costs nothing since the team does a real check before this goes live.</p>
+          <div class="review-stats">
+            <div class="stat"><b id="statTotal">0</b><span>candidates</span></div>
+            <div class="stat"><b id="statTouched">0</b><span>reviewed</span></div>
+            <div class="stat"><b id="statPct">0%</b><span>coverage</span></div>
+          </div>
+          <div class="review-nudge" id="reviewNudge"></div>
+          <div id="reviewGallery"></div>
+          <div id="reviewPager" style="display:flex; align-items:center; justify-content:center; gap:14px; margin-top:10px; font-size:0.8rem; color:var(--steel);">
+            <button id="reviewPrevBtn" style="margin-top:0;">&larr; Prev</button>
+            <span id="reviewPageLabel">1 / 1</span>
+            <button id="reviewNextBtn" style="margin-top:0;">Next &rarr;</button>
+          </div>
+          <button id="submitBtn">Looks good, submit it</button>
+        </div>
+      </div>
+    </div>
+  </div>
+</main>
+
+<div id="pageModal">
+  <div id="pageModalHeader">
+    <p class="sub" id="pageModalTitle"></p>
+    <div id="pageModalJump">
+      <span class="sub" style="margin:0;">jump to page:</span>
+      <input type="number" id="pageModalJumpInput" min="1">
+      <button id="pageModalJumpBtn">Open page</button>
+    </div>
+  </div>
+  <div id="pageModalWrap"><img id="pageModalImg" alt=""></div>
+  <div id="pageModalFooter">
+    <span class="sub" style="margin:0;">drag empty space to add a missed photo &middot; drag a box to move &middot; drag its corner to resize</span>
+    <button id="pageModalClose">Close</button>
+  </div>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"
+        integrity="sha384-/1qUCSGwTur9vjf/z9lmu/eCUYbpOTgSjmpbMQZ1/CtX2v/WcAIKqRv+U1DUCG6e"
+        crossorigin="anonymous"></script>
+<script src="https://unpkg.com/tesseract.js@5/dist/tesseract.min.js"></script>
+<script src="registry.js"></script>
+<script src="indexer-core.js"></script>
+<script src="indexer-ui.js"></script>
+<script src="indexer-review.js"></script>
+<script src="mock-pr-store.js"></script>
+<script src="review-panel.js"></script>
+<script src="org-approval.js"></script>
+<script src="my-vehicles.js"></script>
+<script src="issue-requests.js"></script>
+<script src="maintainer-portal.js"></script>
+</body>
+</html>

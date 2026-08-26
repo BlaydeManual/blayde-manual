@@ -1,0 +1,63 @@
+name: Validate contributed photo
+
+on:
+  pull_request:
+    paths:
+      - "images/**"
+
+jobs:
+  checker:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install checker dependencies
+        run: pip install pillow numpy
+
+      - name: Find changed photos
+        id: changed
+        run: |
+          git diff --name-only origin/${{ github.base_ref }}...HEAD -- images/ > changed_files.txt
+          cat changed_files.txt
+
+      - name: Enforce one procedure_id per PR
+        run: |
+          python - <<'EOF'
+          from pathlib import Path
+
+          files = [l.strip() for l in open("changed_files.txt") if l.strip()]
+          if not files:
+              print("No image files changed -- nothing to validate.")
+              raise SystemExit(0)
+
+          def procedure_id_of(path):
+              stem = Path(path).stem
+              return stem.split("__")[0]
+
+          ids = {procedure_id_of(f) for f in files}
+          if len(ids) > 1:
+              print("This PR touches more than one procedure_id:")
+              for pid in sorted(ids):
+                  print(f"  - {pid}")
+              print("\nPlease split this into separate PRs, one procedure_id each -- "
+                    "small PRs get reviewed and merged much faster, and one bad photo "
+                    "won't block the rest.")
+              raise SystemExit(1)
+          print(f"OK -- single procedure_id: {ids.pop()}")
+          EOF
+
+      - name: Run checker.py against changed photos
+        run: |
+          FILES=$(cat changed_files.txt)
+          if [ -z "$FILES" ]; then
+            echo "No image files to check."
+            exit 0
+          fi
+          python checker.py $FILES --manifest manifest.json
+          # checker.py exits non-zero on any hard-fail -- that's what fails this step.
