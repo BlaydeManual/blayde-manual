@@ -384,14 +384,14 @@
       <div class="card">
         <label>PDF Manual</label>
         <input type="file" id="pdfInput" accept="application/pdf">
-        <p class="sub" style="margin:6px 0 0;">This is a one-time step for this manual -- it doesn't run again once it's done. Indexes the full document, which can take up to 20 minutes for a large one. You can switch to another tab, it keeps working in the background. If you close this tab or the browser by accident, just come back and re-select the same PDF -- it'll pick up where it left off.</p>
+        <p class="sub" style="margin:6px 0 0;">This is a one-time step for this manual and won't run again once it's done. It indexes the full document, which can take up to 20 minutes for a large one. You can switch to another tab while it keeps working in the background. If you close this tab or the browser by accident, just come back and re-select the same PDF to pick up where it left off.</p>
 
         <div id="resumeCard" style="display:none; background:#000; border:1px solid var(--steel-dark); border-radius:6px; padding:12px; margin-top:10px; font-size:0.82rem;"></div>
 
         <details style="margin-top:10px;">
           <summary>Advanced: speed</summary>
-          <p class="sub" style="margin:8px 0 6px;">Indexing runs single-threaded (<b>Normal</b>) by default -- deliberately. A real run at a higher setting once locked up a real machine hard enough to need a power-cycle. Faster settings use more of this device's CPU at once -- more workers, more speed, more load -- capped well below what caused that. Adjustable while paused or before starting; greyed out while actively running.</p>
-          <label style="margin-top:0;"><span id="concurrencySpeedLabel">Normal</span> -- <span id="concurrencyValue">1</span> worker of <span id="concurrencyMax"></span> allowed on this device</label>
+          <p class="sub" style="margin:8px 0 6px;">Indexing runs single-threaded (<b>Normal</b>) by default, deliberately: a real run at a higher setting once locked up a real machine hard enough to need a power-cycle. Faster settings use more of this device's CPU at once (more workers, more speed, more load), capped well below what caused that. Adjustable while paused or before starting; greyed out while actively running.</p>
+          <label style="margin-top:0;"><span id="concurrencySpeedLabel">Normal</span>: <span id="concurrencyValue">1</span> worker of <span id="concurrencyMax"></span> allowed on this device</label>
           <input type="range" id="concurrencyInput" min="1" value="1" style="width:100%;">
         </details>
 
@@ -407,7 +407,7 @@
 
         <div id="reviewSection">
           <h2 style="font-size:0.95rem; margin:18px 0 4px;">Confirm the vehicle</h2>
-          <p class="sub" style="margin:0 0 6px;">Guessed from the manual's own cover page (falls back to the filename if that doesn't work) -- fix it if it's wrong. Should match our naming convention: <code>make-model-year-range</code> (e.g. <code>suzuki-sv650-1999-2002</code>). The year range is what separates one generation's repo from another's -- get it wrong and this becomes a second, duplicate repo for the same vehicle. Verify the actual model-year range against the manual itself (the cover/intro page usually states it) before confirming, not just a guess.</p>
+          <p class="sub" style="margin:0 0 6px;">Guessed from the manual's own cover page (falls back to the filename if that doesn't work); fix it if it's wrong. Should match our naming convention: <code>make-model-year-range</code> (e.g. <code>suzuki-sv650-1999-2002</code>). The year range is what separates one generation's repo from another's, so getting it wrong creates a second, duplicate repo for the same vehicle. Verify the actual model-year range against the manual itself (the cover/intro page usually states it) before confirming, not just a guess.</p>
           <input type="text" id="vehicleSlugConfirm" style="margin-bottom:6px;">
           <p class="sub" id="vehicleSlugSimilarNote" style="display:none; color:#ffcc66; margin:0 0 14px;"></p>
 
@@ -426,7 +426,7 @@
           <p class="sub" id="vehicleClassRequiredError" style="display:none; color:#ff6b6b; margin:0 0 14px;">Required before you can submit.</p>
 
           <h2 style="font-size:0.95rem; margin:18px 0 4px;">What kind of manual is this?</h2>
-          <p class="sub" style="margin:0 0 6px;">A short label for this edition -- OEM, Haynes, Chilton, whatever it actually is. If this vehicle already has a repo, this joins it as a new edition alongside whatever's already there. Required.</p>
+          <p class="sub" style="margin:0 0 6px;">A short label for this edition, such as OEM, Haynes, or Chilton. If this vehicle already has a repo, this joins it as a new edition alongside whatever's already there. Required.</p>
           <input type="text" id="editionIdConfirm" placeholder="OEM" required style="margin-bottom:6px;">
           <p class="sub" id="editionIdRequiredError" style="display:none; color:#ff6b6b; margin:0 0 4px;">Required before you can submit.</p>
           <p class="sub" id="editionIdError" style="display:none; color:#ff6b6b; margin:0 0 14px;"></p>
@@ -437,7 +437,7 @@
           <p class="sub" id="sourceUrlError" style="display:none; color:#ff6b6b; margin:0 0 14px;">Required before you can submit.</p>
 
           <h2 style="font-size:0.95rem; margin:18px 0 4px;">Review photo identification for initial submission</h2>
-          <p class="sub" style="margin:0 0 6px;">Your initial submission must meet Maintainer Standards. Quick reminders: delete anything that isn't actually a photo opportunity (wording, a stray line, a repeated find) &mdash; a blank box that can never be filled just confuses the next contributor &middot; page numbers and running headers/footers aren't figures, delete those too &middot; when unsure, leave it -- a false positive costs a click to delete, a missed real one costs nothing since the team does a real check before this goes live.</p>
+          <p class="sub" style="margin:0 0 6px;">Your initial submission must meet Maintainer Standards. Quick reminders: delete anything that isn't actually a photo opportunity (wording, a stray line, a repeated find), since a blank box that can never be filled just confuses the next contributor &middot; page numbers and running headers/footers aren't figures, delete those too &middot; when unsure, leave it: a false positive costs a click to delete, but a missed real one costs nothing, since the team does a real check before this goes live.</p>
           <div class="review-stats">
             <div class="stat"><b id="statTotal">0</b><span>candidates</span></div>
             <div class="stat"><b id="statTouched">0</b><span>reviewed</span></div>
