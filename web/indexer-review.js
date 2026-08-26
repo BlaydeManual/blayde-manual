@@ -97,16 +97,16 @@ document.getElementById("vehicleSlugConfirm").addEventListener("change", async (
   saveReviewStateNow();
 });
 
-// Off-by-one-year generation guard -- see findSimilarVehicleSlugs
+// Mistyped-release-year guard -- see findSimilarVehicleSlugs
 // (indexer-core.js) for why this matters: vehicle_slug is what
 // separates one repo from another, and nothing else catches a
-// near-miss year range against something already registered.
+// near-miss release year against something already registered.
 async function checkSimilarVehicleSlugs(slug) {
   const note = document.getElementById("vehicleSlugSimilarNote");
   const result = await findSimilarVehicleSlugs(slug, CANONICAL_REGISTRY_URL);
   if (!result.checked || !result.similar.length) { note.style.display = "none"; return; }
   const list = result.similar.map((v) => v.vehicle_slug).join(", ");
-  note.textContent = `Already registered for this vehicle, different year range: ${list}. If this is really the same generation, match one of those exactly instead -- if it's genuinely a different generation, this is correct as-is.`;
+  note.textContent = `Already registered for this vehicle, different release year: ${list}. If this is really the same generation, match one of those exactly instead. If it's genuinely a different generation (a later manual saying this one's coverage actually ends here), this is correct as-is.`;
   note.style.display = "block";
 }
 
