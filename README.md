@@ -72,4 +72,6 @@ stylize.py      house line-art filter (still Python, see above)
 LEGAL.md        legal reasoning behind the architecture
 ROADMAP.md      deferred features and open design problems
 CHANGELOG.md    what changed and why, including the Python -> browser move
+THIRD-PARTY-NOTICES.md   every third-party library this project uses,
+                its license, and how it's loaded
 ```

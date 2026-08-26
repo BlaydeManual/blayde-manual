@@ -251,7 +251,14 @@ Remaining/ongoing items from the first pass:
   actually exposed to real users.
 - Supply-chain: `@cantoo/pdf-lib` currently loads from a CDN at runtime
   with no Subresource Integrity hash. Either add SRI or self-host the
-  library before this is something other people run.
+  library before this is something other people run. **Found while
+  auditing this for the third-party-notices pass (2026-08-26):
+  `tesseract.js` is worse off** -- it's loaded via `@5`, a floating
+  major-version tag rather than a pinned exact version, with no SRI
+  hash either. A compromised or malicious CDN release under that tag
+  would run in every visitor's browser with no version pin or hash to
+  catch it. Same fix as pdf-lib: pin the exact version, add SRI, or
+  self-host.
 - The `--live` paths in `propose_new_vehicle.py` / `approve_registry_entry.py`
   already use list-form `subprocess.run` (no shell injection surface),
   worth re-confirming once those paths actually get exercised for real.
@@ -3119,3 +3126,11 @@ Two registration settings decided, checked against GitHub's real OAuth App docs 
 
 - **Device Flow: off.** That flow is for browserless/limited-input devices (CLI tools, smart TVs) authorizing without a redirect URL. Blayde Manual is a browser web app with a real callback URL, so it doesn't apply.
 - **Expire user access tokens: off, for now.** GitHub's own guidance is to disable this only if the app's authentication code hasn't yet been updated to handle short-lived tokens -- exactly this project's situation, since the Cloudflare Worker that will do the token exchange doesn't exist yet and has no refresh-token logic. Turning this on today would mean tokens silently expire once real sign-in ships, logging people out with no way to refresh. **Flip this on once the worker is built with refresh-token handling** -- GitHub calls expiring tokens the preferred long-term posture, this is a temporary deferral, not a permanent decision.
+
+## GitHub App migration -- real repo-scoped auth, not just app-level trust (2026-08-26)
+
+The current OAuth App uses the `public_repo` scope. Checked against GitHub's own docs (docs.github.com/en/apps/oauth-apps/building-oauth-apps/scopes-for-oauth-apps): that scope grants "read/write access to code, commit statuses, repository projects, collaborators, and deployment statuses for public repositories and organizations" -- every public repo the signed-in person can act on, not just BlaydeManual's. Classic OAuth Apps have no mechanism to scope a token to specific repos or orgs at all.
+
+What actually keeps this site from touching anything outside BlaydeManual today is application-level, not auth-level: the repo-scope validation already built into `review-panel.js`/`org-approval.js` checks any `repo_url` against the registry before making a mutating API call. That's real and it works, but it's "our code chooses not to," not "the token literally can't." A bug in that check, or a leaked token, could act on any public repo the signed-in user can write to.
+
+**Decision: migrate to a GitHub App, installed only on the BlaydeManual org, once there's time for it.** Confirmed with the project owner this is worth doing for real, not just meeting the baseline ("I want 'the best' not just what the standards are") -- GitHub Apps use installation-scoped tokens tied to the specific repos the app was installed on, so the restriction becomes structural instead of app-level. This is real, non-trivial work, not a config toggle: a different auth flow (installation tokens instead of user-authorization tokens), different token lifecycle, likely different permission model for what "signing in as a contributor" even means under an App-based flow. Not blocking the current OAuth App rollout -- logged here as the next real hardening step, not a redo of what just shipped.
