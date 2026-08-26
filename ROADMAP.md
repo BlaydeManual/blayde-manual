@@ -3146,3 +3146,9 @@ What actually keeps this site from touching anything outside BlaydeManual today 
 ## Backlog: speed slider should show discrete stops, not read as a continuous bar (2026-08-26)
 
 The Advanced: speed control (indexer-ui.js/maintainer.html) already snaps to whole numbers (default `step="1"` on the range input), but visually it looks like a smooth 0-100% bar with no indication of where the real stops (1, 2, 3... up to the device's cap) actually are. Flagged directly: should visually show the discrete selectable positions, not read as a continuous slider. Likely fix is a `<datalist>` with tick marks matching the cap, not a functional change to the underlying value logic. Not urgent -- logged to come back to, not fixed in the moment.
+
+## Real evidence: even 2 workers OOM-killed Firefox on Linux (2026-08-26)
+
+Direct report while testing the Advanced: speed control: Firefox on Linux was killed by the kernel's OOM killer at only 2 concurrent OCR workers -- not the higher settings, just "Faster." Same machine, same manual, run in Vivaldi (Chromium-based) at the same setting: no issue. Confirms the pool-size hotfix's own reasoning was correct to be conservative -- "no evidence yet on whether 2-3 is actually safe" turned out to mean genuinely not safe, at least on this real combination of OS and browser engine.
+
+Real, useful data point for whenever indexing_metrics accumulates enough real manifests to inform a safer default: browser engine (Firefox/Gecko vs. Chromium) may matter as much as raw core count or RAM. Not asking for a code change from this alone -- one data point, not a pattern yet -- but worth remembering when that future concurrency decision actually gets made, and a real argument for keeping the single-threaded default conservative in the meantime.

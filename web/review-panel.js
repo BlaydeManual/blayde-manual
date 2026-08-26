@@ -349,7 +349,7 @@ window.addEventListener("mouseup", () => { dragState = null; });
 // to) sidesteps that entirely -- two clearly-attributed commits
 // instead of one that might silently fail. ----
 document.getElementById("acceptBtn").addEventListener("click", async () => {
-  const note = prompt("Optional note for the contributor (e.g. \"looks great, thanks!\"):", "") || "";
+  const note = (await blaydePrompt("Optional note for the contributor (e.g. \"looks great, thanks!\"):", "")) || "";
   const session = BlaydeAuth.getSession();
   const [owner, repo] = ownerRepo(currentPR.repo_url);
   document.getElementById("acceptBtn").disabled = true;
@@ -405,7 +405,7 @@ document.getElementById("acceptBtn").addEventListener("click", async () => {
 });
 
 document.getElementById("rejectBtn").addEventListener("click", async () => {
-  const note = prompt("Reason for the contributor (helps them fix it and resubmit):", "") || "";
+  const note = (await blaydePrompt("Reason for the contributor (helps them fix it and resubmit):", "")) || "";
   const session = BlaydeAuth.getSession();
   const [owner, repo] = ownerRepo(currentPR.repo_url);
   document.getElementById("acceptBtn").disabled = true;

@@ -242,26 +242,70 @@ async function ocrTitlePageForSlug(pdfDoc) {
 
 // Heuristic only, not a claim of accuracy -- the maintainer confirms
 // or corrects the result either way, same as the filename guess did.
-// Title pages overwhelmingly read like "MAKE MODEL YYYY-YYYY SERVICE
-// MANUAL" or "MAKE MODEL YYYY" -- find a year (or year range) and take
-// the words immediately before it, which is consistently the actual
-// make/model, not front-matter noise above it (publisher name, "OEM
-// SERVICE MANUAL" header text, etc.).
+//
+// Verified against a real manual (sv650.pdf, real Tesseract OCR of the
+// actual page 1, not a guess): the previous single-regex-over-the-
+// whole-blob approach broke two ways at once. First, it matched the
+// WRONG line -- a ManualsLib source watermark ("Manuals / Brands /
+// Suzuki Manuals / Motorcycle / 1999 SV650 / Service manual / PDF")
+// also contains a year, and being earlier in the text, it won over the
+// real title, producing "pdf-suzuki-1999-1999". Second, even matching
+// the right line, the "words immediately before the year = make/model"
+// assumption breaks on a real title like "SUZUKI 1999 SV650 SERVICE
+// MANUAL" -- the year sits BETWEEN make and model here, not after both.
+//
+// Fixed by scoring whole LINES instead of one regex over a flattened
+// blob: strip known watermark lines outright (this ManualsLib pattern,
+// plus the "downloaded from ... manuals search engine" one already
+// found), keep only lines that contain a year, prefer the shortest
+// remaining one (a real title page reads like a short banner, not a
+// paragraph), then strip the year and generic words like
+// "service"/"manual" from THAT line specifically, wherever the year
+// actually sits in it.
+//
+// Real, separate limit found in the same test: this document's actual
+// cover text says "SUZUKI 1999 SV650 SERVICE MANUAL" -- one year, no
+// range at all. "1999-2002" is real-world vehicle-generation knowledge,
+// not something printed in this document -- no amount of OCR or extra
+// pages recovers a fact the source text doesn't state. A single year
+// still produces a real, useful starting point (a correct make/model
+// and year), which is what the maintainer confirms/corrects either way.
 function guessVehicleSlugFromText(text) {
-  // Same watermark boilerplate isFlattenedScanPage already strips
-  // elsewhere in this file -- without this, "downloaded from ...
-  // manuals search engine" contaminates the guess (confirmed: it was
-  // winning out over the real make/model on a real scanned cover page).
-  const cleaned = text
-    .replace(/downloaded from.*manuals search engine/i, " ")
-    .replace(/\s+/g, " ").trim();
-  const match = cleaned.match(/([A-Za-z][A-Za-z0-9 ,.'-]{2,40}?)\s+((?:19|20)\d{2})(?:\s*-\s*((?:19|20)\d{2}))?\b/);
-  if (!match) return null;
-  const words = match[1].trim().split(" ").filter(Boolean);
-  const makeModel = words.slice(-4).join(" ");
-  if (!makeModel) return null;
-  const y1 = match[2], y2 = match[3] || match[2];
-  return slugify(`${makeModel} ${y1}-${y2}`, 60);
+  const isNoiseLine = (line) =>
+    /manualslib\.com/i.test(line) ||
+    /downloaded from.*manuals search engine/i.test(line) ||
+    /^manuals\s*\//i.test(line) || /\/\s*brands\s*\//i.test(line);
+
+  const candidates = text.split(/\r?\n/)
+    .map((l) => l.trim())
+    .filter((l) => l && !isNoiseLine(l) && /(?:19|20)\d{2}/.test(l));
+  if (!candidates.length) return null;
+
+  candidates.sort((a, b) => a.length - b.length);
+  const best = candidates[0];
+
+  // A real range (YYYY-YYYY) has to be matched and stripped as ONE
+  // unit -- matching only the first year and leaving the second (plus
+  // its dash) behind in the line was a real regression caught by
+  // re-testing against a range-format title after this fix.
+  const rangeMatch = best.match(/(?:19|20)\d{2}\s*-\s*(?:19|20)\d{2}/);
+  let year1, year2, yearSpan;
+  if (rangeMatch) {
+    yearSpan = rangeMatch[0];
+    const years = yearSpan.match(/(?:19|20)\d{2}/g);
+    year1 = years[0];
+    year2 = years[1];
+  } else {
+    yearSpan = best.match(/(?:19|20)\d{2}/)[0];
+    year1 = year2 = yearSpan;
+  }
+
+  const words = best
+    .replace(yearSpan, " ")
+    .replace(/\bservice\b|\bmanual\b|\bowners?\b|\brepair\b|\bworkshop\b/gi, " ")
+    .trim().split(/\s+/).filter(Boolean);
+  if (!words.length) return null;
+  return slugify(`${words.join(" ")} ${year1}-${year2}`, 60);
 }
 
 // Public entry point: OCR guess first, filename guess as the fallback

@@ -5,6 +5,110 @@
 // public reads (raw.githubusercontent.com + the GitHub contents API --
 // same as the Python side, no account tied to anything).
 
+// Custom confirm/prompt -- native confirm()/alert()/prompt() have a
+// real, user-triggerable failure mode: after several appear in a short
+// time, Chromium offers a "Prevent this page from creating additional
+// dialogs" checkbox. Checking it -- a completely reasonable thing to
+// do after deleting several review candidates in a row -- silently
+// makes every confirm()/prompt() on the page a no-op from then on,
+// with zero visible error. Confirmed as the real cause of "delete
+// stopped working" during a live review pass. A custom, in-page
+// dialog can't be suppressed this way. Styles are injected once, on
+// first use, and read this page's own --black-2/--steel-dark/--red/
+// --text custom properties (inherited at paint time, so it doesn't
+// matter that this file loads before each page's own <style> block).
+let blaydeDialogStylesInjected = false;
+function ensureBlaydeDialogStyles() {
+  if (blaydeDialogStylesInjected) return;
+  blaydeDialogStylesInjected = true;
+  const style = document.createElement("style");
+  style.textContent = `
+    .blayde-dialog-overlay {
+      position: fixed; inset: 0; background: rgba(0,0,0,0.75); z-index: 1000;
+      display: flex; align-items: center; justify-content: center; padding: 20px;
+    }
+    .blayde-dialog {
+      background: var(--black-2, #16181c); border: 1px solid var(--steel-dark, #666c76);
+      border-left: 3px solid var(--red, #c8102e); border-radius: 8px;
+      padding: 18px 20px; max-width: 420px; width: 100%;
+      color: var(--text, #e8e8ea); font: inherit; font-size: 0.88rem; line-height: 1.5;
+    }
+    .blayde-dialog p { margin: 0 0 14px; }
+    .blayde-dialog-input {
+      width: 100%; padding: 8px; margin-bottom: 14px; background: #000;
+      color: var(--text, #e8e8ea); border: 1px solid var(--steel-dark, #666c76);
+      border-radius: 4px; font-size: 0.85rem; box-sizing: border-box;
+    }
+    .blayde-dialog-actions { display: flex; justify-content: flex-end; gap: 8px; }
+    .blayde-dialog-actions button {
+      background: var(--red, #c8102e); color: #fff; border: none; padding: 8px 16px;
+      font-size: 0.85rem; font-weight: 700; border-radius: 6px; cursor: pointer; margin: 0;
+    }
+    .blayde-dialog-actions button.secondary { background: var(--steel-dark, #666c76); }
+  `;
+  document.head.appendChild(style);
+}
+
+function blaydeConfirm(message) {
+  ensureBlaydeDialogStyles();
+  return new Promise((resolve) => {
+    const overlay = document.createElement("div");
+    overlay.className = "blayde-dialog-overlay";
+    overlay.innerHTML = `
+      <div class="blayde-dialog">
+        <p></p>
+        <div class="blayde-dialog-actions">
+          <button class="secondary" data-action="cancel">Cancel</button>
+          <button data-action="ok">OK</button>
+        </div>
+      </div>`;
+    overlay.querySelector("p").textContent = message; // textContent, not innerHTML -- message may contain real procedure IDs/user text
+    document.body.appendChild(overlay);
+    overlay.addEventListener("click", (e) => {
+      const action = e.target.dataset.action;
+      if (!action) return;
+      overlay.remove();
+      resolve(action === "ok");
+    });
+  });
+}
+
+function blaydePrompt(message, defaultValue = "") {
+  ensureBlaydeDialogStyles();
+  return new Promise((resolve) => {
+    const overlay = document.createElement("div");
+    overlay.className = "blayde-dialog-overlay";
+    overlay.innerHTML = `
+      <div class="blayde-dialog">
+        <p></p>
+        <input type="text" class="blayde-dialog-input">
+        <div class="blayde-dialog-actions">
+          <button class="secondary" data-action="cancel">Cancel</button>
+          <button data-action="ok">OK</button>
+        </div>
+      </div>`;
+    overlay.querySelector("p").textContent = message;
+    const input = overlay.querySelector(".blayde-dialog-input");
+    input.value = defaultValue;
+    document.body.appendChild(overlay);
+    input.focus();
+    input.select();
+    function finish(action) {
+      const value = action === "ok" ? input.value : null;
+      overlay.remove();
+      resolve(value);
+    }
+    overlay.addEventListener("click", (e) => {
+      const action = e.target.dataset.action;
+      if (action) finish(action);
+    });
+    input.addEventListener("keydown", (e) => {
+      if (e.key === "Enter") finish("ok");
+      if (e.key === "Escape") finish("cancel");
+    });
+  });
+}
+
 async function loadRegistry(registryUrl) {
   const resp = await fetch(registryUrl);
   if (!resp.ok) throw new Error(`could not load registry (${resp.status})`);
