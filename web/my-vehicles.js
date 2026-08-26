@@ -40,26 +40,34 @@ function initVehiclesTab() {
   renderVehicleTeams();
 }
 
-function renderVehicleTeams() {
+// isRegisteredRepo/vehicleSlugForRepo are real, network-backed checks
+// now (review-panel.js) -- both async, so this whole render pass has
+// to be too. A plain .filter(isRegisteredRepo) would silently pass
+// every repo (a Promise is always truthy), quietly defeating the exact
+// guard this is supposed to be.
+async function renderVehicleTeams() {
   const wrap = document.getElementById("vehicleTeams");
   wrap.innerHTML = "";
-  const approved = MOCK_MAINTAINER.reposmaintained.filter(isRegisteredRepo); // same guard as Review Photo Requests
+  const checks = await Promise.all(MOCK_MAINTAINER.reposmaintained.map(async (r) => [r, await isRegisteredRepo(r)]));
+  const approved = checks.filter(([, ok]) => ok).map(([r]) => r);
   if (!approved.length) {
     wrap.innerHTML = `<p class="sub">No maintained repos passed the registry check.</p>`;
     return;
   }
-  approved.forEach((repoUrl) => {
+  for (const repoUrl of approved) {
     // This vehicle no longer implies one manual (see ROADMAP.md's
     // multi-manual correction) -- the roster below is correctly still
     // one per repo (maintainer authority is vehicle-wide), but it's
     // worth naming which editions that authority actually covers.
     const norm = (u) => (u || "").replace(/\/$/, "").toLowerCase();
-    const editions = MOCK_REGISTRY.vehicles
+    const registryData = await loadRegistry(CANONICAL_REGISTRY_URL_FOR_REVIEW).catch(() => ({ vehicles: [] }));
+    const editions = (registryData.vehicles || [])
       .filter((v) => norm(v.repo_url) === norm(repoUrl))
       .map((v) => v.edition_id);
+    const vehicleSlug = await vehicleSlugForRepo(repoUrl);
     const card = document.createElement("div");
     card.className = "card";
-    card.innerHTML = `<h3 class="vehicle-bar">${vehicleSlugForRepo(repoUrl)}</h3>
+    card.innerHTML = `<h3 class="vehicle-bar">${vehicleSlug}</h3>
       <p class="sub" style="margin:0 0 10px;">Covers ${editions.length} edition${editions.length === 1 ? "" : "s"}: ${editions.join(", ")}</p>
       <div class="roster"></div>
       <div style="display:flex; gap:8px; margin-top:12px;">
@@ -82,7 +90,7 @@ function renderVehicleTeams() {
       // [mock] real call: PUT /repos/{owner}/{repo}/collaborators/{handle}
     });
     wrap.appendChild(card);
-  });
+  }
 }
 
 function renderRoster(rosterEl, repoUrl) {
@@ -106,8 +114,9 @@ function renderRoster(rosterEl, repoUrl) {
     rosterEl.appendChild(row);
   });
   rosterEl.querySelectorAll(".remove-btn").forEach((btn) => {
-    btn.addEventListener("click", () => {
-      if (!confirm(`Remove @${btn.dataset.handle} as a maintainer of ${vehicleSlugForRepo(repoUrl)}?`)) return;
+    btn.addEventListener("click", async () => {
+      const vehicleSlug = await vehicleSlugForRepo(repoUrl);
+      if (!(await blaydeConfirm(`Remove @${btn.dataset.handle} as a maintainer of ${vehicleSlug}?`))) return;
       MOCK_VEHICLE_TEAMS[repoUrl] = MOCK_VEHICLE_TEAMS[repoUrl].filter((m) => m.handle !== btn.dataset.handle);
       renderRoster(rosterEl, repoUrl);
       // [mock] real call: DELETE /repos/{owner}/{repo}/collaborators/{handle}

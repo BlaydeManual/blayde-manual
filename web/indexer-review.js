@@ -202,8 +202,9 @@ function buildFigCard(entry) {
     <button class="del-btn" title="delete -- not a real photo opportunity, never submitted">×</button>
     <img alt="${entry.procedure_id}">
     <div class="id">${entry.procedure_id}</div>`;
-  card.querySelector(".del-btn").addEventListener("click", () => {
-    if (!confirm(`Delete ${entry.procedure_id}? This isn't a real photo opportunity -- it'll never be submitted, and there's no undo (redraw it if you're wrong).`)) return;
+  card.querySelector(".del-btn").addEventListener("click", async () => {
+    const ok = await blaydeConfirm(`Delete ${entry.procedure_id}? This isn't a real photo opportunity -- it'll never be submitted, and there's no undo (redraw it if you're wrong).`);
+    if (!ok) return;
     reviewManifest.entries = reviewManifest.entries.filter((e) => e !== entry);
     renderReviewGallery();
   });
