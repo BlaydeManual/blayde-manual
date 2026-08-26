@@ -130,7 +130,9 @@ async function runIndexing(resume) {
   appendLog(`DONE in ${secs}s -- ${manifest.entries.length} entries across ${Object.keys(manifest.page_geometry).length} page(s)`);
   appendLog(`It's up to the community to keep going. Thank you for contributing.`);
 
-  finalizeVehicleSlug(manifest, suggestVehicleSlug(selectedPdfFilename));
+  appendLog(`Reading the manual's own cover page to guess the vehicle...`);
+  const slugGuess = await suggestVehicleSlug(selectedPdfDoc, selectedPdfFilename);
+  finalizeVehicleSlug(manifest, slugGuess);
 
   lastManifest = manifest;
   document.getElementById("downloadBtn").style.display = "inline-block";
