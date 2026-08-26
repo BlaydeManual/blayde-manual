@@ -34,10 +34,13 @@ function startReview(manifest) {
   reviewManifest = manifest;
   manifest.entries.forEach((e) => {
     if (e._touched === undefined) e._touched = false;
+    if (e._seen === undefined) e._seen = false;
   });
   reviewChunkIdx = 0;
   document.getElementById("reviewSection").style.display = "block";
   document.getElementById("vehicleSlugConfirm").value = manifest.vehicle;
+  document.getElementById("vehicleSlugSimilarNote").style.display = "none";
+  checkSimilarVehicleSlugs(manifest.vehicle);
   document.getElementById("editionIdConfirm").value = manifest.edition_id || "";
   document.getElementById("editionIdError").style.display = "none";
   document.getElementById("editionIdRequiredError").style.display = "none";
@@ -50,12 +53,26 @@ function startReview(manifest) {
 // maintainer edits the confirmed slug -- cheap and idempotent, so it
 // doesn't matter whether this fires before or after new figures get
 // added in the page modal.
-document.getElementById("vehicleSlugConfirm").addEventListener("change", (e) => {
+document.getElementById("vehicleSlugConfirm").addEventListener("change", async (e) => {
   const slug = e.target.value.trim();
   if (!reviewManifest || !slug) return;
   finalizeVehicleSlug(reviewManifest, slug);
   checkEditionIdCollision();
+  await checkSimilarVehicleSlugs(slug);
 });
+
+// Off-by-one-year generation guard -- see findSimilarVehicleSlugs
+// (indexer-core.js) for why this matters: vehicle_slug is what
+// separates one repo from another, and nothing else catches a
+// near-miss year range against something already registered.
+async function checkSimilarVehicleSlugs(slug) {
+  const note = document.getElementById("vehicleSlugSimilarNote");
+  const result = await findSimilarVehicleSlugs(slug, CANONICAL_REGISTRY_URL);
+  if (!result.checked || !result.similar.length) { note.style.display = "none"; return; }
+  const list = result.similar.map((v) => v.vehicle_slug).join(", ");
+  note.textContent = `Already registered for this vehicle, different year range: ${list}. If this is really the same generation, match one of those exactly instead -- if it's genuinely a different generation, this is correct as-is.`;
+  note.style.display = "block";
+}
 
 // Required, not optional -- an org maintainer approving a new vehicle
 // has nothing to verify against without it (see propose_new_vehicle.py's
@@ -97,9 +114,16 @@ document.getElementById("editionIdConfirm").addEventListener("input", (e) => {
   if (e.target.value.trim()) document.getElementById("editionIdRequiredError").style.display = "none";
 });
 
+// "Reviewed" counts a candidate whose real thumbnail was actually seen
+// in the gallery (_seen, set on a successful render below), not just
+// one that got dragged/resized in the page modal (_touched). Confirmed
+// directly: the actual quality bar at this stage is "does this show a
+// real photo, not text or blank space" -- glancing at a real rendered
+// thumbnail and moving on IS that check. The modal is only needed for
+// something that looks wrong, not for every candidate.
 function reviewStats() {
   const total = reviewManifest.entries.length;
-  const touched = reviewManifest.entries.filter((e) => e._touched).length;
+  const touched = reviewManifest.entries.filter((e) => e._touched || e._seen).length;
   const pct = total ? Math.round((touched / total) * 100) : 0;
   return { total, touched, pct };
 }
@@ -172,7 +196,7 @@ function buildFigCard(entry) {
   // completion stat or leave a permanently-unfillable procedure in the
   // shipped manifest. See ROADMAP.md for the full reasoning.
   const card = document.createElement("div");
-  card.className = "fig" + (entry._touched ? " touched" : "");
+  card.className = "fig" + (entry._touched || entry._seen ? " touched" : "");
   card.dataset.id = entry.procedure_id;
   card.innerHTML = `
     <button class="del-btn" title="delete -- not a real photo opportunity, never submitted">×</button>
@@ -223,6 +247,11 @@ async function refreshFigThumbnail(imgEl, entry) {
     imgEl.src = out.toDataURL("image/jpeg", 0.85);
     imgEl.classList.remove("thumb-failed");
     imgEl.title = "";
+    if (!entry._seen) {
+      entry._seen = true;
+      imgEl.closest(".fig")?.classList.add("touched");
+      updateReviewStats();
+    }
   } catch (e) {
     // Was silently left blank before -- a real render failure (or a
     // page genuinely out of range in a partial test run) looked

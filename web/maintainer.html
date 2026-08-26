@@ -392,8 +392,9 @@
 
         <div id="reviewSection">
           <h2 style="font-size:0.95rem; margin:18px 0 4px;">Confirm the vehicle</h2>
-          <p class="sub" style="margin:0 0 6px;">Found from the manual itself -- fix it if it's wrong. Should match our naming convention: <code>make-model-year-range</code> (e.g. <code>suzuki-sv650-1999-2002</code>).</p>
-          <input type="text" id="vehicleSlugConfirm" style="margin-bottom:14px;">
+          <p class="sub" style="margin:0 0 6px;">Fix it if it's wrong. Should match our naming convention: <code>make-model-year-range</code> (e.g. <code>suzuki-sv650-1999-2002</code>). The year range is what separates one generation's repo from another's -- get it wrong and this becomes a second, duplicate repo for the same vehicle. Verify the actual model-year range against the manual itself (the cover/intro page usually states it) before confirming, not just a guess.</p>
+          <input type="text" id="vehicleSlugConfirm" style="margin-bottom:6px;">
+          <p class="sub" id="vehicleSlugSimilarNote" style="display:none; color:#ffcc66; margin:0 0 14px;"></p>
 
           <h2 style="font-size:0.95rem; margin:18px 0 4px;">What kind of manual is this?</h2>
           <p class="sub" style="margin:0 0 6px;">A short label for this edition -- OEM, Haynes, Chilton, whatever it actually is. If this vehicle already has a repo, this joins it as a new edition alongside whatever's already there. Required.</p>
