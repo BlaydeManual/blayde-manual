@@ -395,13 +395,23 @@ function renderModalOverlays() {
       const y0 = Math.min(y, modalNewDrag.startY), y1 = Math.max(y, modalNewDrag.startY);
       modalNewDrag = null;
       if (x1 - x0 < 15 || y1 - y0 < 15) return;
-      const label = prompt("What is this figure? (short label)");
-      if (label === null) return;
+      // Positional only, same as every machine-detected figure -- no
+      // free-text prompt. Typing a label while looking at the actual
+      // page is exactly the paraphrase-or-copy risk the rest of this
+      // system was redesigned to avoid (see LEGAL.md's
+      // systematic-extraction concern, and indexer-core.js's
+      // positionalId): a human describing what they see from the
+      // manual is functionally the same act as OCR, just done by hand.
+      // The crop thumbnail itself is the real identifying signal for a
+      // reviewer -- an accidental add costs one click to delete, same
+      // as any other false positive.
       const geo = reviewManifest.page_geometry[String(modalPageNum)];
       const canvasInfo = reviewPageCache.get(modalPageNum);
       const sx = canvasInfo.canvas.width / geo.composite_width_px, sy = canvasInfo.canvas.height / geo.composite_height_px;
       const bbox = [x0 / sx, y0 / sy, x1 / sx, y1 / sy];
-      const pid = `p${String(modalPageNum).padStart(3, "0")}_${slugify(label)}_manualadd${nextAddedIdx++}`;
+      const addedN = nextAddedIdx++;
+      const pid = `p${String(modalPageNum).padStart(3, "0")}_manualadd${addedN}`;
+      const label = `Page ${modalPageNum}, added figure`;
       reviewManifest.entries.push({
         procedure_id: pid, page: modalPageNum, section_heading: label, pixel_bbox: bbox,
         source_layout: "flattened_scan_ocr", content_type: "photo",
