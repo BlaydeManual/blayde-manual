@@ -1,26 +1,14 @@
-// Blayde Manual -- maintainer review panel.
-// Everything GitHub-shaped here is mock data standing in for the real
-// API, in the same shape the real API would return it -- there's no
-// live vehicle repo to review yet (see LEGAL.md) and no deployed OAuth
-// proxy. Swapping in real fetch() calls to github.com/api.github.com
-// is meant to be a small, mechanical change once both exist, not a
-// rewrite of anything below.
-
-// Persisted via localStorage (mock-pr-store.js), not just an in-memory
-// array -- this is what lets contribute.html's Contributor Portal (a
-// genuinely separate page/session) hand new photo requests to this
-// exact review queue, real enough to verify end-to-end in the browser
-// (submit on one page, reload this one, see it appear) even though
-// nothing here touches a real GitHub API yet. Seed data (MOCK_PRS_SEED)
-// lives in mock-pr-store.js, not here -- contribute.js needs the same
-// seed available on first-ever load too, regardless of which of the two
-// pages someone happens to open first.
-
-// Spans two different repos on purpose -- a maintainer can hold write
-// access on more than one vehicle at once (MOCK_MAINTAINER.reposmaintained
-// is an array for exactly this reason), so this list has to show
-// requests grouped by vehicle, not assume there's only ever one.
-const MOCK_PRS = loadMockPrs(MOCK_PRS_SEED);
+// Blayde Manual -- maintainer review panel. Real GitHub API calls as
+// of 2026-08-26: lists open photo-submission PRs on a maintainer's
+// registered repos, lets them compare the submitted photo against the
+// real manual page, and accept (merge, plus a manifest.json bbox
+// fixup if they adjusted it) or reject (close + comment) for real.
+//
+// Scoped to real photo-submission PRs only (the ones contribute.js's
+// submitPhotoToGitHub creates) -- "comment"/"new-slot" style structural
+// issues from issue-requests.js/org-approval.js are a different, still
+// mock flow, not covered by this pass. A PR whose diff doesn't add a
+// file under images/ is silently skipped here, not shown as broken.
 
 // ---- repo scope guard -- this tool authenticates with the maintainer's
 // OWN GitHub token, which has whatever access their real account has,
@@ -28,75 +16,51 @@ const MOCK_PRS = loadMockPrs(MOCK_PRS_SEED);
 // parameterized by repo_url" is exactly what makes it possible to craft
 // a link pointing this tool at some other repo the maintainer happens
 // to have write access to -- so repo_url is never trusted just because
-// it's in the URL. It's checked against the registry (same one the
-// patcher already reads) before this tool ever calls the GitHub API
-// against it. Mock here, same as the PR list, since there's no deployed
-// registry.json yet -- the real version calls loadRegistry() from
-// registry.js against the canonical registry URL, not a hardcoded list.
-// One repo per vehicle now (see ROADMAP.md's multi-manual correction,
-// 2026-08-25) -- a vehicle can have more than one edition entry here,
-// all sharing the same repo_url, distinguished by edition_id.
-const MOCK_REGISTRY = {
-  vehicles: [
-    {
-      vehicle_slug: "suzuki-sv650-1999-2002",
-      edition_id: "OEM",
-      repo_url: "https://github.com/BlaydeManual/suzuki-sv650-1999-2002",
-      status: "approved",
-    },
-    {
-      vehicle_slug: "suzuki-sv650-1999-2002",
-      edition_id: "Haynes",
-      repo_url: "https://github.com/BlaydeManual/suzuki-sv650-1999-2002",
-      status: "approved",
-    },
-    {
-      vehicle_slug: "kawasaki-kx250-1998-2000",
-      edition_id: "OEM",
-      repo_url: "https://github.com/BlaydeManual/kawasaki-kx250-1998-2000",
-      status: "approved",
-    },
-  ],
-};
-
-function isRegisteredRepo(repoUrl) {
-  const norm = (u) => (u || "").replace(/\/$/, "").toLowerCase();
-  return MOCK_REGISTRY.vehicles.some(
-    (v) => norm(v.repo_url) === norm(repoUrl) && v.status === "approved"
-  );
+// it's in the URL. It's checked against the real registry (same one
+// the patcher already reads) before this tool ever calls the GitHub
+// API against it.
+async function isRegisteredRepo(repoUrl) {
+  try {
+    const registryData = await loadRegistry(CANONICAL_REGISTRY_URL_FOR_REVIEW);
+    const norm = (u) => (u || "").replace(/\/$/, "").toLowerCase();
+    return (registryData.vehicles || []).some(
+      (v) => norm(v.repo_url) === norm(repoUrl) && v.status === "approved"
+    );
+  } catch (e) {
+    return false; // registry unreachable -- fail closed, never act on an unverified repo
+  }
 }
 
-function vehicleSlugForRepo(repoUrl) {
-  const norm = (u) => (u || "").replace(/\/$/, "").toLowerCase();
-  return MOCK_REGISTRY.vehicles.find((v) => norm(v.repo_url) === norm(repoUrl))?.vehicle_slug || repoUrl;
+// Same canonical URL convention as indexer-core.js/patcher.js --
+// hardcoded, not user-editable, to close off a spoofing vector.
+const CANONICAL_REGISTRY_URL_FOR_REVIEW = "https://raw.githubusercontent.com/BlaydeManual/registry/main/registry.json";
+
+async function vehicleSlugForRepo(repoUrl) {
+  try {
+    const registryData = await loadRegistry(CANONICAL_REGISTRY_URL_FOR_REVIEW);
+    const norm = (u) => (u || "").replace(/\/$/, "").toLowerCase();
+    return registryData.vehicles?.find((v) => norm(v.repo_url) === norm(repoUrl))?.vehicle_slug || repoUrl;
+  } catch (e) {
+    return repoUrl;
+  }
 }
 
-// A `?repo=` URL param overrides the mock maintained-repos list for
-// local testing (simulate reviewing a repo other than the two hardcoded
-// mock ones) -- this was here before the multi-repo grouping work and
-// should never have dropped out during that refactor. Restored. Doesn't
-// weaken the actual guard below: an overridden repo still has to pass
-// isRegisteredRepo() like any other, it just changes which repo(s) get
-// checked, not whether the check happens.
+// A `?repo=` URL param overrides the maintained-repos list for local
+// testing. Doesn't weaken the actual guard: an overridden repo still
+// has to pass isRegisteredRepo() like any other.
 function reposToCheck() {
   const override = new URLSearchParams(window.location.search).get("repo");
   return override ? [override] : MOCK_MAINTAINER.reposmaintained;
 }
 
-// Every repo the maintainer claims to maintain still gets checked against
-// the registry individually -- same guard as before, just applied per
-// repo instead of to a single hardcoded one, since a maintainer can hold
-// more than one at once.
-function maintainedApprovedRepos() {
-  return reposToCheck().filter(isRegisteredRepo);
-}
-
 let currentPR = null;
+let currentPRs = []; // last loaded batch, across all maintained repos
 let pdfDoc = null;
 let renderScale = 2.0; // CSS px per PDF point -- fixed, keeps the compare view a manageable size
 let box = null; // {x0,y0,x1,y1} in canvas-pixel space, live during drag
 let dragState = null;
 let submittedPhotoImg = null;
+let submittedPhotoAspect = 1;
 
 function log(msg) {
   const el = document.getElementById("prLog");
@@ -104,42 +68,16 @@ function log(msg) {
   el.scrollTop = el.scrollHeight;
 }
 
-// ---- mock "submitted photo": a portrait placeholder, deliberately
-// mismatched against the (landscape) original box, so the live-fit
-// editor has something real to demonstrate -- see ROADMAP.md's
-// "maintainer live-adjust to fit" design ----
-function buildMockSubmittedPhoto() {
-  const c = document.createElement("canvas");
-  c.width = 600;
-  c.height = 800; // portrait 3:4, vs. the original box's ~1.5:1 landscape
-  const ctx = c.getContext("2d");
-  ctx.fillStyle = "#1d9e75";
-  ctx.fillRect(0, 0, c.width, c.height);
-  ctx.fillStyle = "#085041";
-  for (let i = 0; i < 6; i++) {
-    ctx.beginPath();
-    ctx.ellipse(Math.random() * c.width, Math.random() * c.height,
-                 40 + Math.random() * 60, 40 + Math.random() * 60, 0, 0, Math.PI * 2);
-    ctx.fill();
-  }
-  return c.toDataURL("image/jpeg", 0.85);
-}
-
 // ---- repo scope check, run once the portal-level sign-in has already
 // happened (see maintainer-portal.js) -- this is a separate concern from
 // authentication itself, just parameterized to run right after it ----
-function initReviewTab() {
-  // Re-sync from storage every time this tab is entered, not just once at
-  // sign-in -- Issue Requests writes into the same store from this same
-  // page session (pick a repo, patch, submit), and MOCK_PRS being a
-  // page-load-time const would otherwise mean a maintainer has to reload
-  // the whole portal to see their own just-submitted issue show up here.
-  MOCK_PRS.length = 0;
-  MOCK_PRS.push(...loadMockPrs(MOCK_PRS_SEED));
-
+async function initReviewTab() {
   const statusEl = document.getElementById("repoScopeStatus");
-  const approved = maintainedApprovedRepos();
-  const refused = reposToCheck().filter((r) => !approved.includes(r));
+  const candidates = reposToCheck();
+  const checks = await Promise.all(candidates.map(async (r) => [r, await isRegisteredRepo(r)]));
+  const approved = checks.filter(([, ok]) => ok).map(([r]) => r);
+  const refused = checks.filter(([, ok]) => !ok).map(([r]) => r);
+
   if (!approved.length) {
     statusEl.textContent = `No maintained repos passed the registry check -- this tool only ever acts on repos it finds there, never on a claimed repo alone.`;
     statusEl.style.color = "#ff6b6b";
@@ -150,35 +88,73 @@ function initReviewTab() {
     : `repo scope check passed for ${approved.length} repo(s)`;
   statusEl.style.color = refused.length ? "#ffcc66" : "";
   document.getElementById("prListCard").style.display = "block";
-  renderPRList(approved);
+  document.getElementById("prList").innerHTML = `<p class="sub">Loading open photo requests...</p>`;
+
+  const perRepo = await Promise.all(approved.map((repoUrl) =>
+    loadOpenPhotoPRs(repoUrl).catch((e) => { log(`Couldn't load requests for ${repoUrl}: ${e.message}`); return []; })
+  ));
+  currentPRs = perRepo.flat();
+  await renderPRList(approved);
+}
+
+// Real open PRs on this repo, filtered to ones that actually add a
+// photo under images/ (contribute.js's convention) -- anything else
+// (a manifest-only PR, a docs tweak) is out of this pass's scope and
+// silently skipped, not shown as a broken row. One bad/unreadable PR
+// is isolated per-item, never breaks the whole list.
+async function loadOpenPhotoPRs(repoUrl) {
+  const session = BlaydeAuth.getSession();
+  const [owner, repo] = ownerRepo(repoUrl);
+  const prs = await githubApi(`/repos/${owner}/${repo}/pulls?state=open&per_page=50`, session.token);
+
+  let manifestPromise = null;
+  function getManifest() {
+    if (!manifestPromise) manifestPromise = fetchManifest(repoUrl);
+    return manifestPromise;
+  }
+
+  const results = await Promise.all(prs.map(async (pr) => {
+    try {
+      const files = await githubApi(`/repos/${owner}/${repo}/pulls/${pr.number}/files`, session.token);
+      const photoFile = files.find((f) => f.status === "added" && /^images\//.test(f.filename));
+      if (!photoFile) return null;
+      const filename = photoFile.filename.replace(/^images\//, "");
+      const { procedureId, contributor } = parsePhotoFilename(filename);
+      const { manifest, branch } = await getManifest();
+      const entry = (manifest.entries || []).find((e) => e.procedure_id === procedureId);
+      const geo = entry && manifest.page_geometry?.[String(entry.page)];
+      if (!entry || !geo) return null; // photo doesn't match a known procedure -- shouldn't happen if checker.py ran, skip defensively
+      if (!pr.head?.repo) return null; // contributor's fork was deleted after opening the PR -- can't fetch the photo
+      return {
+        number: pr.number, title: pr.title, author: pr.user?.login || contributor || "unknown",
+        repo_url: repoUrl, edition_id: manifest.edition_id || "(edition not set)",
+        procedure_id: procedureId, page: entry.page, section_heading: entry.section_heading,
+        photo_raw_url: `https://raw.githubusercontent.com/${pr.head.repo.full_name}/${pr.head.ref}/${photoFile.filename}`,
+        original_bbox: entry.pixel_bbox,
+        composite_width_px: geo.composite_width_px, composite_height_px: geo.composite_height_px,
+        page_width_pt: geo.page_width_pt, page_height_pt: geo.page_height_pt,
+        base_branch: branch,
+      };
+    } catch (e) {
+      return null;
+    }
+  }));
+  return results.filter(Boolean);
 }
 
 // Grouped by vehicle, then by edition within it -- a vehicle repo can
-// hold more than one edition now (see ROADMAP.md's multi-manual
-// correction, 2026-08-25), so "which vehicle" alone is one tier too
-// shallow. A maintainer with requests waiting on more than one repo
-// needs to see which vehicle each one belongs to; within a vehicle,
-// which edition each request is against. "Open requests for X" is
-// redundant once every group already lives under a "Photo requests"
-// card.
-function renderPRList(approvedRepos) {
+// hold more than one edition, so "which vehicle" alone is one tier too
+// shallow.
+async function renderPRList(approvedRepos) {
   const wrap = document.getElementById("prList");
   wrap.innerHTML = "";
-  approvedRepos.forEach((repoUrl) => {
-    // Only what's actually still waiting -- an accepted/rejected request
-    // stays in MOCK_PRS (so contribute.js can look up its outcome), it
-    // just no longer belongs in the "open" queue a maintainer works from.
-    // Sorted by page -- a maintainer working through a vehicle's queue
-    // wants to move through the manual in order, not in submission order.
-    const prs = MOCK_PRS.filter((pr) => pr.repo_url === repoUrl && !pr.status)
-      .sort((a, b) => a.page - b.page);
-    if (!prs.length) return;
+  for (const repoUrl of approvedRepos) {
+    const prs = currentPRs.filter((pr) => pr.repo_url === repoUrl).sort((a, b) => a.page - b.page);
+    if (!prs.length) continue;
     const group = document.createElement("div");
     group.style.marginBottom = "16px";
-    // Full-bleed light-grey bar (breaks out of .card's own padding via
-    // negative margin) as a clear separator between vehicles -- bigger
-    // and louder than a plain steel-colored label, on purpose.
-    group.innerHTML = `<h3 class="vehicle-bar">${vehicleSlugForRepo(repoUrl)}</h3>`;
+    const vehicleSlug = await vehicleSlugForRepo(repoUrl);
+    group.innerHTML = `<h3 class="vehicle-bar">${vehicleSlug}</h3>`;
 
     const byEdition = new Map();
     prs.forEach((pr) => {
@@ -195,12 +171,10 @@ function renderPRList(approvedRepos) {
       editionPrs.forEach((pr) => {
         const row = document.createElement("div");
         row.className = "pr-row";
-        // Page leads the title, not buried in the meta line -- easy to miss
-        // there, and it's the thing a maintainer orients around first.
         row.innerHTML = `
           <div>
             <div class="pr-title">PG. ${pr.page} &mdash; ${pr.title}</div>
-            <div class="pr-meta">@${pr.author} &middot; ${pr.photo_filename || pr.procedure_id} &middot; Request #${pr.number}</div>
+            <div class="pr-meta">@${pr.author} &middot; ${pr.procedure_id} &middot; Request #${pr.number}</div>
           </div>
           <button data-pr="${pr.number}">Review</button>
         `;
@@ -209,17 +183,19 @@ function renderPRList(approvedRepos) {
       group.appendChild(editionWrap);
     });
     wrap.appendChild(group);
-  });
+  }
+  if (!wrap.children.length) wrap.innerHTML = `<p class="sub">No open photo requests right now.</p>`;
   wrap.querySelectorAll("button[data-pr]").forEach(btn => {
     btn.addEventListener("click", () => openPR(parseInt(btn.dataset.pr, 10)));
   });
 }
 
-// ---- opening a PR ----
-function openPR(number) {
-  currentPR = MOCK_PRS.find(p => p.number === number);
+// ---- opening a PR: fetch the real submitted photo, not a mock one ----
+async function openPR(number) {
+  currentPR = currentPRs.find(p => p.number === number);
   box = null;
   pdfDoc = null;
+  submittedPhotoImg = null;
   document.getElementById("prLog").textContent = "";
   document.getElementById("reviewArea").classList.add("open");
   document.getElementById("reviewTitle").textContent = `PG. ${currentPR.page} -- Request #${currentPR.number} -- ${currentPR.title}`;
@@ -229,8 +205,29 @@ function openPR(number) {
   document.getElementById("acceptBtn").disabled = true;
   document.getElementById("rejectBtn").disabled = false;
   document.getElementById("resetBoxBtn").disabled = true;
-  submittedPhotoImg = buildMockSubmittedPhoto();
-  log(`opened request #${currentPR.number} -- pick your own copy of the manual to render real page context`);
+
+  log(`opened request #${currentPR.number} -- fetching the submitted photo...`);
+  try {
+    const resp = await fetch(currentPR.photo_raw_url);
+    if (!resp.ok) throw new Error(`photo fetch failed (${resp.status})`);
+    const blob = await resp.blob();
+    submittedPhotoImg = await new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(reader.result);
+      reader.onerror = () => reject(new Error("couldn't read the photo"));
+      reader.readAsDataURL(blob);
+    });
+    const dims = await new Promise((resolve, reject) => {
+      const img = new Image();
+      img.onload = () => resolve({ w: img.naturalWidth, h: img.naturalHeight });
+      img.onerror = () => reject(new Error("couldn't read the photo's dimensions"));
+      img.src = submittedPhotoImg;
+    });
+    submittedPhotoAspect = dims.w / dims.h;
+    log(`photo loaded (${dims.w}x${dims.h}) -- pick your own copy of the manual to render real page context`);
+  } catch (e) {
+    log(`couldn't load the submitted photo: ${e.message}`);
+  }
 }
 
 // ---- the local-context rule in action: nothing renders until the
@@ -253,20 +250,10 @@ async function renderPage() {
   const ctx = canvas.getContext("2d");
   await page.render({ canvasContext: ctx, viewport }).promise;
 
-  // A comment issue has no bbox to compare/adjust -- it's a note on an
-  // existing procedure, not a photo position or a new manifest entry.
-  // Skip the box editor entirely rather than crash on a null bbox.
-  if (currentPR.issue_type === "comment") {
-    document.getElementById("compareWrap").style.display = "none";
-    log(`page ${currentPR.page} loaded for context. This is a comment, not a bbox change -- "${currentPR.issue_note}"`);
-    document.getElementById("acceptBtn").disabled = false;
-    return;
-  }
-
   document.getElementById("compareWrap").style.display = "block";
   resetBox();
   log(`rendered page ${currentPR.page} at ${canvas.width}x${canvas.height} -- drag the box or its corners to fit the submitted photo`);
-  document.getElementById("acceptBtn").disabled = false;
+  document.getElementById("acceptBtn").disabled = !submittedPhotoImg;
   document.getElementById("resetBoxBtn").disabled = false;
 }
 
@@ -304,14 +291,14 @@ function paintBox() {
   el.style.top = box.y0 + "px";
   el.style.width = (box.x1 - box.x0) + "px";
   el.style.height = (box.y1 - box.y0) + "px";
-  document.getElementById("submittedPhotoImg").src = submittedPhotoImg;
+  if (submittedPhotoImg) document.getElementById("submittedPhotoImg").src = submittedPhotoImg;
   updateFitReadout();
 }
 
 function updateFitReadout() {
   const boxW = box.x1 - box.x0, boxH = box.y1 - box.y0;
   const boxRatio = boxW / boxH;
-  const photoRatio = 600 / 800; // the mock photo's native aspect ratio
+  const photoRatio = submittedPhotoAspect;
   const pct = 100 * Math.min(boxRatio, photoRatio) / Math.max(boxRatio, photoRatio);
   document.getElementById("fitReadout").innerHTML =
     `box ratio <b>${boxRatio.toFixed(2)}</b> vs. photo ratio <b>${photoRatio.toFixed(2)}</b> -- `
@@ -352,60 +339,93 @@ wrap.addEventListener("mousemove", (e) => {
 });
 window.addEventListener("mouseup", () => { dragState = null; });
 
-// ---- accept / reject: both stubbed, both log exactly what the real
-// GitHub API calls would be, since neither can run for real yet ----
-// Accept/reject persist for real (into the shared mock-pr-store), not
-// just a log line -- otherwise a contributor's "submitted" status would
-// never change, forever, with no way to ever see the outcome. A note is
-// optional either way but asked for on both paths, not just rejection --
-// "nice work, exactly what was needed" is as worth saying as a reason
-// for turning something down.
-document.getElementById("acceptBtn").addEventListener("click", () => {
+// ---- accept: merge the PR for real, then a follow-up commit fixing
+// up manifest.json's pixel_bbox IF the maintainer adjusted it. Not
+// pushed onto the PR's own branch before merge -- that branch lives on
+// the contributor's fork, which this maintainer's token generally
+// doesn't have write access to unless "Allow edits from maintainers"
+// was enabled, not something to depend on. A separate commit directly
+// on the base branch (which the maintainer/org does have write access
+// to) sidesteps that entirely -- two clearly-attributed commits
+// instead of one that might silently fail. ----
+document.getElementById("acceptBtn").addEventListener("click", async () => {
   const note = prompt("Optional note for the contributor (e.g. \"looks great, thanks!\"):", "") || "";
-  log(`[mock] ACCEPT request #${currentPR.number}:`);
-  // A comment issue has no bbox at all -- it's a note about a procedure,
-  // not a photo position or a new manifest entry, so there's nothing to
-  // update or merge. Just acknowledge it.
-  if (currentPR.issue_type === "comment") {
-    log(`  1. mark comment on ${currentPR.procedure_id} resolved -- no manifest change`);
-    currentPR.status = "accepted";
-    currentPR.maintainerNote = note;
-    saveMockPrs(MOCK_PRS);
-    document.getElementById("acceptBtn").disabled = true;
-    document.getElementById("rejectBtn").disabled = true;
-    initReviewTab();
-    return;
-  }
-  const finalBbox = canvasToBbox(box);
-  log(`  1. update ${currentPR.procedure_id}.pixel_bbox to ${JSON.stringify(finalBbox)} in manifest.json`);
-  // An issue raised via Issue Requests (structure/new-slot) has no new
-  // photo attached -- it's a maintainer's own correction to the existing
-  // manifest, not a photo submission, so there's nothing to merge. A
-  // real photo submission still merges the photo in.
-  if (!currentPR.issue_type) {
-    log(`  2. merge the submitted photo in`);
-  } else if (currentPR.issue_type === "new-slot") {
-    log(`  2. add ${currentPR.procedure_id} as a new tracked procedure -- still needs a photo, now that the slot's confirmed real`);
-  }
-  log(`  (original bbox was ${JSON.stringify(currentPR.original_bbox)}, adjusted by the maintainer above)`);
-  currentPR.status = "accepted";
-  currentPR.maintainerNote = note;
-  currentPR.finalBbox = finalBbox;
-  saveMockPrs(MOCK_PRS);
+  const session = BlaydeAuth.getSession();
+  const [owner, repo] = ownerRepo(currentPR.repo_url);
   document.getElementById("acceptBtn").disabled = true;
   document.getElementById("rejectBtn").disabled = true;
-  initReviewTab();
+  try {
+    log(`merging request #${currentPR.number}...`);
+    await githubApi(`/repos/${owner}/${repo}/pulls/${currentPR.number}/merge`, session.token, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ commit_title: `Merge #${currentPR.number}: ${currentPR.title}` }),
+    });
+    log(`merged.`);
+
+    const finalBbox = canvasToBbox(box);
+    const bboxChanged = JSON.stringify(finalBbox) !== JSON.stringify(currentPR.original_bbox);
+    if (bboxChanged) {
+      log(`updating ${currentPR.procedure_id}'s photo position in manifest.json (adjusted during review)...`);
+      const manifestFile = await githubApi(`/repos/${owner}/${repo}/contents/manifest.json?ref=${currentPR.base_branch}`, session.token);
+      const manifestData = JSON.parse(base64ToUtf8(manifestFile.content.replace(/\n/g, "")));
+      const entry = manifestData.entries.find((e) => e.procedure_id === currentPR.procedure_id);
+      if (entry) {
+        entry.pixel_bbox = finalBbox;
+        await githubApi(`/repos/${owner}/${repo}/contents/manifest.json`, session.token, {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            message: `Adjust ${currentPR.procedure_id}'s photo position (reviewed in #${currentPR.number})`,
+            content: utf8ToBase64(JSON.stringify(manifestData, null, 2)),
+            sha: manifestFile.sha,
+            branch: currentPR.base_branch,
+          }),
+        });
+        log(`manifest.json updated.`);
+      } else {
+        log(`WARNING: ${currentPR.procedure_id} not found in manifest.json anymore -- skipped the position update.`);
+      }
+    }
+
+    if (note) {
+      await githubApi(`/repos/${owner}/${repo}/issues/${currentPR.number}/comments`, session.token, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ body: note }),
+      });
+    }
+    log(`request #${currentPR.number} accepted.`);
+    initReviewTab();
+  } catch (e) {
+    log(`accept failed: ${e.message}`);
+    document.getElementById("acceptBtn").disabled = false;
+    document.getElementById("rejectBtn").disabled = false;
+  }
 });
 
-document.getElementById("rejectBtn").addEventListener("click", () => {
+document.getElementById("rejectBtn").addEventListener("click", async () => {
   const note = prompt("Reason for the contributor (helps them fix it and resubmit):", "") || "";
-  log(`[mock] REJECT request #${currentPR.number}:`);
-  log(`  1. close request #${currentPR.number}`);
-  currentPR.status = "rejected";
-  currentPR.maintainerNote = note;
-  saveMockPrs(MOCK_PRS);
+  const session = BlaydeAuth.getSession();
+  const [owner, repo] = ownerRepo(currentPR.repo_url);
   document.getElementById("acceptBtn").disabled = true;
   document.getElementById("rejectBtn").disabled = true;
-  document.getElementById("resetBoxBtn").disabled = true;
-  initReviewTab();
+  try {
+    log(`closing request #${currentPR.number}...`);
+    if (note) {
+      await githubApi(`/repos/${owner}/${repo}/issues/${currentPR.number}/comments`, session.token, {
+        method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ body: note }),
+      });
+    }
+    await githubApi(`/repos/${owner}/${repo}/pulls/${currentPR.number}`, session.token, {
+      method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ state: "closed" }),
+    });
+    log(`request #${currentPR.number} closed.`);
+    document.getElementById("resetBoxBtn").disabled = true;
+    initReviewTab();
+  } catch (e) {
+    log(`reject failed: ${e.message}`);
+    document.getElementById("acceptBtn").disabled = false;
+    document.getElementById("rejectBtn").disabled = false;
+  }
 });
