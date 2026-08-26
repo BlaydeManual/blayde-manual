@@ -377,11 +377,19 @@
       <div class="card">
         <label>PDF Manual</label>
         <input type="file" id="pdfInput" accept="application/pdf">
-        <p class="sub" style="margin:6px 0 0;">Indexes the full document -- can take up to 20 minutes for a large manual. You can switch to another tab, it keeps working in the background. If you close this tab or the browser by accident, just come back and re-select the same PDF -- it'll pick up where it left off.</p>
+        <p class="sub" style="margin:6px 0 0;">This is a one-time step for this manual -- it doesn't run again once it's done. Indexes the full document, which can take up to 20 minutes for a large one. You can switch to another tab, it keeps working in the background. If you close this tab or the browser by accident, just come back and re-select the same PDF -- it'll pick up where it left off.</p>
 
         <div id="resumeCard" style="display:none; background:#000; border:1px solid var(--steel-dark); border-radius:6px; padding:12px; margin-top:10px; font-size:0.82rem;"></div>
 
+        <details style="margin-top:10px;">
+          <summary>Advanced: speed</summary>
+          <p class="sub" style="margin:8px 0 6px;">Indexing runs single-threaded (<b>Normal</b>) by default -- deliberately. A real run at a higher setting once locked up a real machine hard enough to need a power-cycle. Faster settings use more of this device's CPU at once -- more workers, more speed, more load -- capped well below what caused that. Adjustable while paused or before starting; greyed out while actively running.</p>
+          <label style="margin-top:0;"><span id="concurrencySpeedLabel">Normal</span> -- <span id="concurrencyValue">1</span> worker of <span id="concurrencyMax"></span> allowed on this device</label>
+          <input type="range" id="concurrencyInput" min="1" value="1" style="width:100%;">
+        </details>
+
         <button id="runBtn" disabled>Index it</button>
+        <button id="pauseBtn" class="secondary" style="display:none;">Pause</button>
         <button id="downloadBtn">Download manifest.json</button>
 
         <div id="progressWrap" style="display:none;">

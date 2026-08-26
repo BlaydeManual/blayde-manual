@@ -11,6 +11,37 @@ function currentJobId() {
   return makeJobId(selectedPdfHash);
 }
 
+// Opt-in only -- the shared default stays single-threaded (see
+// indexer-core.js) until real indexing_metrics data from real devices
+// says otherwise. This just lets someone knowingly take on more load
+// on their own machine. Capped at 30% of the device's own core count,
+// with a hard ceiling on top -- 30% alone would still allow 9-10
+// workers on a high-core-count workstation, close to the scale that
+// caused the actual lockup this is designed around.
+const MAX_ADVANCED_CONCURRENCY = 6;
+const concurrencyInput = document.getElementById("concurrencyInput");
+const concurrencyValue = document.getElementById("concurrencyValue");
+const concurrencyMaxLabel = document.getElementById("concurrencyMax");
+const concurrencySpeedLabel = document.getElementById("concurrencySpeedLabel");
+const advancedConcurrencyCap = Math.max(1, Math.min(MAX_ADVANCED_CONCURRENCY, Math.floor((navigator.hardwareConcurrency || 4) * 0.3)));
+concurrencyInput.max = advancedConcurrencyCap;
+concurrencyMaxLabel.textContent = advancedConcurrencyCap;
+
+// Plain-language read on what the number actually means, not just a
+// raw worker count -- 1 is always "Normal" (the safe default), the top
+// of this device's own cap is "Turbo," anything between is "Faster."
+function speedLabelFor(value) {
+  if (value <= 1) return "Normal";
+  if (value >= advancedConcurrencyCap) return "Turbo";
+  return "Faster";
+}
+function updateConcurrencyLabel() {
+  concurrencyValue.textContent = concurrencyInput.value;
+  concurrencySpeedLabel.textContent = speedLabelFor(parseInt(concurrencyInput.value, 10));
+}
+concurrencyInput.addEventListener("input", updateConcurrencyLabel);
+updateConcurrencyLabel();
+
 document.getElementById("pdfInput").addEventListener("change", async (e) => {
   const file = e.target.files[0];
   if (!file) return;
@@ -107,37 +138,105 @@ function appendLog(msg) {
 
 document.getElementById("runBtn").addEventListener("click", () => runIndexing(false));
 
+// Doesn't replace the resume system -- reduces how often it's actually
+// needed, by cutting down on accidental loss (an accidental tab close,
+// a browser update) in the first place.
+function warnBeforeUnload(e) {
+  e.preventDefault();
+  e.returnValue = "";
+}
+
+// Real risk for a 10-20 minute run on a real device: a laptop or phone
+// that sleeps mid-job pauses JS execution entirely. Wake Lock stops
+// that; gracefully no-ops (try/catch) on browsers that don't support
+// it or that deny the request (e.g. low battery).
+let wakeLockSentinel = null;
+async function acquireWakeLock() {
+  try {
+    wakeLockSentinel = await navigator.wakeLock?.request("screen");
+  } catch (e) { /* unsupported or denied -- indexing still works, just no wake lock */ }
+}
+async function releaseWakeLock() {
+  try {
+    await wakeLockSentinel?.release();
+  } catch (e) { /* already released or gone */ }
+  wakeLockSentinel = null;
+}
+
+let pauseRequested = false;
+const pauseBtn = document.getElementById("pauseBtn");
+pauseBtn.addEventListener("click", () => {
+  pauseRequested = true;
+  pauseBtn.disabled = true;
+  pauseBtn.textContent = "Pausing...";
+  // A worker already mid-page finishes that page before stopping --
+  // no clean mid-recognize abort -- so this can take a few seconds,
+  // not instant.
+  appendLog(`Pausing -- letting whatever's already in progress finish first...`);
+});
+
 async function runIndexing(resume) {
   if (!selectedPdfDoc) return;
+  pauseRequested = false;
+  let pausedThisRun = false;
   document.getElementById("runBtn").disabled = true;
   document.getElementById("resumeCard").style.display = "none";
   document.getElementById("progressWrap").style.display = "block";
   document.getElementById("log").textContent = "";
+  concurrencyInput.disabled = true;
+  pauseBtn.style.display = "inline-block";
+  pauseBtn.disabled = false;
+  pauseBtn.textContent = "Pause";
 
   const jobId = currentJobId();
+  const concurrency = parseInt(concurrencyInput.value, 10) || 1;
 
-  // Vehicle slug isn't known yet -- it's derived from the manual's own
-  // content after indexing and confirmed by the maintainer (see
-  // indexer-review.js). This placeholder gets replaced by
-  // finalizeVehicleSlug() below, before the review step is shown.
-  const t0 = performance.now();
-  const manifest = await indexPdf(selectedPdfDoc, "pending", {
-    onProgress: setProgress,
-    onLog: appendLog,
-    jobId, resume,
-  });
-  const secs = ((performance.now() - t0) / 1000).toFixed(1);
-  appendLog(`DONE in ${secs}s -- ${manifest.entries.length} entries across ${Object.keys(manifest.page_geometry).length} page(s)`);
-  appendLog(`It's up to the community to keep going. Thank you for contributing.`);
+  window.addEventListener("beforeunload", warnBeforeUnload);
+  await acquireWakeLock();
+  try {
+    // Vehicle slug isn't known yet -- it's derived from the manual's own
+    // content after indexing and confirmed by the maintainer (see
+    // indexer-review.js). This placeholder gets replaced by
+    // finalizeVehicleSlug() below, before the review step is shown.
+    const t0 = performance.now();
+    const result = await indexPdf(selectedPdfDoc, "pending", {
+      onProgress: setProgress,
+      onLog: appendLog,
+      jobId, resume, concurrency,
+      shouldPause: () => pauseRequested,
+    });
 
-  appendLog(`Reading the manual's own cover page to guess the vehicle...`);
-  const slugGuess = await suggestVehicleSlug(selectedPdfDoc, selectedPdfFilename);
-  finalizeVehicleSlug(manifest, slugGuess);
+    if (result.paused) {
+      // Checkpoints are already saved -- this just surfaces the same
+      // Resume/Start Fresh card the crash-recovery path uses, so
+      // whatever new speed setting was picked takes effect on Resume.
+      // checkResumeState() owns runBtn's disabled state from here --
+      // it correctly disables it whenever it shows that card, which
+      // the unconditional reset in finally below would otherwise undo.
+      pausedThisRun = true;
+      await checkResumeState();
+      return;
+    }
 
-  lastManifest = manifest;
-  document.getElementById("downloadBtn").style.display = "inline-block";
-  document.getElementById("runBtn").disabled = false;
-  startReview(manifest);
+    const manifest = result;
+    const secs = ((performance.now() - t0) / 1000).toFixed(1);
+    appendLog(`DONE in ${secs}s -- ${manifest.entries.length} entries across ${Object.keys(manifest.page_geometry).length} page(s)`);
+    appendLog(`It's up to the community to keep going. Thank you for contributing.`);
+
+    appendLog(`Reading the manual's own cover page to guess the vehicle...`);
+    const slugGuess = await suggestVehicleSlug(selectedPdfDoc, selectedPdfFilename);
+    finalizeVehicleSlug(manifest, slugGuess);
+
+    lastManifest = manifest;
+    document.getElementById("downloadBtn").style.display = "inline-block";
+    startReview(manifest);
+  } finally {
+    window.removeEventListener("beforeunload", warnBeforeUnload);
+    await releaseWakeLock();
+    concurrencyInput.disabled = false;
+    pauseBtn.style.display = "none";
+    if (!pausedThisRun) document.getElementById("runBtn").disabled = false;
+  }
 }
 
 document.getElementById("downloadBtn").addEventListener("click", () => {

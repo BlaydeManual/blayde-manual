@@ -423,7 +423,7 @@ async function renderPageToImageData(page, scale) {
 
 async function indexPdf(pdfDoc, vehicleSlug, {
   startPage, endPage, scale = 3.0, onProgress, onLog, concurrency,
-  jobId = null, resume = false,
+  jobId = null, resume = false, shouldPause = null,
 } = {}) {
   const first = startPage || 1;
   const last = endPage || pdfDoc.numPages;
@@ -491,6 +491,12 @@ async function indexPdf(pdfDoc, vehicleSlug, {
 
   let nextIdx = 0;
   function claimNextIdx() {
+    // Checked here, not mid-page -- a worker always finishes the page
+    // it's already on (Tesseract has no clean mid-recognize abort) and
+    // just stops claiming new work. Simpler and safer than live-killing
+    // a worker, and the checkpoint already saved after every page means
+    // nothing in flight is lost either way.
+    if (shouldPause?.()) return -1;
     while (nextIdx < pageNumbers.length && results[nextIdx] !== undefined) nextIdx++;
     return nextIdx < pageNumbers.length ? nextIdx++ : -1;
   }
@@ -544,6 +550,16 @@ async function indexPdf(pdfDoc, vehicleSlug, {
     await Promise.all(workers.map(workerLoop));
   } finally {
     await Promise.all(workers.map((w) => w.terminate()));
+  }
+
+  // Stopped early via shouldPause, not naturally exhausted -- every
+  // completed page's checkpoint is already saved (saveJobPage runs
+  // after each one), so this is safe to just stop and hand back to the
+  // caller. Do NOT clearJob here -- that would delete the very
+  // checkpoints a resume needs.
+  if (completed < pageNumbers.length) {
+    onLog?.(`paused: ${completed}/${pageNumbers.length} page(s) done`);
+    return { paused: true, completed, total: pageNumbers.length };
   }
 
   if (jobId) await clearJob(jobId, pageNumbers); // completed successfully -- no need to keep checkpoints
