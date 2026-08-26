@@ -124,6 +124,49 @@ function ownerRepo(repoUrl) {
   return [parts[parts.length - 2], parts[parts.length - 1]];
 }
 
+// <procedure_id>.ext or <procedure_id>__by_<username>[__altN].ext --
+// see CONTRIBUTING.md's filename convention. Shared with patcher.js
+// (picking which photo to embed) and review-panel.js (identifying
+// which procedure a submitted PR's photo is for).
+function parsePhotoFilename(filename) {
+  const stem = filename.replace(/\.(jpe?g|png|webp)$/i, "");
+  const [procedureId, rest] = stem.split("__by_");
+  const contributor = rest ? rest.split("__alt")[0] : null;
+  return { procedureId, contributor };
+}
+
+// Shared authenticated GitHub REST call -- used by anything that acts
+// on a repo with a signed-in maintainer/contributor's own token
+// (contribute.js's submission flow, review-panel.js's accept/reject).
+// One implementation, not one per page, so the two don't drift.
+async function githubApi(path, token, options = {}) {
+  const resp = await fetch(`https://api.github.com${path}`, {
+    ...options,
+    headers: {
+      Authorization: `Bearer ${token}`,
+      Accept: "application/vnd.github+json",
+      ...(options.headers || {}),
+    },
+  });
+  if (!resp.ok) {
+    const body = await resp.json().catch(() => ({}));
+    const err = new Error(body.message || `GitHub API error (${resp.status})`);
+    err.status = resp.status;
+    throw err;
+  }
+  return resp.status === 204 ? null : resp.json();
+}
+
+// UTF-8-safe base64 for arbitrary text (e.g. re-encoding manifest.json
+// after an edit) -- distinct from a data: URL's already-base64 image
+// payload, which is just the substring after the comma.
+function utf8ToBase64(str) {
+  return btoa(unescape(encodeURIComponent(str)));
+}
+function base64ToUtf8(b64) {
+  return decodeURIComponent(escape(atob(b64)));
+}
+
 async function fetchManifest(repoUrl) {
   const [owner, repo] = ownerRepo(repoUrl);
   for (const branch of ["main", "master"]) {
