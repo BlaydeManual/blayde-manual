@@ -1,0 +1,10 @@
+# Infrastructure and legal/governance files -- require review beyond
+# routine single-maintainer discretion. See ROADMAP.md for the full
+# reasoning behind this specific scope.
+/LICENSE @TheBlayde
+/scaffold/LICENSE @TheBlayde
+/scaffold/LICENSE.md @TheBlayde
+/scaffold/checker.py @TheBlayde
+/scaffold/.github/ @TheBlayde
+/scaffold/CONTRIBUTING.md @TheBlayde
+/.github/ @TheBlayde
