@@ -360,31 +360,10 @@ async function performAction(action) {
 // "may have to wait a short period" -- github.com/en/rest/repos/forks),
 // and a cross-repo PR's `head` must be "username:branch"
 // (github.com/en/rest/pulls/pulls). ----
-function ownerRepoFromUrl(repoUrl) {
-  const parts = repoUrl.replace(/\/$/, "").split("/");
-  return [parts[parts.length - 2], parts[parts.length - 1]];
-}
-
+// ownerRepo() and githubApi() are shared with review-panel.js -- see
+// registry.js, one implementation instead of one per page.
 function dataUrlToBase64(dataUrl) {
   return dataUrl.split(",")[1];
-}
-
-async function githubApi(path, token, options = {}) {
-  const resp = await fetch(`https://api.github.com${path}`, {
-    ...options,
-    headers: {
-      Authorization: `Bearer ${token}`,
-      Accept: "application/vnd.github+json",
-      ...(options.headers || {}),
-    },
-  });
-  if (!resp.ok) {
-    const body = await resp.json().catch(() => ({}));
-    const err = new Error(body.message || `GitHub API error (${resp.status})`);
-    err.status = resp.status;
-    throw err;
-  }
-  return resp.status === 204 ? null : resp.json();
 }
 
 // Polls the fork for its default branch ref, since fork creation is
@@ -406,7 +385,7 @@ async function waitForForkRef(forkOwner, repo, branch, token) {
 async function submitPhotoToGitHub(upload) {
   const session = BlaydeAuth.getSession();
   if (!session) throw new Error("Not signed in.");
-  const [owner, repo] = ownerRepoFromUrl(upload.repoUrl);
+  const [owner, repo] = ownerRepo(upload.repoUrl);
   const ext = (upload.photoFilename.match(/\.(jpe?g|png|webp)$/i)?.[0] || ".jpg").toLowerCase();
 
   let defaultBranch = null, upstreamSha = null;

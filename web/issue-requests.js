@@ -45,7 +45,7 @@ function populateIssueRepoSelect() {
   const seen = new Set();
   approved.forEach((repoUrl) => {
     const editions = MOCK_REGISTRY.vehicles.filter((v) => v.repo_url === repoUrl);
-    (editions.length ? editions : [{ vehicle_slug: vehicleSlugForRepo(repoUrl), edition_id: null }]).forEach((e) => {
+    (editions.length ? editions : [{ vehicle_slug: mockVehicleSlugForRepo(repoUrl), edition_id: null }]).forEach((e) => {
       const key = repoUrl + "::" + e.edition_id;
       if (seen.has(key)) return;
       seen.add(key);
@@ -87,7 +87,7 @@ async function loadIssueManifestAndPhotos(repoUrl) {
   } catch (e) {
     return {
       manifest: {
-        vehicle: vehicleSlugForRepo(repoUrl),
+        vehicle: mockVehicleSlugForRepo(repoUrl),
         page_count: 40,
         source_markers: { source_identifier: "https://www.manualslib.com/manual/example" },
         page_geometry: { "40": { composite_width_px: 2544, composite_height_px: 3276, page_width_pt: 612, page_height_pt: 792 }, "28": { composite_width_px: 2544, composite_height_px: 3276, page_width_pt: 612, page_height_pt: 792 } },

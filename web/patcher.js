@@ -152,15 +152,8 @@ async function sha256HexShort(bytes) {
   return (await sha256Hex(bytes.buffer || bytes)).slice(0, 16);
 }
 
-function parsePhotoFilename(filename) {
-  // <procedure_id>.ext  or  <procedure_id>__by_<username>.ext
-  // or  <procedure_id>__by_<username>__altN.ext  (alternate angles --
-  // see CONTRIBUTING.md's filename convention).
-  const stem = filename.replace(/\.(jpe?g|png|webp)$/i, "");
-  const [procedureId, rest] = stem.split("__by_");
-  const contributor = rest ? rest.split("__alt")[0] : null;
-  return { procedureId, contributor };
-}
+// parsePhotoFilename() moved to registry.js -- review-panel.js needs it
+// too (maintainer.html doesn't load patcher.js), one implementation.
 
 /** Given all candidate photos for one procedure and an ordered priority
  * list of preferred contributor handles, pick one. Falls back to a

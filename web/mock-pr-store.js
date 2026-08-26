@@ -9,6 +9,42 @@
 
 const MOCK_PRS_STORAGE_KEY = "blayde_mock_prs_v1";
 
+// Moved here from review-panel.js when that file went real (2026-08-26)
+// -- org-approval.js and issue-requests.js are still fully mock and
+// call this synchronously, which the real registry lookup (async,
+// network-backed, see registry.js's loadRegistry) can't be. Kept as a
+// direct, un-guarded dependency here rather than scattering
+// typeof-checks through every still-mock caller.
+const MOCK_REGISTRY = {
+  vehicles: [
+    {
+      vehicle_slug: "suzuki-sv650-1999-2002",
+      edition_id: "OEM",
+      repo_url: "https://github.com/BlaydeManual/suzuki-sv650-1999-2002",
+      status: "approved",
+    },
+    {
+      vehicle_slug: "suzuki-sv650-1999-2002",
+      edition_id: "Haynes",
+      repo_url: "https://github.com/BlaydeManual/suzuki-sv650-1999-2002",
+      status: "approved",
+    },
+    {
+      vehicle_slug: "kawasaki-kx250-1998-2000",
+      edition_id: "OEM",
+      repo_url: "https://github.com/BlaydeManual/kawasaki-kx250-1998-2000",
+      status: "approved",
+    },
+  ],
+};
+
+// Synchronous counterpart to review-panel.js's real, async
+// vehicleSlugForRepo() -- for the still-mock callers that can't await.
+function mockVehicleSlugForRepo(repoUrl) {
+  const norm = (u) => (u || "").replace(/\/$/, "").toLowerCase();
+  return MOCK_REGISTRY.vehicles.find((v) => norm(v.repo_url) === norm(repoUrl))?.vehicle_slug || repoUrl;
+}
+
 // Fallback for whichever page (review-panel.js or contribute.js) happens
 // to touch storage first -- keeping this here, not in review-panel.js,
 // is what avoids a real ordering bug: if contribute.html were the first
