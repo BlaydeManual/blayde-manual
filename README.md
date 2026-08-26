@@ -13,8 +13,8 @@ browser, including indexing a brand-new manual.
 
 Read [LEGAL.md](LEGAL.md) for the legal reasoning behind that architecture.
 Open design questions and deferred features live in [ROADMAP.md](ROADMAP.md).
-[docs/faq.html](docs/faq.html) answers the questions people actually ask,
-in plain language, no git knowledge required.
+[web/docs/faq.html](web/docs/faq.html) answers the questions people actually
+ask, in plain language, no git knowledge required.
 
 ## How this is structured
 
@@ -26,7 +26,7 @@ edition joining the registry. No matter which repo holds a copy of your
 photo, it's still yours -- every photo is individually CC-BY 4.0 licensed
 by the person who took it.
 
-![Blayde Manual org structure and photo ownership](docs/org-structure.svg)
+![Blayde Manual org structure and photo ownership](web/docs/org-structure.svg)
 
 ## The actual tool
 
@@ -62,10 +62,14 @@ EXIF/GPS stripped, filename matches a real procedure. It ships inside
 
 ```
 web/            the real, shipped tool -- indexer, patcher, contributor
-                and maintainer portals, registry browse
+                and maintainer portals, registry browse, auth.js (shared
+                sign-in), docs/ (faq.html and supporting diagrams) -- all
+                of web/ deploys as the live site, so docs/ lives inside
+                it, not at the repo root
 scaffold/       template forked into every new vehicle repo (CI workflow,
                 checker.py, CONTRIBUTING.md, PR template, license)
-docs/           faq.html and supporting diagrams
+auth-worker/    Cloudflare Worker that trades a GitHub OAuth code for a
+                token, the one piece of this project with a real secret
 ledgers/        who-steered-what record, alongside CHANGELOG.md
 mosaic.py       cover-page photomosaic generator (still Python, see above)
 stylize.py      house line-art filter (still Python, see above)
