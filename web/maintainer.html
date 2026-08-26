@@ -137,6 +137,15 @@
   .fig.touched { border-color: #1d9e75; }
   .fig img { width: 100%; height: 70px; object-fit: cover; display: block; }
   .fig img.thumb-failed { background: #3a1414; }
+  /* A real page render can take a real amount of time on a large scanned
+     manual -- direct report, confirmed by testing against a real 900+
+     page manual, that a plain blank thumbnail during that wait is
+     indistinguishable from broken. This pulse is the only visual
+     difference between "still rendering" and "actually failed"
+     (thumb-failed, above, stays a solid dark red with no animation). */
+  .fig img.thumb-loading { background: linear-gradient(90deg, #1a1c20, #26292f, #1a1c20); background-size: 200% 100%; animation: thumb-pulse 1.4s ease-in-out infinite; }
+  @keyframes thumb-pulse { 0% { background-position: 200% 0; } 100% { background-position: -200% 0; } }
+  @media (prefers-reduced-motion: reduce) { .fig img.thumb-loading { animation: none; background: #1a1c20; } }
   .fig .id { font-size: 0.62rem; color: var(--steel); padding: 3px 5px; word-break: break-all; }
   .fig .del-btn {
     position: absolute; top: 3px; right: 3px; width: 18px; height: 18px; line-height: 16px; text-align: center;
@@ -407,7 +416,7 @@
 
         <div id="reviewSection">
           <h2 style="font-size:0.95rem; margin:18px 0 4px;">Confirm the vehicle</h2>
-          <p class="sub" style="margin:0 0 6px;">Guessed from the manual's own cover page (falls back to the filename if that doesn't work). Should match our naming convention: <code>make-model-year</code> (e.g. <code>suzuki-sv650-1999</code>), where the year is this manual's own release year, the First Generation Year for that manual. It's a release year, not a range: a later manual for the same model (say, <code>suzuki-sv650-2003</code>) means that's when the next generation began, not that this repo's coverage should extend to it. Verify the actual release year against the manual itself (the cover/intro page usually states it) before confirming, not just a guess. Getting it wrong creates a second, duplicate repo for the same vehicle.</p>
+          <p class="sub" style="margin:0 0 6px;">This value is guessed from scanning the manual's own cover page and falls back to the filename if that doesn't work. This should match the Blayde Manual naming convention: <code>make-model-year</code> (e.g. <code>suzuki-sv650-1999</code>), where the year is the first year for that specific generation or manual. A later manual for the same model (e.g. <code>suzuki-sv650-2003</code>) implies the next generation began and will create a new vehicle.</p>
           <input type="text" id="vehicleSlugConfirm" style="margin-bottom:6px;">
           <p class="sub" id="vehicleSlugSimilarNote" style="display:none; color:#ffcc66; margin:0 0 14px;"></p>
 

@@ -239,10 +239,10 @@ function buildFigCard(entry) {
   card.dataset.id = entry.procedure_id;
   card.innerHTML = `
     <button class="del-btn" title="delete -- not a real photo opportunity, never submitted">×</button>
-    <img alt="${entry.procedure_id}">
+    <img alt="${entry.procedure_id}" class="thumb-loading">
     <div class="id">${entry.procedure_id}</div>`;
   card.querySelector(".del-btn").addEventListener("click", async () => {
-    const ok = await blaydeConfirm(`Delete ${entry.procedure_id}? This isn't a real photo opportunity -- it'll never be submitted, and there's no undo (redraw it if you're wrong).`);
+    const ok = await blaydeConfirm(`Delete ${entry.procedure_id}? This isn't a real photo opportunity -- it'll never be submitted, and there's no undo (redraw it if you're wrong).`, { dontAskKey: "delete-review-candidate" });
     if (!ok) return;
     reviewManifest.entries = reviewManifest.entries.filter((e) => e !== entry);
     renderReviewGallery();
@@ -251,7 +251,21 @@ function buildFigCard(entry) {
   return card;
 }
 
-async function getReviewPage(pageNum, scale = 2.5) {
+// Capped, not fixed at some arbitrary scale like 2.5 -- a real scanned
+// manual page rendered that high can be several thousand pixels wide,
+// which is both a real memory/render-time cost (see the confirmed
+// Firefox-OOM finding in ROADMAP.md for how tight this project's real
+// memory headroom already is on a large document) and, per direct
+// report, the reason the full-page modal didn't fit its own viewport --
+// it was rendered at native scanned-page resolution with no cap at all.
+// This is fixed by rendering the canvas AT the size it'll actually be
+// displayed at, not by rendering huge and CSS-shrinking it down: the
+// overlay boxes and drag handles (renderModalOverlays, the mousedown/
+// mousemove handlers below) are positioned in native canvas-pixel
+// coordinates, so a CSS-only shrink would leave every box and handle
+// visually misaligned from the image underneath it.
+const REVIEW_PAGE_MAX_WIDTH_PX = 1100;
+async function getReviewPage(pageNum, scale) {
   if (reviewPageCache.has(pageNum)) {
     const entry = reviewPageCache.get(pageNum);
     reviewPageCache.delete(pageNum);
@@ -259,13 +273,14 @@ async function getReviewPage(pageNum, scale = 2.5) {
     return entry;
   }
   const page = await selectedPdfDoc.getPage(pageNum);
-  const viewport = page.getViewport({ scale });
+  const effectiveScale = scale || Math.min(2.5, REVIEW_PAGE_MAX_WIDTH_PX / page.getViewport({ scale: 1 }).width);
+  const viewport = page.getViewport({ scale: effectiveScale });
   const canvas = document.createElement("canvas");
   canvas.width = Math.round(viewport.width);
   canvas.height = Math.round(viewport.height);
   const ctx = canvas.getContext("2d");
   await page.render({ canvasContext: ctx, viewport }).promise;
-  const entry = { canvas, ctx, scaleUsed: scale };
+  const entry = { canvas, ctx, scaleUsed: effectiveScale };
   reviewPageCache.set(pageNum, entry);
   if (reviewPageCache.size > REVIEW_PAGE_CACHE_CAP) {
     reviewPageCache.delete(reviewPageCache.keys().next().value); // evict oldest
@@ -285,7 +300,7 @@ async function refreshFigThumbnail(imgEl, entry) {
     out.width = w; out.height = h;
     out.getContext("2d").drawImage(canvas, x0 * sx, y0 * sy, w, h, 0, 0, w, h);
     imgEl.src = out.toDataURL("image/jpeg", 0.85);
-    imgEl.classList.remove("thumb-failed");
+    imgEl.classList.remove("thumb-failed", "thumb-loading");
     imgEl.title = "";
     if (!entry._seen) {
       entry._seen = true;
@@ -297,6 +312,7 @@ async function refreshFigThumbnail(imgEl, entry) {
     // page genuinely out of range in a partial test run) looked
     // identical to "hasn't loaded yet," with no way to tell which.
     // Now visibly distinct and logged, not just invisible.
+    imgEl.classList.remove("thumb-loading");
     imgEl.classList.add("thumb-failed");
     imgEl.title = `Couldn't render page ${entry.page}: ${e.message}`;
     appendLog?.(`Thumbnail for ${entry.procedure_id} (page ${entry.page}) failed to render: ${e.message}`);
