@@ -116,7 +116,7 @@ function renderRoster(rosterEl, repoUrl) {
   rosterEl.querySelectorAll(".remove-btn").forEach((btn) => {
     btn.addEventListener("click", async () => {
       const vehicleSlug = await vehicleSlugForRepo(repoUrl);
-      if (!confirm(`Remove @${btn.dataset.handle} as a maintainer of ${vehicleSlug}?`)) return;
+      if (!(await blaydeConfirm(`Remove @${btn.dataset.handle} as a maintainer of ${vehicleSlug}?`))) return;
       MOCK_VEHICLE_TEAMS[repoUrl] = MOCK_VEHICLE_TEAMS[repoUrl].filter((m) => m.handle !== btn.dataset.handle);
       renderRoster(rosterEl, repoUrl);
       // [mock] real call: DELETE /repos/{owner}/{repo}/collaborators/{handle}

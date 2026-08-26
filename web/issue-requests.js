@@ -270,7 +270,7 @@ issueWrap.addEventListener("mousemove", (e) => {
     }
   }
 });
-issueWrap.addEventListener("mouseup", (e) => {
+issueWrap.addEventListener("mouseup", async (e) => {
   if (issueDrag) {
     const entry = issueManifest.entries.find((x) => x.procedure_id === issueDrag.id);
     queueStructureIssue(entry, issueDrag.box);
@@ -285,7 +285,7 @@ issueWrap.addEventListener("mouseup", (e) => {
     const y0 = Math.min(y, issueNewDrag.startY), y1 = Math.max(y, issueNewDrag.startY);
     issueNewDrag = null;
     if (x1 - x0 < 15 || y1 - y0 < 15) return;
-    const label = prompt("What should be here? (short label)");
+    const label = await blaydePrompt("What should be here? (short label)");
     if (label === null) return;
     const box = document.createElement("div");
     box.className = "overlay-box new-slot";
@@ -358,9 +358,9 @@ function openIssueRightClickMenu(e, entry, photoFilename) {
     window.open(url, "_blank");
     issueLog(`opened the Contributor Portal for ${entry.procedure_id} -- a replacement photo there resolves this the normal way, no separate issue mechanism needed.`);
   });
-  document.getElementById("rcComment").addEventListener("click", () => {
+  document.getElementById("rcComment").addEventListener("click", async () => {
     menu.style.display = "none";
-    const note = prompt(`Comment on ${entry.section_heading}:`, "");
+    const note = await blaydePrompt(`Comment on ${entry.section_heading}:`, "");
     if (note) queueCommentIssue(entry, note);
   });
   const closeMenu = () => { menu.style.display = "none"; document.removeEventListener("click", closeMenu); };
