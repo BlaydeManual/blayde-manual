@@ -7,6 +7,13 @@
 // since that action's authority is worth flagging explicitly; the
 // per-repo tabs dropped their REPO badges once that distinction no
 // longer needed spelling out.
+// Sign-in itself is real (auth.js, GitHub OAuth) as of 2026-08-25.
+// Which repos someone actually maintains, and whether they're on the
+// org's approval quorum, is NOT real yet -- that needs GitHub API
+// calls this project doesn't make anywhere yet (checking collaborator
+// status or team membership), so it stays this fixed stand-in until
+// that's built. Tracked in ROADMAP.md as the real-auth-wiring gap,
+// separate from the sign-in gap this file used to also have.
 const MOCK_MAINTAINER = {
   // Two repos on purpose -- demonstrates Review Photo Requests grouping
   // requests by vehicle instead of assuming a maintainer only ever has one.
@@ -24,7 +31,7 @@ if (carriedOverHash) {
   note.style.display = "block";
 }
 
-document.getElementById("portalSignInBtn").addEventListener("click", () => {
+function enterPortal() {
   document.getElementById("signInCard").style.display = "none";
   document.getElementById("portalBody").style.display = "block";
 
@@ -50,6 +57,22 @@ document.getElementById("portalSignInBtn").addEventListener("click", () => {
   // org-approval.js itself gates the actual approve/reject actions on
   // MOCK_MAINTAINER.isOrgMaintainer, not tab visibility.
   initApproveTab();
+}
+
+// A session from a previous sign-in this tab (auth.js, sessionStorage)
+// survives a page reload -- only closing the tab clears it.
+const existingSession = window.BlaydeAuth ? BlaydeAuth.getSession() : null;
+if (existingSession) enterPortal();
+
+document.getElementById("portalSignInBtn").addEventListener("click", async () => {
+  try {
+    await BlaydeAuth.signInWithGitHub();
+    enterPortal();
+  } catch (err) {
+    const note = document.getElementById("carriedOverNote");
+    note.textContent = `Sign-in failed: ${err.message}`;
+    note.style.display = "block";
+  }
 });
 
 function activateTab(tabName) {
