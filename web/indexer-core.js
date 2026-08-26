@@ -330,7 +330,17 @@ async function indexPdf(pdfDoc, vehicleSlug, {
   const pageNumbers = [];
   for (let p = first; p <= last; p++) pageNumbers.push(p);
 
-  const poolSize = concurrency || Math.max(1, Math.min(8, (navigator.hardwareConcurrency || 4) - 1));
+  // A machine genuinely locked up hard enough to need a power-cycle
+  // running this at hardwareConcurrency-1 (up to 8) -- see CHANGELOG.md.
+  // Tesseract workers are WASM-heavy (real memory + CPU footprint each,
+  // not lightweight threads), so "one worker per free core" is the wrong
+  // heuristic for this specific task even though it's fine for cheap
+  // parallel work. Single-threaded until there's real performance data
+  // (across real devices, not just this one machine) to size a safe
+  // concurrency default from -- no evidence yet on whether a lower
+  // parallel count (e.g. 2-3) is actually safe, so this isn't a tuned
+  // number, it's the only value with zero contention risk.
+  const poolSize = concurrency || 1;
 
   const results = new Array(pageNumbers.length);
   let completed = 0;
@@ -438,11 +448,26 @@ async function indexPdf(pdfDoc, vehicleSlug, {
 
   if (jobId) await clearJob(jobId, pageNumbers); // completed successfully -- no need to keep checkpoints
 
+  // Real performance data, decentralized -- every vehicle repo's own
+  // manifest.json carries how long its own indexing run actually took,
+  // on what hardware, at what pool size. No telemetry pipeline, nothing
+  // sent anywhere -- just what's already public in the repo, the same
+  // way everything else in this project works. Lets a future concurrency
+  // decision be based on real numbers across real devices instead of
+  // one incident (see the pool-size hotfix note above).
+  const indexingMetrics = {
+    elapsed_sec: Math.round((performance.now() - t0) / 10) / 100,
+    pages_indexed: pageNumbers.length,
+    pool_size: poolSize,
+    hardware_concurrency: navigator.hardwareConcurrency || null,
+  };
+
   const manifest = {
     vehicle: vehicleSlug,
     source_manual: "browser-indexed",
     page_count: pdfDoc.numPages,
     generated_by: "shop-manual-indexer (browser)",
+    indexing_metrics: indexingMetrics,
     page_geometry: {},
     entries: [],
   };

@@ -29,20 +29,8 @@ const BLACK = rgb(0.047, 0.051, 0.059);
 const STEEL = rgb(0.541, 0.561, 0.596);
 const WHITE = rgb(0.91, 0.91, 0.92);
 
-// Manual-test-mode fallback only -- real registry mode reads these from
-// the fetched manifest instead. Values are real, pulled from
-// output/suzuki-sv650/manifest.json for p038_tappet-clearance_fig1.
-const TEST_PAGE_INDEX = 37;
-const TEST_PROCEDURE_ID = "p038_tappet-clearance_fig1";
-const TEST_PAGE_GEOMETRY = {
-  composite_width_px: 2544, composite_height_px: 3276,
-  page_width_pt: 612.0, page_height_pt: 792.0,
-};
-const TEST_PIXEL_BBOX = [1484, 813, 2223, 1353];
-
 const log = document.getElementById("log");
 const pdfInput = document.getElementById("pdfInput");
-const photoInput = document.getElementById("photoInput");
 const patchBtn = document.getElementById("patchBtn");
 const contributorPrefWrap = document.getElementById("contributorPrefWrap");
 const contributorList = document.getElementById("contributorList");
@@ -190,8 +178,6 @@ function pickPhoto(candidates, priorityList) {
 
 let pdfBytes = null;
 let pdfFingerprint = null;
-let photoBytes = null;
-let photoIsPng = false;
 let registryResolution = null; // { entry, manifest, photos } once resolved
 
 // Carries the already-computed fingerprint over to the maintainer portal
@@ -210,11 +196,17 @@ function showMaintainerCta(fingerprint) {
 }
 
 // The deliberate second exit for someone who found the gap but doesn't
-// want the responsibility -- see ROADMAP.md's Persona A design. Mock
-// clipboard copy; the real version would copy this page's own URL.
-document.getElementById("outLink")?.addEventListener("click", (e) => {
+// want the responsibility -- see ROADMAP.md's Persona A design. Copies
+// this exact page's own URL (the one already carrying this manual's
+// context) so whoever it's sent to lands on the same offer.
+document.getElementById("outLink")?.addEventListener("click", async (e) => {
   e.preventDefault();
-  document.getElementById("outConfirm").classList.add("show");
+  try {
+    await navigator.clipboard.writeText(location.href);
+    document.getElementById("outConfirm").classList.add("show");
+  } catch (err) {
+    appendLog(`Couldn't copy the link automatically -- copy it from the address bar instead.`);
+  }
 });
 
 pdfInput.addEventListener("change", async () => {
@@ -243,24 +235,14 @@ pdfInput.addEventListener("change", async () => {
     setProgress(1, 1, "ready to patch");
   } catch (err) {
     appendLog(`Registry resolution failed: ${err.message}`);
-    appendLog("Falling back to manual test mode -- pick a photo below.");
-    setProgress(0, 1, "registry lookup failed, use manual test mode");
+    setProgress(0, 1, "registry lookup failed");
     if (err.reason === "not_registered") showMaintainerCta(pdfFingerprint);
   }
   maybeEnable();
 });
 
-photoInput.addEventListener("change", async () => {
-  const file = photoInput.files[0];
-  if (!file) return;
-  photoBytes = new Uint8Array(await file.arrayBuffer());
-  photoIsPng = file.type.includes("png");
-  appendLog(`Loaded test photo: ${file.name} (${file.type})`);
-  maybeEnable();
-});
-
 function maybeEnable() {
-  patchBtn.disabled = !(pdfBytes && (registryResolution || photoBytes));
+  patchBtn.disabled = !(pdfBytes && registryResolution);
 }
 
 async function readEmbeddedState(doc) {
@@ -403,7 +385,7 @@ async function buildCoverPage(doc, { vehicleDisplayName, version, nPatched, tota
 
   page.drawLine({ start: { x: 56, y: 540 }, end: { x: 556, y: 540 }, thickness: 0.5, color: STEEL });
   page.drawText("Source repo:", { x: 56, y: 518, size: 9, font: helv, color: STEEL });
-  page.drawText(repoUrl || "(manual test mode, no repo)", { x: 56, y: 504, size: 10, font: helv, color: RED });
+  page.drawText(repoUrl || "(unknown)", { x: 56, y: 504, size: 10, font: helv, color: RED });
 
   const disclaimer = "Independent, community-run documentation project. Not affiliated with, " +
     "endorsed by, or sponsored by the original manufacturer. This is informational, community-sourced " +
@@ -490,32 +472,6 @@ async function patchViaRegistry(doc, priorState, priorityList) {
   return { patchedFigures, totalFigures: activeEntries.length, vehicleDisplayName: entry.vehicle_display_name, repoUrl: entry.repo_url, sourceIdentifier: manifest.source_markers?.source_identifier };
 }
 
-async function patchManualTest(doc, priorState) {
-  // This fallback path is tied to one specific reference document (the
-  // real 40-page Suzuki SV650 manual TEST_PAGE_INDEX/TEST_PIXEL_BBOX
-  // were measured against), not a general "any PDF" smoke test -- fail
-  // with a clear reason instead of a raw pdf-lib bounds exception if
-  // someone (understandably) tries it against a shorter document.
-  if (doc.getPageCount() <= TEST_PAGE_INDEX) {
-    appendLog(`Manual test mode expects the same reference manual this fallback was measured against (page ${TEST_PAGE_INDEX + 1} of 40+) -- this document only has ${doc.getPageCount()} page(s), so there's nothing at that position to draw onto.`);
-    return { patchedFigures: (priorState && priorState.patched_figures) || {}, totalFigures: 0, vehicleDisplayName: "manual test mode -- wrong document length", repoUrl: null, sourceIdentifier: "manual-test-mode" };
-  }
-  const patchedFigures = { ...((priorState && priorState.patched_figures) || {}) };
-  const photoHash = await sha256HexShort(photoBytes);
-  const prior = patchedFigures[TEST_PROCEDURE_ID];
-
-  if (prior && prior.photo_sha256_16 === photoHash) {
-    appendLog(`${TEST_PROCEDURE_ID}: same photo as last time, skipping re-draw.`);
-  } else {
-    const image = photoIsPng ? await doc.embedPng(photoBytes) : await doc.embedJpg(photoBytes);
-    const page = doc.getPage(TEST_PAGE_INDEX);
-    drawImageAt(page, image, TEST_PAGE_GEOMETRY, TEST_PIXEL_BBOX);
-    appendLog(`${TEST_PROCEDURE_ID}: drew image.`);
-    patchedFigures[TEST_PROCEDURE_ID] = { photo_sha256_16: photoHash, patched_at: todayStr() };
-  }
-  return { patchedFigures, totalFigures: 911, vehicleDisplayName: "SUZUKI SV650 1999 2002 (manual test)", repoUrl: null, sourceIdentifier: "manual-test-mode" };
-}
-
 patchBtn.addEventListener("click", async () => {
   patchBtn.disabled = true;
   appendLog("\nPatching, entirely client-side...");
@@ -532,9 +488,7 @@ patchBtn.addEventListener("click", async () => {
     const priorityList = getPriorityList();
     if (priorityList.length) appendLog(`Contributor priority: ${priorityList.join(" > ")} (random otherwise)`);
 
-    const result = registryResolution
-      ? await patchViaRegistry(doc, priorState, priorityList)
-      : await patchManualTest(doc, priorState);
+    const result = await patchViaRegistry(doc, priorState, priorityList);
 
     const version = nextVersion(priorState);
     const nPatchedTotal = Object.keys(result.patchedFigures).length;
