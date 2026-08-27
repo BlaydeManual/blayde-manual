@@ -43,13 +43,37 @@ const MOCK_MANIFEST_CONTEXT = {
   },
 };
 
+const CANONICAL_REGISTRY_URL = "https://raw.githubusercontent.com/BlaydeManual/registry/main/registry.json";
+
 const params = new URLSearchParams(location.search);
-// A real (repo, procedure) pair only ever arrives via an in-PDF QR
-// code -- .has(), not the fallback values below, so a general nav
-// link (no params at all) is distinguishable from a real QR visit.
-const hasProcedureContext = params.has("repo") && params.has("procedure");
-const repoUrl = params.get("repo") || "https://github.com/BlaydeManual/suzuki-sv650-1999-2002";
+// A real context only ever arrives via an in-PDF QR code -- .has(),
+// not the fallback values below, so a general nav link (no params at
+// all) is distinguishable from a real QR visit. Two param shapes:
+// `v=<vehicle_slug>` (current) resolves to a repo_url via the
+// registry below; `repo=<full repo URL>` (legacy) is used directly,
+// so a QR already printed into someone's patched manual before this
+// change keeps working without needing a re-patch.
+const vehicleSlug = params.get("v");
+const legacyRepoUrl = params.get("repo");
+const hasProcedureContext = (params.has("v") || params.has("repo")) && params.has("procedure");
+let repoUrl = legacyRepoUrl || "https://github.com/BlaydeManual/suzuki-sv650-1999-2002";
 const procedureId = params.get("procedure") || "p040_2-10-periodic-maintenance_fig1";
+
+// Resolves `v=<vehicle_slug>` to a real repo_url via registry.json --
+// the same lookup registry-browse.js already does per vehicle, just
+// for one slug instead of the whole list. Falls back to the default
+// mock repo (silently, matching every other real-repo-unreachable
+// fallback on this page) if the registry or the slug can't be found,
+// so a broken/offline registry degrades to "showing what's known
+// locally" instead of a dead end.
+async function resolveRepoUrl() {
+  if (legacyRepoUrl || !vehicleSlug) return;
+  try {
+    const registryData = await loadRegistry(CANONICAL_REGISTRY_URL);
+    const match = (registryData.vehicles || []).find((v) => v.vehicle_slug === vehicleSlug && v.status === "approved");
+    if (match) repoUrl = match.repo_url;
+  } catch (e) { /* registry unreachable -- fall through to the default mock repo */ }
+}
 
 let signedIn = false;
 let currentUsername = null;
@@ -178,6 +202,7 @@ function handleLoggedOut() {
 if (hasProcedureContext) {
   document.getElementById("procedureFlow").style.display = "block";
   (async () => {
+    await resolveRepoUrl();
     context = await loadContext();
     const titleEl = document.getElementById("contextTitle");
     const metaEl = document.getElementById("contextMeta");
