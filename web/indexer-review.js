@@ -82,10 +82,10 @@ function startReview(manifest, savedChunkIdx) {
   document.getElementById("sourceUrlError").style.display = "none";
   document.getElementById("vehicleClassConfirm").value = manifest.vehicle_class || "";
   document.getElementById("vehicleClassRequiredError").style.display = "none";
-  document.getElementById("submitSuccess").style.display = "none";
   document.getElementById("submitError").style.display = "none";
   document.getElementById("submitBtn").disabled = false;
   document.getElementById("submitBtn").textContent = "Looks good, submit it";
+  document.getElementById("submitSummaryCard").style.display = "none";
   updateSubmitSignInUI();
   renderReviewGallery();
   saveReviewStateNow(); // persist immediately -- don't wait for a first edit
@@ -585,7 +585,6 @@ function renderModalOverlays() {
     // no exceptions -- delete already removed anything that isn't real,
     // so there's no separate "excluded" set to compute or forget to filter.
     const submitBtn = document.getElementById("submitBtn");
-    const successEl = document.getElementById("submitSuccess");
     const errorEl = document.getElementById("submitError");
     errorEl.style.display = "none";
     submitBtn.disabled = true;
@@ -597,12 +596,15 @@ function renderModalOverlays() {
       // anything" -- true even on a successful submit before this,
       // since the only feedback was one appendLog line into #log,
       // which sits at the top of the page, far out of view from this
-      // button at the bottom of a long review gallery. Shown right
-      // here instead.
-      successEl.innerHTML = `Submitted -- ${result.total} candidates, ${result.pct}% reviewed. `
+      // button at the bottom of a long review gallery. Now the whole
+      // review pane (form, stats, gallery) closes out and gets replaced
+      // by a real summary, so submitting reads as "done," not "still
+      // reviewing this."
+      document.getElementById("reviewSection").style.display = "none";
+      const summaryCard = document.getElementById("submitSummaryCard");
+      document.getElementById("submitSummaryText").innerHTML = `${result.total} candidates, ${result.pct}% reviewed. `
         + `<a href="${result.repoUrl}" target="_blank" rel="noopener">Repo</a> (private until an org approver reviews it)`;
-      successEl.style.display = "block";
-      submitBtn.textContent = "Submitted";
+      summaryCard.style.display = "block";
 
       // The whole point of persisting review state was to survive a
       // refresh before submission -- once actually submitted, keeping
