@@ -49,6 +49,21 @@ function saveReviewStateNow() {
   });
 }
 
+// Separate from the page's main sign-in (classic OAuth, used for
+// browsing/reviewing) -- submitting always goes through the GitHub App
+// specifically, so it needs its OWN sign-in, kept in its own session
+// slot (BlaydeAuth.getAppSession()) rather than replacing the session
+// everything else on this page depends on. Declared at top level, not
+// inside the pageModal drag-handling block below, so it's reliably
+// visible from startReview() without depending on legacy function-in-
+// block hoisting.
+function updateSubmitSignInUI() {
+  const signedInToApp = !!BlaydeAuth.getAppSession();
+  document.getElementById("submitSignInBtn").style.display = signedInToApp ? "none" : "inline-block";
+  document.getElementById("submitSignInNote").style.display = signedInToApp ? "none" : "block";
+  document.getElementById("submitBtn").style.display = signedInToApp ? "inline-block" : "none";
+}
+
 function startReview(manifest, savedChunkIdx) {
   reviewManifest = manifest;
   manifest.entries.forEach((e) => {
@@ -68,7 +83,10 @@ function startReview(manifest, savedChunkIdx) {
   document.getElementById("vehicleClassConfirm").value = manifest.vehicle_class || "";
   document.getElementById("vehicleClassRequiredError").style.display = "none";
   document.getElementById("submitSuccess").style.display = "none";
+  document.getElementById("submitError").style.display = "none";
   document.getElementById("submitBtn").disabled = false;
+  document.getElementById("submitBtn").textContent = "Looks good, submit it";
+  updateSubmitSignInUI();
   renderReviewGallery();
   saveReviewStateNow(); // persist immediately -- don't wait for a first edit
 }
@@ -516,6 +534,16 @@ function renderModalOverlays() {
   document.getElementById("pageModalClose").addEventListener("click", () => {
     document.getElementById("pageModal").classList.remove("open");
   });
+  document.getElementById("submitSignInBtn").addEventListener("click", async () => {
+    try {
+      await BlaydeAuth.signInWithGitHubApp();
+      updateSubmitSignInUI();
+    } catch (e) {
+      const errorEl = document.getElementById("submitError");
+      errorEl.textContent = `Sign-in failed: ${e.message}`;
+      errorEl.style.display = "block";
+    }
+  });
   document.getElementById("submitBtn").addEventListener("click", async () => {
     const vehicleClass = document.getElementById("vehicleClassConfirm").value;
     if (!vehicleClass) {
@@ -553,31 +581,84 @@ function renderModalOverlays() {
     }
     reviewManifest.source_markers = { source_identifier: sourceUrl };
 
-    const { total, touched, pct } = reviewStats();
     // Everything in reviewManifest.entries at this point gets submitted,
     // no exceptions -- delete already removed anything that isn't real,
     // so there's no separate "excluded" set to compute or forget to filter.
-    appendLog(`[submit] ${total} candidates submitted, ${pct}% reviewed before submitting -- this is what the org quorum's light review would see`);
-
-    // [mock] real action here would be opening the new-vehicle proposal
-    // PR (propose_new_vehicle.py's real flow, not yet ported to the
-    // browser -- see ROADMAP.md). Direct report: clicking this button
-    // "doesn't seem to do anything" -- true even on a successful
-    // submit, since the only feedback was one appendLog line into #log,
-    // which sits at the top of the page, far out of view from this
-    // button at the bottom of a long review gallery. Now shown right
-    // here instead, and the button disables so a second click can't
-    // look like the first one silently failed.
+    const submitBtn = document.getElementById("submitBtn");
     const successEl = document.getElementById("submitSuccess");
-    successEl.textContent = `Submitted -- ${total} candidates, ${pct}% reviewed. An org maintainer will review this next.`;
-    successEl.style.display = "block";
-    document.getElementById("submitBtn").disabled = true;
+    const errorEl = document.getElementById("submitError");
+    errorEl.style.display = "none";
+    submitBtn.disabled = true;
+    submitBtn.textContent = "Submitting...";
+    try {
+      const result = await submitNewVehicleProposal(reviewManifest);
+      appendLog(`[submit] created ${result.repoUrl} (private, pending org review)`);
+      // Direct report: clicking this button "doesn't seem to do
+      // anything" -- true even on a successful submit before this,
+      // since the only feedback was one appendLog line into #log,
+      // which sits at the top of the page, far out of view from this
+      // button at the bottom of a long review gallery. Shown right
+      // here instead.
+      successEl.innerHTML = `Submitted -- ${result.total} candidates, ${result.pct}% reviewed. `
+        + `<a href="${result.repoUrl}" target="_blank" rel="noopener">Repo</a> (private until an org approver reviews it)`;
+      successEl.style.display = "block";
+      submitBtn.textContent = "Submitted";
 
-    // The whole point of persisting review state was to survive a
-    // refresh before submission -- once actually submitted, keeping it
-    // around would just mean a future re-open of this same PDF offers
-    // to "continue reviewing" something already sent.
-    const jobId = currentJobId();
-    if (jobId) await clearReviewState(jobId).catch(() => {});
+      // The whole point of persisting review state was to survive a
+      // refresh before submission -- once actually submitted, keeping
+      // it around would just mean a future re-open of this same PDF
+      // offers to "continue reviewing" something already sent.
+      const jobId = currentJobId();
+      if (jobId) await clearReviewState(jobId).catch(() => {});
+    } catch (e) {
+      errorEl.textContent = `Submit failed: ${e.message}`;
+      errorEl.style.display = "block";
+      appendLog(`[submit] failed: ${e.message}`);
+      submitBtn.disabled = false;
+      submitBtn.textContent = "Looks good, submit it";
+    }
   });
+}
+
+// GitHub-App-only, no personal-account alternative (see ROADMAP.md's
+// GitHub App migration entry): a maintainer just did real, substantial
+// work that needs to become the org's real public record, and there's no
+// meaningful "keep it personal" case for that -- unlike a photo
+// contribution, which stays a genuine choice in contribute.js. The
+// browser never touches the App's installation credential; it only ever
+// sends the maintainer's own App user-to-server token (proves a real
+// signed-in person is asking) to the Worker's /direct-submit endpoint,
+// which does the actual privileged work: creates the repo PRIVATE,
+// directly under BlaydeManual, pushes manifest.json, and notarizes it
+// (a sha256 of the manifest committed to the public, App-only-writable
+// BlaydeManual/submission-log) so org-approval can later prove the
+// manifest it's reviewing hasn't been swapped after the fact. The
+// maintainer never gets write access to the resulting repo -- that's not
+// a limitation, it's the point: nobody but a real org approval can change
+// it again before it goes live.
+async function submitNewVehicleProposal(manifest) {
+  const session = BlaydeAuth.getAppSession();
+  if (!session) {
+    throw new Error(`Sign in via "Submit directly" first -- this always goes straight into BlaydeManual, so it needs the GitHub App sign-in, not the regular one.`);
+  }
+
+  const resp = await fetch(`${BlaydeAuth.AUTH_WORKER_URL}direct-submit`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", Authorization: `Bearer ${session.token}` },
+    body: JSON.stringify({ vehicle_slug: manifest.vehicle, manifest }),
+  });
+  const result = await resp.json().catch(() => ({}));
+  if (!resp.ok || result.error) {
+    throw new Error(result.error || `Submit failed (${resp.status}).`);
+  }
+
+  // Computed from the manifest PARAMETER, not reviewStats() (which reads
+  // the module-level reviewManifest global) -- they're the same object
+  // in the real click-handler flow, but this function shouldn't depend
+  // on that coincidence to be correct.
+  const total = manifest.entries.length;
+  const touchedCount = manifest.entries.filter((e) => e._touched || e._seen).length;
+  const pct = total ? Math.round((touchedCount / total) * 100) : 0;
+
+  return { repoUrl: result.repoUrl, total, pct };
 }

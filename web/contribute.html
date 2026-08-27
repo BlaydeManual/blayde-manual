@@ -104,6 +104,7 @@
   .upload-meta { color: var(--steel); font-size: 0.74rem; margin-top: 2px; }
   .upload-status { font-size: 0.68rem; font-weight: 700; padding: 2px 7px; border-radius: 4px; margin-left: 6px; }
   .upload-status.draft { background: rgba(138,143,152,0.15); color: var(--steel); }
+  .upload-status.forked { background: rgba(255,204,102,0.15); color: #ffcc66; }
   .upload-status.submitted { background: rgba(159,225,203,0.12); color: var(--mint); }
   .upload-status.accepted { background: rgba(159,225,203,0.18); color: var(--mint); }
   .upload-status.rejected { background: rgba(200,16,46,0.14); color: #ff6b6b; }
@@ -162,6 +163,16 @@
           <span>I license this photo under <a href="https://creativecommons.org/licenses/by/4.0/" target="_blank" rel="noopener" style="color:var(--mint);"><strong>CC-BY 4.0</strong></a>. Anyone may use this photo, with attribution to me.</span>
         </label>
       </div>
+      <div id="submitModeRow" style="display:none; margin:10px 0 0;">
+        <label style="display:flex; align-items:flex-start; gap:8px; font-size:0.82rem; color:var(--steel); margin:6px 0; cursor:pointer;">
+          <input type="radio" name="submitMode" value="public" id="submitModePublic" checked style="margin-top:2px;">
+          <span><strong>Public</strong> -- fastest. Opens the pull request immediately, no personal copy kept.</span>
+        </label>
+        <label style="display:flex; align-items:flex-start; gap:8px; font-size:0.82rem; color:var(--steel); margin:6px 0; cursor:pointer;">
+          <input type="radio" name="submitMode" value="private" id="submitModePrivate" style="margin-top:2px;">
+          <span><strong>Private</strong> -- pushes to your own copy first. Nothing is proposed until you choose to open the pull request yourself, whenever you're ready (from My uploads).</span>
+        </label>
+      </div>
       <div>
         <button id="saveDraftBtn" disabled>Save to my uploads</button>
         <button class="secondary" id="submitNowBtn" disabled>Submit now</button>
@@ -170,6 +181,10 @@
       <div id="signInPrompt">
         <p>Signing in links this (and anything else you contribute) to your GitHub account, so it can actually be proposed as a real photo request -- and so you can find it again later.</p>
         <button id="promptSignInBtn">Sign in with GitHub</button>
+      </div>
+      <div id="appSignInPrompt" style="display:none; background:#000; border:1px solid var(--steel-dark); border-radius:6px; padding:14px; margin-top:12px;">
+        <p style="margin:0 0 10px; font-size:0.82rem; color:var(--steel);">The Public path submits through a separate sign-in from the one you're already using, since it's a different app with different permissions.</p>
+        <button id="appPromptSignInBtn">Sign in for Public submit</button>
       </div>
       <div id="log"></div>
     </div>

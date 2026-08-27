@@ -9,9 +9,27 @@
 // project's own auth Worker. See SECURITY.md.
 
 const GITHUB_CLIENT_ID = "Ov23lijpNHggDgWfwxWa";
+// GitHub App client ID -- provisioned separately from the classic OAuth
+// App above. Both logins exist side by side deliberately (see
+// ROADMAP.md's GitHub App migration entry): this one is for "submit
+// directly" / the Public contribute path, where the App's own
+// installation credential (never this token) does the actual write, so
+// the submitter never retains write access to what they just submitted.
+const GITHUB_APP_CLIENT_ID = "Iv23liGTA0ruM1Phtz8k";
 const REDIRECT_URI = "https://blaydemanual.com/auth/callback.html";
 const AUTH_WORKER_URL = "https://auth.blaydemanual.com/";
+// Two SEPARATE storage keys, not one shared slot with an authType field --
+// a maintainer plausibly needs both sessions live at once in the same
+// portal visit (classic OAuth to browse/review/approve, the App session
+// only for the moment they hit "submit directly"). A single shared slot
+// would mean signing in via the App silently clobbers the OAuth session
+// everything else on the page depends on, logging the maintainer out of
+// their own review queue mid-task. getSession()/setSession() keep their
+// original names and behavior for the classic path, since every existing
+// real caller (review-panel.js, my-vehicles.js, the future org-approval.js)
+// already expects that shape untouched.
 const SESSION_KEY = "blayde_session_v1";
+const APP_SESSION_KEY = "blayde_app_session_v1";
 const STATE_KEY = "blayde_oauth_state_v1";
 const HANDOFF_KEY = "blayde_auth_handoff_v1";
 
@@ -24,8 +42,23 @@ function setSession(session) {
   sessionStorage.setItem(SESSION_KEY, JSON.stringify(session));
 }
 
+function getAppSession() {
+  const raw = sessionStorage.getItem(APP_SESSION_KEY);
+  return raw ? JSON.parse(raw) : null;
+}
+
+function setAppSession(session) {
+  sessionStorage.setItem(APP_SESSION_KEY, JSON.stringify(session));
+}
+
+// Signs out of BOTH sessions -- a page-level "Logout" is one clearly
+// understood action, not two separate controls a person has to remember
+// to use. Anything that specifically needs to drop just the App session
+// (e.g. after a submit, if that's ever desired) can call
+// sessionStorage.removeItem directly rather than going through here.
 function signOut() {
   sessionStorage.removeItem(SESSION_KEY);
+  sessionStorage.removeItem(APP_SESSION_KEY);
 }
 
 // Shows "@username Logout" in a page's #authStatus element when
@@ -38,13 +71,20 @@ function renderAuthStatus(onLoggedOut) {
   const el = document.getElementById("authStatus");
   if (!el) return;
   const session = getSession();
-  if (!session) {
+  const appSession = getAppSession();
+  if (!session && !appSession) {
     el.style.display = "none";
     el.innerHTML = "";
     return;
   }
   el.style.display = "inline-flex";
-  el.innerHTML = `<span class="auth-username">@${session.username}</span> <a href="#" id="authLogoutLink">Logout</a>`;
+  // Either or both can be active at once (see the two-session-slot note
+  // above) -- shown as one identity with an extra note when the App
+  // session is ALSO signed in, since that's the less-common addition that
+  // changes what "submit directly" actually does.
+  const primary = session || appSession;
+  const appNote = appSession && session ? ` <span class="auth-mode">(direct submit ready)</span>` : appSession && !session ? ` <span class="auth-mode">(direct submit)</span>` : "";
+  el.innerHTML = `<span class="auth-username">@${primary.username}</span>${appNote} <a href="#" id="authLogoutLink">Logout</a>`;
   document.getElementById("authLogoutLink").addEventListener("click", (e) => {
     e.preventDefault();
     signOut();
@@ -68,15 +108,30 @@ function renderAuthStatus(onLoggedOut) {
 // postMessage is kept as a secondary path in case a browser partitions
 // storage between the popup and this window.
 function signInWithGitHub() {
+  return startSignIn({ clientId: GITHUB_CLIENT_ID, scope: "public_repo", authType: "oauth" });
+}
+
+// GitHub App user-to-server sign-in -- no `scope` param (a GitHub App's
+// permissions are fixed at installation, not requested per sign-in).
+// Same popup/handoff mechanism as the classic flow; callback.html reads
+// the "app:" prefix this puts on `state` to know which Worker endpoint
+// to exchange the code against and which authType to tag the session
+// with -- state is the only value GitHub round-trips unmodified, so it
+// carries that choice through the whole redirect dance.
+function signInWithGitHubApp() {
+  return startSignIn({ clientId: GITHUB_APP_CLIENT_ID, scope: null, authType: "githubapp" });
+}
+
+function startSignIn({ clientId, scope, authType }) {
   return new Promise((resolve, reject) => {
-    const state = crypto.randomUUID();
+    const state = `${authType}:${crypto.randomUUID()}`;
     sessionStorage.setItem(STATE_KEY, state);
     localStorage.removeItem(HANDOFF_KEY); // clear any stale attempt
 
     const authorizeUrl = new URL("https://github.com/login/oauth/authorize");
-    authorizeUrl.searchParams.set("client_id", GITHUB_CLIENT_ID);
+    authorizeUrl.searchParams.set("client_id", clientId);
     authorizeUrl.searchParams.set("redirect_uri", REDIRECT_URI);
-    authorizeUrl.searchParams.set("scope", "public_repo");
+    if (scope) authorizeUrl.searchParams.set("scope", scope);
     authorizeUrl.searchParams.set("state", state);
 
     const popup = window.open(authorizeUrl.toString(), "blayde-github-signin", "width=600,height=700");
@@ -94,8 +149,8 @@ function signInWithGitHub() {
         finish(null, new Error(payload.error));
         return;
       }
-      const session = { username: payload.username, token: payload.token };
-      setSession(session);
+      const session = { username: payload.username, token: payload.token, authType: payload.authType };
+      if (payload.authType === "githubapp") setAppSession(session); else setSession(session);
       finish(session, null);
     }
 
@@ -140,4 +195,4 @@ function signInWithGitHub() {
   });
 }
 
-window.BlaydeAuth = { signInWithGitHub, signOut, getSession, renderAuthStatus, AUTH_WORKER_URL, STATE_KEY };
+window.BlaydeAuth = { signInWithGitHub, signInWithGitHubApp, signOut, getSession, getAppSession, renderAuthStatus, AUTH_WORKER_URL, STATE_KEY };
