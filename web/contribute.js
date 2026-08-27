@@ -181,20 +181,9 @@ function log(msg) {
   el.scrollTop = el.scrollHeight;
 }
 
-// A distinct, hard-to-miss confirmation for a real milestone (a
-// completed submission), separate from the plain scrolling log --
-// see #toast's own CSS for the pop animation. Restarting the
-// animation on a re-trigger (rather than letting an in-progress one
-// keep playing) means a second submission shortly after the first
-// still gets its own visible pop instead of silently reusing the tail
-// end of the first one.
-function showToast(message) {
-  const el = document.getElementById("toast");
-  el.innerHTML = `<span class="toast-icon">&#9989;</span><span>${message}</span>`;
-  el.classList.remove("show");
-  void el.offsetWidth; // force reflow so removing+re-adding the class actually restarts the animation
-  el.classList.add("show");
-}
+// showToast() now lives in registry.js -- shared with review-panel.js
+// and org-approval.js, which need the exact same "this real milestone
+// just happened" confirmation, not just this page.
 
 // ---- context lookup: try the real manifest first (works once a repo
 // actually exists), fall back to the mock context, so browsing never

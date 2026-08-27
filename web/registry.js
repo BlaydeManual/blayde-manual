@@ -42,6 +42,27 @@ function formatProcedureLabel(procedureId, page, sectionHeading) {
   return `PG. ${page} - ${sectionHeading || procedureId}`;
 }
 
+// A distinct, hard-to-miss confirmation for a real milestone (a
+// completed submission, an accepted photo, an approved vehicle) --
+// separate from a page's own plain scrolling log, which a real
+// completion shouldn't have to compete with. Shared across
+// contribute.js, review-panel.js, and org-approval.js, all of which
+// need the same "this real thing just happened" moment; each page
+// must have a `#toast` element with the matching CSS (see
+// contribute.html/maintainer.html) for this to have anywhere to
+// render into. Restarting the animation on a re-trigger, rather than
+// letting an in-progress one keep playing, means a second completion
+// shortly after the first still gets its own visible pop instead of
+// silently reusing the tail end of the first one.
+function showToast(message) {
+  const el = document.getElementById("toast");
+  if (!el) return;
+  el.innerHTML = `<span class="toast-icon">&#9989;</span><span>${message}</span>`;
+  el.classList.remove("show");
+  void el.offsetWidth; // force reflow so removing+re-adding the class actually restarts the animation
+  el.classList.add("show");
+}
+
 // Custom confirm/prompt -- native confirm()/alert()/prompt() have a
 // real, user-triggerable failure mode: after several appear in a short
 // time, Chromium offers a "Prevent this page from creating additional

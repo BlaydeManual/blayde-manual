@@ -295,6 +295,7 @@ document.getElementById("orgApproveBtn").addEventListener("click", async () => {
     // the review pane on a real approval, replace it with a summary,
     // instead of leaving the just-approved gallery sitting on screen.
     document.getElementById("orgReviewArea").style.display = "none";
+    showToast("Approved! Vehicle repo is now public.");
     const summaryCard = document.getElementById("orgApproveSummaryCard");
     // branchProtectionApplied surfaced explicitly, not assumed -- this
     // repo requires a second real maintainer before ANY photo PR can
