@@ -442,7 +442,7 @@ async function drawContributeMarker(doc, page, pageGeometry, pixelBbox, url, fon
   addLinkAnnotation(page, { x: ptX0, y: boxY, width: boxW, height: boxH }, url);
 }
 
-async function buildCoverPage(doc, { vehicleDisplayName, nPatched, totalFigures, repoUrl, vehicleSlug }) {
+async function buildCoverPage(doc, { vehicleDisplayName, nPatched, totalFigures, repoUrl, vehicleSlug, sourceIdentifier }) {
   const page = doc.insertPage(0, [612, 792]);
   page.drawRectangle({ x: 0, y: 0, width: 612, height: 792, color: BLACK });
   page.drawRectangle({ x: 0, y: 782, width: 612, height: 10, color: RED });
@@ -479,14 +479,38 @@ async function buildCoverPage(doc, { vehicleDisplayName, nPatched, totalFigures,
 
   page.drawLine({ start: { x: 56, y: 540 }, end: { x: 556, y: 540 }, thickness: 0.5, color: STEEL });
 
-  // Both lines below are real, tappable links (same PDF Link-annotation
-  // mechanism as the in-manual QR markers) -- not just printed text.
-  page.drawText("Source repo:", { x: 56, y: 518, size: 9, font: helv, color: STEEL });
-  const repoLabel = repoUrl || "(unknown)";
-  page.drawText(repoLabel, { x: 56, y: 504, size: 10, font: helv, color: RED });
-  if (repoUrl) {
-    const repoLabelWidth = helv.widthOfTextAtSize(repoLabel, 10);
-    addLinkAnnotation(page, { x: 56, y: 501, width: repoLabelWidth, height: 12 }, repoUrl);
+  // All three lines below are real, tappable links (same PDF
+  // Link-annotation mechanism as the in-manual QR markers) when their
+  // value is an actual URL -- not just printed text. A running cursor
+  // keeps the block's spacing consistent as lines get added/skipped.
+  let y = 518;
+  const linkLine = (label, value, url) => {
+    page.drawText(label, { x: 56, y, size: 9, font: helv, color: STEEL });
+    y -= 14;
+    page.drawText(value, { x: 56, y, size: 9.5, font: helv, color: RED, maxWidth: 500 });
+    if (url) {
+      const labelWidth = Math.min(helv.widthOfTextAtSize(value, 9.5), 500);
+      addLinkAnnotation(page, { x: 56, y: y - 3, width: labelWidth, height: 12 }, url);
+    }
+    y -= 26;
+  };
+
+  linkLine("Source repo:", repoUrl || "(unknown)", repoUrl || null);
+
+  // The manual's ORIGINAL source, distinct from the repo line above --
+  // where the source PDF that got OCR'd/indexed actually came from
+  // (e.g. a manualslib.com link), already required at submission time
+  // and already shown on Browse, just never threaded onto the cover
+  // page before. Directly answers the disclaimer below's own "verify
+  // against an authoritative source" with a link to the one used here.
+  // Not guaranteed to be a real URL (see ROADMAP.md -- still an open
+  // question whether this field gets a reachability check at
+  // submission time, so it can be free text a maintainer typed) --
+  // shown either way, but only ever turned into a link annotation when
+  // it actually looks like one.
+  if (sourceIdentifier) {
+    const isRealUrl = /^https?:\/\//i.test(sourceIdentifier);
+    linkLine("Original manual source:", sourceIdentifier, isRealUrl ? sourceIdentifier : null);
   }
 
   // Points at this vehicle's real coverage on the live site -- how
@@ -495,10 +519,7 @@ async function buildCoverPage(doc, { vehicleDisplayName, nPatched, totalFigures,
   // moment anyone else patches a newer copy.
   if (vehicleSlug) {
     const trackUrl = new URL(`registry-browse.html?vehicle=${encodeURIComponent(vehicleSlug)}`, location.href).href;
-    page.drawText("See what's still missing, and if a newer copy exists:", { x: 56, y: 480, size: 9, font: helv, color: STEEL });
-    page.drawText(trackUrl, { x: 56, y: 466, size: 9, font: helv, color: RED, maxWidth: 500 });
-    const trackLabelWidth = Math.min(helv.widthOfTextAtSize(trackUrl, 9), 500);
-    addLinkAnnotation(page, { x: 56, y: 463, width: trackLabelWidth, height: 11 }, trackUrl);
+    linkLine("See what's still missing, and if a newer copy exists:", trackUrl, trackUrl);
   }
 
   const disclaimer = "Independent, community-run documentation project. Not affiliated with, " +
@@ -619,7 +640,7 @@ patchBtn.addEventListener("click", async () => {
     await buildCoverPage(doc, {
       vehicleDisplayName: result.vehicleDisplayName,
       nPatched: nPatchedTotal, totalFigures: result.totalFigures, repoUrl: result.repoUrl,
-      vehicleSlug: result.vehicleSlug,
+      vehicleSlug: result.vehicleSlug, sourceIdentifier: result.sourceIdentifier,
     });
 
     await writeEmbeddedState(doc, {
