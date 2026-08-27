@@ -1,18 +1,41 @@
 # Blayde Auth Worker
 
-Does exactly one thing: trades a GitHub OAuth `code` for an access
-token, using the client secret, which never leaves this Worker. See
-`SECURITY.md` at the repo root for how this fits into the rest of the
-architecture.
+Two jobs now: trades a GitHub OAuth `code` for an access token (both
+the classic OAuth App and the GitHub App's user-to-server flow), and
+performs the small set of privileged actions (direct-submit,
+direct-contribute, pending-vehicles, approve-vehicle) using the GitHub
+App's own installation credential -- one the browser never holds. See
+`SECURITY.md` and `SECURITY-TESTING.md` at the repo root for how this
+fits into the rest of the architecture and how to verify it actually
+works once deployed.
 
 ## Deploy
 
 1. Install wrangler if you don't have it: `npm install -g wrangler`
 2. `cd auth-worker`
 3. `wrangler login`
-4. `wrangler secret put GITHUB_CLIENT_SECRET` -- paste the client
-   secret from the GitHub OAuth App settings page when prompted. This
-   never gets written to disk or committed anywhere in this repo.
+4. Set all five secrets -- `wrangler secret put <NAME>`, paste the
+   value when prompted, for each of:
+   - `GITHUB_CLIENT_SECRET` -- classic OAuth App's client secret.
+   - `GITHUB_APP_ID` -- the GitHub App's numeric App ID.
+   - `GITHUB_APP_CLIENT_ID` -- the GitHub App's Client ID (also hardcoded
+     client-side in `web/auth.js`'s `GITHUB_APP_CLIENT_ID` -- that's
+     public by design, same as the classic OAuth App's client ID).
+   - `GITHUB_APP_CLIENT_SECRET` -- the GitHub App's client secret.
+   - `GITHUB_APP_PRIVATE_KEY` -- the full, unmodified contents of the
+     `.pem` file GitHub generates for the App, including its
+     `-----BEGIN/END ... PRIVATE KEY-----` lines. GitHub issues these as
+     PKCS#1 (`RSA PRIVATE KEY`), not PKCS#8 -- the Worker detects and
+     converts this automatically (`pemToDer`/`pkcs1ToPkcs8` in
+     `src/index.js`), so paste the file exactly as downloaded, no manual
+     conversion needed.
+
+   None of these are written to disk or committed anywhere in this
+   repo. Secrets set via the Cloudflare dashboard (Workers & Pages ->
+   this worker -> Settings -> Variables) work identically -- either
+   path is fine, but **setting a secret alone does not redeploy the
+   Worker's code** (step 5 below is still required after any code
+   change, including this migration).
 5. `wrangler deploy`
 
 This publishes to `auth.blaydemanual.com` (the route in
@@ -20,15 +43,33 @@ This publishes to `auth.blaydemanual.com` (the route in
 Cloudflare, that route attaches automatically -- no separate DNS
 record needed.
 
-## GitHub OAuth App setting
+## GitHub app settings
 
-The Authorization callback URL on the OAuth App must be set to:
+Classic OAuth App and the GitHub App both need their Authorization/
+Callback URL set to:
 
 ```
 https://blaydemanual.com/auth/callback.html
 ```
 
-## Redeploying after a client secret rotation
+The GitHub App additionally needs to be installed on the BlaydeManual
+org with "All repositories" access, and its permissions set to:
+Contents (read/write), Pull requests (read/write), Administration
+(read/write -- the **repository-level** permission, not the separate
+organization-level "Administration" entry, which this project doesn't
+use), Members (read -- organization permission), and Metadata
+(read-only). See `SECURITY.md` for why each is needed; `Issues` is
+deliberately NOT granted (unused -- zero `/issues` calls anywhere in
+this Worker).
 
-Re-run step 4 with the new value, then `wrangler deploy` again to pick
-it up.
+**Editing an already-installed App's permissions is a two-step
+process, confirmed live**: changing the checkboxes on the App's own
+settings page does not by itself change what an existing installation
+is granted -- a separate approval step on the installation (Organization
+settings -> GitHub Apps -> this app -> there's a pending-update prompt)
+is required before the new permission set actually takes effect.
+
+## Redeploying after a secret rotation
+
+Re-run the relevant `wrangler secret put` command with the new value,
+then `wrangler deploy` again to pick it up.

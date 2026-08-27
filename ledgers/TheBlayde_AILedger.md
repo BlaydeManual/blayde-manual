@@ -462,6 +462,100 @@ others didn't. All were the user reviewing a working version and
 pointing at something specific, not Claude proactively refining its
 own output.
 
+## The GitHub App migration and the security audit that followed
+
+**The architecture reshaped through direct correction, the same
+pattern as the registry and photomosaic sections above.** Claude's
+first pass at splitting the submission flows was incomplete -- it
+missed that `contribute.js` needed the same treatment as the indexer.
+The user corrected this directly and specifically: "indexers should be
+gitapp only... contribute has an option for private (oath) and truly
+can operate on your own or Public, where your stuff auto submits for
+PRs." A second round of feedback simplified Claude's proposed UI
+("just change the login page to have two options right? reuse the same
+contributor landing, different tokens") into what actually shipped.
+Both corrections were substantive, not stylistic -- the deferred-PR-
+opening mechanic for the Private contribute path, in particular, came
+directly out of the user's framing, not Claude's first draft.
+
+**The security audit itself was the user's explicit, two-stage ask, and
+Claude found real issues both times without being pointed at
+specifics.** First: "perform a security audit and update the
+architecture in security MD... since it has significantly changed" --
+Claude's self-directed review found four real, exploitable gaps before
+any of this reached live testing (no repo-scope validation on
+`/direct-contribute`, meaning a crafted `repo_url` could have pointed
+the App's own privileged credential at `BlaydeManual/registry` itself;
+unvalidated `procedure_id` risking path traversal; `/pending-vehicles`
+readable by any signed-in GitHub account, not just org members; a
+notarization-filename bug that could have caused a false rejection on
+approval). Second, the user asked for something more adversarial and
+specific: build a real, tiered testing plan (anonymous / non-member /
+member / admin), using live calls wherever possible rather than trusting
+a mocked test suite, and log honestly what can't be verified yet rather
+than skip it. That became `SECURITY-TESTING.md`, and the user set a
+standing gate on top of it, unprompted by any question Claude asked:
+"i don't want to merge 21 until we have this plan in place."
+
+**Three real, shipped bugs were Claude's own mistakes, caught only by
+Claude's own insistence on testing the actually-deployed code with a
+real token rather than trusting the mocked test suite that had already
+passed.** A missing `User-Agent` header, a PKCS#1-vs-PKCS#8 private key
+mismatch that broke every JWT signing attempt on any deploy, and an
+error-swallowing bug in `getOrgMembership` that made a missing App
+permission indistinguishable from a real non-member -- none of these
+were caught by the synthetic tests Claude had already written and
+already trusted. This is worth stating plainly rather than folding into
+"Claude found bugs" generally: these three were Claude's own defects,
+in Claude's own code, that shipped once already before live testing
+caught them. The user's role here was persistence, not diagnosis --
+reporting "it's been deployed" each time and letting Claude's own
+verification discipline (re-running the same live curl calls after
+every claimed fix) be the thing that actually caught each one, rather
+than accepting the report at face value.
+
+**Two sharp, skeptical user questions each surfaced a real gap Claude
+had not flagged on its own.** "Why does it need admin? I don't want
+this token/auth to have too much permission that could leak a session"
+led to a real permissions audit (via GitHub's own docs, not memory)
+that found an unused `Issues` grant to remove and confirmed the
+Administration permission was already correctly repo-scoped, not
+org-wide. A follow-up, "do we have the account set up properly," led
+Claude to audit the org's own settings for the first time in this
+project's history and find that members could create their own repos
+under BlaydeManual, completely outside `/direct-submit`'s locking --
+the one org-setting gap that actually undermined the stated security
+model, not just a hardening nice-to-have. Neither of these would have
+been checked without the user asking the specific, doubting question
+that made checking worthwhile -- the same shape as the PAT-vs-OAuth
+reversal earlier in this project.
+
+**A third such question exposed a feature that had been silently mocked
+this whole time.** "In order to Maintain a Vehicle Repo, do you have to
+be a member? Or is that a separate designation?" -- a plain
+clarifying question -- surfaced that `my-vehicles.js`'s invite/remove-
+maintainer roster had never been wired to anything real, despite the
+rest of the maintainer portal having moved off mocks already. The user
+then set the scope for fixing it ("let's fix the collaborators to
+manage maintainers. This is the final push") and, when Claude flagged a
+real fork in how far that should go (fix just the roster, or also the
+hardcoded "which repos do I maintain" list feeding it and two other
+files), picked the broader option rather than leaving it half-real.
+
+**Worth recording precisely, in both directions, since this ledger's
+standard is accuracy over flattery either way:** twice in this stretch,
+the user reported a batch of setup steps as done, and both times live
+verification (not assumption) showed the changes hadn't actually taken
+effect -- not because the user did anything wrong, but because GitHub's
+own UI has a genuinely non-obvious two-step shape for App permission
+changes (editing the App's permission checkboxes does not itself change
+what an existing installation is granted; a separate, easy-to-miss
+approval step on the installation is required, and nothing in GitHub's
+own docs spells out exactly where that control lives). Claude's
+insistence on re-checking live before updating any document, rather
+than taking "done" at face value, is what caught this before it became
+a false sense of security baked into a testing plan.
+
 ## Honest summary
 
 The big architectural bets -- crowd-sourced photo replacement on a

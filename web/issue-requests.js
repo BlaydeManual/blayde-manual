@@ -41,7 +41,7 @@ function issueParsePhotoFilename(filename) {
 function populateIssueRepoSelect() {
   const select = document.getElementById("issueRepoSelect");
   select.innerHTML = "";
-  const approved = (typeof maintainedApprovedRepos === "function" ? maintainedApprovedRepos() : MOCK_MAINTAINER.reposmaintained);
+  const approved = (typeof maintainedApprovedRepos === "function" ? maintainedApprovedRepos() : maintainedRepos.map((r) => r.repoUrl));
   const seen = new Set();
   approved.forEach((repoUrl) => {
     const editions = MOCK_REGISTRY.vehicles.filter((v) => v.repo_url === repoUrl);

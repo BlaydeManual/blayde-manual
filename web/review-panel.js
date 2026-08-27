@@ -50,7 +50,7 @@ async function vehicleSlugForRepo(repoUrl) {
 // has to pass isRegisteredRepo() like any other.
 function reposToCheck() {
   const override = new URLSearchParams(window.location.search).get("repo");
-  return override ? [override] : MOCK_MAINTAINER.reposmaintained;
+  return override ? [override] : maintainedRepos.map((r) => r.repoUrl);
 }
 
 let currentPR = null;

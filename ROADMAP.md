@@ -204,16 +204,19 @@ that in the first place -- `review-panel.js`'s repo-scope guard already
 lives by this same logic (never trust a `repo_url` from a URL param,
 always check it against the registry before acting on it).
 
-**Important caveat, stated plainly so it isn't later mistaken for
-already being true:** this property describes the TARGET architecture,
-once real GitHub OAuth replaces the mock. The CURRENT build has no real
-security boundary at all -- `MOCK_MAINTAINER` is a plain JS object,
-editable from the browser console by anyone, by design, since this is
-still a UI prototype with no live OAuth wired in yet. The "impossible to
-escape" property only becomes real once the OAuth proxy (already flagged
-above as needing its own dedicated review pass before trusted) is
-actually built and every mock role flag is replaced by a real API call
-authenticated with the user's own token.
+**Update, 2026-08-26: this property is now real, not just a target.**
+Real GitHub OAuth (auth.js), the real repo-scope-guarded review/approval
+flows, and -- as of today -- real `GET/PUT/DELETE .../collaborators`
+calls in `my-vehicles.js` (replacing `MOCK_MAINTAINER.reposmaintained`
+with `discoverMaintainedRepos()`'s live `GET /user/repos` discovery)
+mean every one of this app's role/capability signals is now backed by an
+actual GitHub API call authenticated with the signed-in person's own
+token, checked against the real registry and real GitHub permissions,
+not a client-side flag. `MOCK_MAINTAINER.isOrgMaintainer` is the one
+remaining mock flag (org-approval.js's tab-visibility convenience only
+-- its actual Approve/Reject authority already goes through the Worker's
+real org-admin check, per SECURITY.md); everything else described in
+this section is live.
 
 **The actual governance gate, worth naming explicitly: who gets GitHub
 org membership / repo collaborator access in the first place.** This
@@ -3216,3 +3219,40 @@ The UI's Approve button runs these same four checks via a `dry_run` flag on the 
 **Deliberately NOT built in this pass:** a real REJECT action. Unlike approve, rejecting a direct-submit proposal would mean deciding what happens to a real, already-created private GitHub repo (delete it? leave it? ask for a fix?) -- a genuinely destructive, hard-to-reverse decision not part of the original ask. Reject stays a logged/mock action for now. Also not built: making the personal-account submission path's "propose -> approve -> transfer" flow real (still needs a human to actually initiate the GitHub-side transfer, since no org-side credential can pull a repo out of someone else's account without their cooperation regardless of auth model) -- only the direct-submit path's full loop is real end-to-end.
 
 **Manual setup still needed (can't self-provision credentials):** register the actual GitHub App (permissions: contents/pull_requests/issues/administration read-write, metadata read; installed on BlaydeManual, all repositories; user-to-server auth enabled with token expiry left OFF for now to avoid needing refresh-token handling in this first cut -- the exact objection that shelved this migration the first time it was considered); generate its private key and a client ID/secret, add all of it as Wrangler secrets on `auth-worker`; create the `BlaydeManual/submission-log` repo. Everything in this pass was verified by mocking `fetch`/`githubApi` in-browser and testing the exact request sequences/payloads and pass/fail check paths through the real click handlers -- not a real end-to-end test against actual GitHub, which needs those credentials provisioned first and should get one real live pass (a real direct-submit, a real Public contribute, a real approval) once they are.
+
+## Backlog: the indexer's "Download manifest.json" button has no matching way back in (2026-08-27)
+
+Direct question, raised while a real vehicle was being indexed: "you can download the index, but you can't re-upload it later as a savepoint... so why download the index?" Checked the actual code rather than assuming an answer -- `indexer-ui.js`'s `downloadBtn` exports the in-memory manifest as a plain file download once indexing finishes, with no explanatory comment anywhere for what it's for. There is a real, separate resume system already (`indexer-core.js`'s job-based resume, checkpointed to IndexedDB), but it only resumes the SAME browser tab/profile's own stored job -- it has no import path that accepts a manifest.json file at all. So today: downloading the manifest produces a file that cannot be fed back into the indexer, the reviewer, or anything else in this codebase. Its only real use right now is as a raw artifact for manual inspection or an external backup copy, not a savepoint in any functional sense -- and nothing in the UI says that's all it's for, which is exactly what prompted the question.
+
+Not fixed in this pass, logged directly per request. Two real directions, not decided yet: (1) build a real "load manifest.json" import path so the download genuinely functions as a portable savepoint (works across browsers/devices, unlike the IndexedDB-only resume); or (2) if the button was only ever meant as a raw-data escape hatch, say so in the UI rather than leaving it looking like a savepoint feature it isn't.
+
+## Backlog: review-gallery layout is inconsistent across viewers, and the layout shifts under the reviewer (2026-08-27)
+
+Direct feedback, not fixed in this pass -- explicitly deferred so the Reviewer pane (its own dedicated look) can be reviewed next, separately:
+
+1. **Move Prev/Next (and the page-range indicator) to the TOP of the gallery**, directly under the candidates/reviewed/coverage stats bar, above the thumbnail grid -- currently at the bottom, under the last row of thumbnails. Both `indexer-review.js`'s self-review gallery (`reviewPrevBtn`/`reviewNextBtn` in `maintainer.html`) and `org-approval.js`'s approval gallery (`orgPrevBtn`/`orgNextBtn`, same layout shape) have this same structure and need the same fix -- not a one-off, a shared pattern both viewers copied.
+2. **The reason, stated directly**: a variable-height page/thumbnail area sitting BELOW the pagination controls means the controls themselves move up and down the page depending on how many thumbnails happen to render that chunk -- and worse, thumbnails can "hang" off the bottom of the visible area with nothing anchoring where the page actually ends. Moving Prev/Next above the thumbnail grid fixes both: the controls stay in a fixed position regardless of content height, and the thumbnail area becomes the part that's allowed to vary.
+3. **Submit (`submitBtn` in `indexer-review.js`, `orgApproveBtn` in `org-approval.js`) should close out the viewer pane and show a summary**, not stay sitting at the bottom of a long scrollable gallery the way it does today (also true of `orgApproveBtn`, likely the same fix once Reviewer pane feedback is folded in).
+
+Deliberately not scoped further yet -- the user wants to look at the Reviewer pane next for additional feedback before any of this gets built, since a single pass across all three affected views (self-review, org-approval, and whatever the Reviewer pane review turns up) is preferable to fixing this piecemeal per view.
+
+**Reconfirmed directly on the Reviewer pane itself** (`org-approval.js`'s "Approve New Vehicles" gallery, reviewing the real `blayde-manual-2026` staging submission): same Prev/Next-at-the-bottom layout, same request to move it above the thumbnails. Not a new issue, just direct visual confirmation that item 1 above already covers this view.
+
+## Notes from reviewing the real staging submission, not fixes yet (2026-08-27)
+
+Raised while looking at `blayde-manual-2026` in the real "Approve New Vehicles" pane, explicitly flagged as notes to think about, not requests to build right now:
+
+- **Should a reviewer be able to correct a wrong source URL without rejecting the whole submission? Resolved, 2026-08-27 -- no code change needed.** The pane shows "Submitter's source" (`entry.manifest.source_markers?.source_identifier`, rendered read-only in `org-approval.js` around line 120), with no edit control. The real tension: `source_identifier` lives INSIDE `manifest.source_markers`, part of the exact manifest content sha256-hashed and notarized at `/direct-submit` time -- `handleApproveVehicle`'s notarization check rejects on ANY difference from the notarized original, including a one-field URL fix, so editing it pre-approval would mean either breaking that guarantee or blocking a genuinely good submission over one wrong field. **The resolution**: the notarization hash only has to hold at the moment of approval -- it proves the manifest wasn't swapped between submit and that decision, and says nothing about the file afterward. So the right answer is APPROVE the submission as-is (the indexing work is good; only metadata is wrong), then have the vehicle's real maintainer commit the correction to `manifest.json` directly, post-approval -- the exact same real, ordinary write access the collaborator-management work already grants, no special-casing required. A GitHub issue on the repo first, versus a direct commit/PR, is a workflow choice, not a security one -- neither touches the pre-approval trust boundary at all. The one real gap this exposes: no REJECT action is built yet (SECURITY.md's "deliberately not built" note), so "approve, then fix normally" and "leave it stuck in the queue" are the only two options today for a submission that's actually too broken to approve as-is.
+- **Vehicle-level review does NOT need bbox/crop adjustment** -- explicitly descoped by direct decision, not an oversight. Adjusting a photo's crop is a per-photo, per-contribution concern (already handled where it belongs, in `review-panel.js`'s photo-submission review), not something "approve this new vehicle registration" needs to also do. Logged as a likely future "Next steps" item if it turns out to matter later, not committed work now.
+
+## Backlog: sign-in state isn't consolidated -- reported as "why do I have to authorize twice" (2026-08-27)
+
+Direct report: signed in and shown as such at the top of the page, but the indexer's own submit button still read "Sign in to submit." Checked the actual code, not assumed -- this is exactly the two-session-slot design working as built, not a bug in the strict sense, but the user is right that it's a real UX problem worth rethinking, not just explaining away.
+
+**Root cause, precisely:** `web/auth.js` deliberately keeps TWO separate sessions in two separate `sessionStorage` slots -- classic OAuth (`getSession()`) and the GitHub App's user-to-server login (`getAppSession()`) -- because a maintainer can legitimately need both live at once (classic OAuth to browse/review, the App session only for the moment they submit directly). The top-of-page auth status (`renderAuthStatus`) shows "signed in" if EITHER session exists. But `indexer-review.js`'s `updateSubmitSignInUI()` (line ~60) specifically checks `getAppSession()` alone, since `/direct-submit` is GitHub-App-only by design (see the GitHub App migration entry above) -- so someone signed in via classic OAuth only sees "signed in" at the top and "Sign in to submit" right below it, which reads as broken even though both are behaving exactly as coded.
+
+**Second confirmed instance, same day:** the "Approve New Vehicles" tab hits the identical pattern -- `@TheBlayde` shown signed-in at the top of the maintainer portal, while the tab itself shows "Sign in to view pending vehicles." Root cause is the same function shape in a different file: `org-approval.js`'s `updateOrgSignInUI()` (line ~42) also gates on `getAppSession()` alone, since viewing/approving pending vehicles reads private repos under BlaydeManual and needs the App session specifically. Two separate tabs, two separate call sites, same underlying design decision -- this is a pervasive pattern across the portal, not a one-off in the indexer.
+
+**The user's own framing is the right question, not just a complaint**: "I feel we have to authorize the app multiple times rather than one sign in" -- correct, and worth a real design pass, not a quick patch here. GitHub does not allow merging a classic OAuth App and a GitHub App into a single token/authorization (confirmed earlier in this project's own research into the App migration) -- they are fundamentally separate registrations with separate consent screens. So "one sign-in" would mean either (a) dropping the classic OAuth path entirely and using the App for everything, accepting whatever that costs the flows that currently rely on the user's own broader `public_repo` access, or (b) chaining the two consent screens into what LOOKS like one sign-in flow to the person using it (App auth first, silently followed by classic OAuth, or vice versa) even though two real GitHub authorizations still happen underneath, or (c) some other reframing not yet considered.
+
+**Explicitly scoped as its own PR, not folded into this one** -- per direct instruction, this needs its own think-through on the actual sign-in architecture rather than a quick UI patch on top of the current two-slot design.
