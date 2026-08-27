@@ -682,7 +682,7 @@ function renderUploads() {
     details.className = "vehicle-group";
     const summary = document.createElement("summary");
     summary.className = "vehicle-bar";
-    summary.textContent = `${vehicleKey} (${group.length})`;
+    summary.textContent = `${vehicleKey} : Total Uploads = ${group.length}`;
     details.appendChild(summary);
 
     // One tier down from vehicle -- a vehicle repo can hold more than
@@ -784,6 +784,19 @@ function openCompare(uploadId) {
   document.getElementById("compareArea").scrollIntoView({ behavior: "smooth", block: "nearest" });
 }
 
+// Must match patcher.js's own EMBED_NAME -- the one real, structural
+// signal that a locally-picked PDF is a Blayde Manual OUTPUT, not the
+// original scan. Real bug, caught live: patcher.js always inserts
+// exactly one cover page at position 0, so `compareUpload.page` (a
+// page number computed against the ORIGINAL PDF) is off by one on any
+// patched file -- picking a patched copy here silently rendered the
+// wrong page (e.g. the table of contents instead of the real target)
+// with no indication anything was wrong. Detected via pdf.js's own
+// getAttachments(), not OCR or a registry round-trip -- deterministic
+// (the file either carries this exact attachment or it doesn't) and
+// needs no network call, unlike either alternative considered.
+const PATCHED_STATE_ATTACHMENT = "blayde_manual_state.json";
+
 document.getElementById("comparePdfPicker").addEventListener("change", async (e) => {
   const file = e.target.files[0];
   if (!file || !compareUpload || !compareUpload.pixelBbox) {
@@ -792,7 +805,13 @@ document.getElementById("comparePdfPicker").addEventListener("change", async (e)
   }
   const buf = await file.arrayBuffer();
   const pdfDoc = await pdfjsLib.getDocument({ data: buf }).promise;
-  const page = await pdfDoc.getPage(compareUpload.page);
+  const attachments = await pdfDoc.getAttachments();
+  const isPatchedOutput = !!(attachments && attachments[PATCHED_STATE_ATTACHMENT]);
+  if (isPatchedOutput) {
+    log("This looks like an already-patched Blayde Manual, not the original scan -- adjusting for its extra cover page.");
+  }
+  const targetPage = compareUpload.page + (isPatchedOutput ? 1 : 0);
+  const page = await pdfDoc.getPage(targetPage);
   const scale = 2.5;
   const viewport = page.getViewport({ scale });
   const canvas = document.createElement("canvas");
