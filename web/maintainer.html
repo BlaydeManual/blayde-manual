@@ -338,18 +338,28 @@
         </label>
         <input type="file" id="orgPdfPicker" accept="application/pdf">
 
-        <div id="orgGallery" style="margin-top:14px;"></div>
-        <div id="orgPager" style="display:flex; align-items:center; justify-content:center; gap:14px; margin-top:10px; font-size:0.8rem; color:var(--steel);">
+        <!-- Pager above the gallery, not below -- same fix, same reason as
+             the self-review gallery: a fixed position regardless of chunk
+             height, instead of moving under a variable number of thumbnails. -->
+        <div id="orgPager" style="display:flex; align-items:center; justify-content:center; gap:14px; margin-top:14px; margin-bottom:14px; font-size:0.8rem; color:var(--steel);">
           <button id="orgPrevBtn" style="margin-top:0;">&larr; Prev</button>
           <span id="orgPageLabel">0 of 0</span>
           <button id="orgNextBtn" style="margin-top:0;">Next &rarr;</button>
         </div>
+        <div id="orgGallery"></div>
 
         <div class="actions">
           <button id="orgApproveBtn" disabled>Approve &amp; create repo</button>
           <button class="secondary" id="orgRejectBtn" disabled>Reject</button>
         </div>
         <div id="orgLog" style="font-family: ui-monospace, monospace; font-size: 0.76rem; color: #9fe1cb; white-space: pre-wrap; margin-top: 12px;"></div>
+      </div>
+      <!-- Same treatment as the self-review gallery's submit summary --
+           closes out the review pane on a real approval instead of
+           leaving the approved entry's gallery sitting there. -->
+      <div class="card" id="orgApproveSummaryCard" style="display:none;">
+        <h2 style="font-size:0.95rem; margin:0 0 8px; color:#1d9e75;">Approved</h2>
+        <p class="sub" id="orgApproveSummaryText" style="margin:0;"></p>
       </div>
     </div>
 
@@ -464,18 +474,29 @@
             <div class="stat"><b id="statPct">0%</b><span>coverage</span></div>
           </div>
           <div class="review-nudge" id="reviewNudge"></div>
-          <div id="reviewGallery"></div>
-          <div id="reviewPager" style="display:flex; align-items:center; justify-content:center; gap:14px; margin-top:10px; font-size:0.8rem; color:var(--steel);">
+          <!-- Pager sits above the gallery, not below -- a fixed position
+               regardless of how many thumbnails a chunk renders, instead of
+               moving up and down the page (or letting thumbnails hang off
+               the bottom with nothing marking where the page actually ends). -->
+          <div id="reviewPager" style="display:flex; align-items:center; justify-content:center; gap:14px; margin-bottom:14px; font-size:0.8rem; color:var(--steel);">
             <button id="reviewPrevBtn" style="margin-top:0;">&larr; Prev</button>
             <span id="reviewPageLabel">1 / 1</span>
             <button id="reviewNextBtn" style="margin-top:0;">Next &rarr;</button>
           </div>
+          <div id="reviewGallery"></div>
           <p class="sub" id="submitSignInNote" style="margin:0 0 6px;">Submitting always goes straight into BlaydeManual as a private repo, pending org review -- this needs a separate sign-in from the one you're already using, since it's a different app with different permissions.</p>
           <button id="submitSignInBtn" class="secondary">Sign in to submit</button>
           <button id="submitBtn" style="display:none;">Looks good, submit it</button>
-          <p class="sub" id="submitSuccess" style="display:none; color:#1d9e75; margin:8px 0 0;"></p>
           <p class="sub" id="submitError" style="display:none; color:#ff6b6b; margin:8px 0 0;"></p>
         </div>
+      </div>
+      <!-- Replaces the whole review pane on a successful submit, instead of
+           a one-line success message sitting at the bottom of a long
+           gallery a maintainer has no reason to keep scrolled through --
+           closing it out reads as "done," not "still reviewing." -->
+      <div class="card" id="submitSummaryCard" style="display:none;">
+        <h2 style="font-size:0.95rem; margin:0 0 8px; color:#1d9e75;">Submitted</h2>
+        <p class="sub" id="submitSummaryText" style="margin:0;"></p>
       </div>
     </div>
   </div>

@@ -110,6 +110,12 @@ async function openPendingVehicle(idx) {
   orgPdfDoc = null;
   orgPageCache = {};
   orgChunkIdx = 0;
+  // Clears any leftover inline display:none from a previous approval's
+  // summary swap -- an inline style outranks the .open class's own
+  // display:block, so without this a second pending vehicle would stay
+  // stuck hidden after the first one was approved.
+  document.getElementById("orgReviewArea").style.display = "";
+  document.getElementById("orgApproveSummaryCard").style.display = "none";
   document.getElementById("orgReviewArea").classList.add("open");
   document.getElementById("orgReviewTitle").textContent = `${entry.manifest.vehicle} -- ${entry.manifest.edition_id || "(edition not set)"}`;
   const total = entry.manifest.entries.length;
@@ -274,7 +280,14 @@ document.getElementById("orgApproveBtn").addEventListener("click", async () => {
     const result = await resp.json().catch(() => ({}));
     if (!resp.ok || result.error) throw new Error(result.error || `Approve failed (${resp.status}).`);
     log_org(`APPROVED ${orgCurrentEntry.manifest.vehicle} -- ${orgCurrentEntry.manifest.edition_id}: repo is now public (${result.repoUrl}), registry.json updated.`);
-    btn.textContent = "Approved";
+    // Same treatment as the self-review gallery's submit -- close out
+    // the review pane on a real approval, replace it with a summary,
+    // instead of leaving the just-approved gallery sitting on screen.
+    document.getElementById("orgReviewArea").style.display = "none";
+    const summaryCard = document.getElementById("orgApproveSummaryCard");
+    document.getElementById("orgApproveSummaryText").innerHTML = `${orgCurrentEntry.manifest.vehicle} -- ${orgCurrentEntry.manifest.edition_id}. `
+      + `<a href="${result.repoUrl}" target="_blank" rel="noopener">Repo</a> is now public.`;
+    summaryCard.style.display = "block";
     renderPendingList();
   } catch (e) {
     log_org(`Approve failed: ${e.message}`);
