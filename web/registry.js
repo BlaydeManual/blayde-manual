@@ -39,6 +39,11 @@ function ensureBlaydeDialogStyles() {
       color: var(--text, #e8e8ea); border: 1px solid var(--steel-dark, #666c76);
       border-radius: 4px; font-size: 0.85rem; box-sizing: border-box;
     }
+    .blayde-dialog-dontask {
+      display: flex; align-items: center; gap: 6px; margin: -4px 0 14px;
+      font-size: 0.8rem; color: var(--steel, #8a8f98); cursor: pointer;
+    }
+    .blayde-dialog-dontask input { margin: 0; cursor: pointer; }
     .blayde-dialog-actions { display: flex; justify-content: flex-end; gap: 8px; }
     .blayde-dialog-actions button {
       background: var(--red, #c8102e); color: #fff; border: none; padding: 8px 16px;
@@ -49,7 +54,20 @@ function ensureBlaydeDialogStyles() {
   document.head.appendChild(style);
 }
 
-function blaydeConfirm(message) {
+// dontAskKey scopes a real, working "don't ask me again" to ONE specific
+// call site (e.g. "delete-review-candidate"), stored in localStorage --
+// deliberately per-action, not a single global flag, so dismissing
+// friction on a low-stakes, repetitive action (deleting an obvious OCR
+// false positive) can never silently suppress a genuinely different,
+// higher-stakes confirm (like removing a maintainer) that happens to
+// reuse this same function. Real, not the native-browser version of
+// this that silently broke every future confirm() on the page (see the
+// file-level comment above) -- this only ever affects confirms that
+// were explicitly opted into the same dontAskKey.
+function blaydeConfirm(message, { dontAskKey } = {}) {
+  if (dontAskKey && localStorage.getItem(`blayde-dontask-${dontAskKey}`)) {
+    return Promise.resolve(true);
+  }
   ensureBlaydeDialogStyles();
   return new Promise((resolve) => {
     const overlay = document.createElement("div");
@@ -57,6 +75,7 @@ function blaydeConfirm(message) {
     overlay.innerHTML = `
       <div class="blayde-dialog">
         <p></p>
+        ${dontAskKey ? `<label class="blayde-dialog-dontask"><input type="checkbox"> Don't ask me again</label>` : ""}
         <div class="blayde-dialog-actions">
           <button class="secondary" data-action="cancel">Cancel</button>
           <button data-action="ok">OK</button>
@@ -64,11 +83,29 @@ function blaydeConfirm(message) {
       </div>`;
     overlay.querySelector("p").textContent = message; // textContent, not innerHTML -- message may contain real procedure IDs/user text
     document.body.appendChild(overlay);
+    const okBtn = overlay.querySelector('[data-action="ok"]');
+    // Focus the dialog's own OK button, not left on whatever triggered
+    // it -- real bug found via direct report: a native <button> (the
+    // delete "x" behind this dialog) activates on Space by default, so
+    // if focus stays there while this overlay is open, pressing Space
+    // re-clicks THAT button, opening a second stacked confirm on top of
+    // this one, cascading with every further Space press. Focusing OK
+    // here means Space activates OK instead, via ordinary button
+    // semantics -- no custom keydown handling needed for that part.
+    okBtn.focus();
+    function finish(ok) {
+      if (ok && dontAskKey && overlay.querySelector(".blayde-dialog-dontask input")?.checked) {
+        localStorage.setItem(`blayde-dontask-${dontAskKey}`, "1");
+      }
+      overlay.remove();
+      resolve(ok);
+    }
     overlay.addEventListener("click", (e) => {
       const action = e.target.dataset.action;
-      if (!action) return;
-      overlay.remove();
-      resolve(action === "ok");
+      if (action) finish(action === "ok");
+    });
+    overlay.addEventListener("keydown", (e) => {
+      if (e.key === "Escape") finish(false);
     });
   });
 }

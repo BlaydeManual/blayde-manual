@@ -44,18 +44,18 @@ function saveReviewStateNow() {
   if (!reviewManifest) return;
   const jobId = currentJobId();
   if (!jobId) return;
-  saveReviewState(jobId, reviewManifest).catch((e) => {
+  saveReviewState(jobId, reviewManifest, reviewChunkIdx).catch((e) => {
     appendLog?.(`Couldn't save review progress: ${e.message}`);
   });
 }
 
-function startReview(manifest) {
+function startReview(manifest, savedChunkIdx) {
   reviewManifest = manifest;
   manifest.entries.forEach((e) => {
     if (e._touched === undefined) e._touched = false;
     if (e._seen === undefined) e._seen = false;
   });
-  reviewChunkIdx = 0;
+  reviewChunkIdx = savedChunkIdx || 0; // renderReviewGallery() below clamps this to a valid range
   document.getElementById("reviewSection").style.display = "block";
   document.getElementById("vehicleSlugConfirm").value = manifest.vehicle;
   document.getElementById("vehicleSlugSimilarNote").style.display = "none";
@@ -67,6 +67,8 @@ function startReview(manifest) {
   document.getElementById("sourceUrlError").style.display = "none";
   document.getElementById("vehicleClassConfirm").value = manifest.vehicle_class || "";
   document.getElementById("vehicleClassRequiredError").style.display = "none";
+  document.getElementById("submitSuccess").style.display = "none";
+  document.getElementById("submitBtn").disabled = false;
   renderReviewGallery();
   saveReviewStateNow(); // persist immediately -- don't wait for a first edit
 }
@@ -239,10 +241,10 @@ function buildFigCard(entry) {
   card.dataset.id = entry.procedure_id;
   card.innerHTML = `
     <button class="del-btn" title="delete -- not a real photo opportunity, never submitted">×</button>
-    <img alt="${entry.procedure_id}">
+    <img alt="${entry.procedure_id}" class="thumb-loading">
     <div class="id">${entry.procedure_id}</div>`;
   card.querySelector(".del-btn").addEventListener("click", async () => {
-    const ok = await blaydeConfirm(`Delete ${entry.procedure_id}? This isn't a real photo opportunity -- it'll never be submitted, and there's no undo (redraw it if you're wrong).`);
+    const ok = await blaydeConfirm(`Delete ${entry.procedure_id}? This isn't a real photo opportunity -- it'll never be submitted, and there's no undo (redraw it if you're wrong).`, { dontAskKey: "delete-review-candidate" });
     if (!ok) return;
     reviewManifest.entries = reviewManifest.entries.filter((e) => e !== entry);
     renderReviewGallery();
@@ -251,7 +253,21 @@ function buildFigCard(entry) {
   return card;
 }
 
-async function getReviewPage(pageNum, scale = 2.5) {
+// Capped, not fixed at some arbitrary scale like 2.5 -- a real scanned
+// manual page rendered that high can be several thousand pixels wide,
+// which is both a real memory/render-time cost (see the confirmed
+// Firefox-OOM finding in ROADMAP.md for how tight this project's real
+// memory headroom already is on a large document) and, per direct
+// report, the reason the full-page modal didn't fit its own viewport --
+// it was rendered at native scanned-page resolution with no cap at all.
+// This is fixed by rendering the canvas AT the size it'll actually be
+// displayed at, not by rendering huge and CSS-shrinking it down: the
+// overlay boxes and drag handles (renderModalOverlays, the mousedown/
+// mousemove handlers below) are positioned in native canvas-pixel
+// coordinates, so a CSS-only shrink would leave every box and handle
+// visually misaligned from the image underneath it.
+const REVIEW_PAGE_MAX_WIDTH_PX = 1100;
+async function getReviewPage(pageNum, scale) {
   if (reviewPageCache.has(pageNum)) {
     const entry = reviewPageCache.get(pageNum);
     reviewPageCache.delete(pageNum);
@@ -259,13 +275,36 @@ async function getReviewPage(pageNum, scale = 2.5) {
     return entry;
   }
   const page = await selectedPdfDoc.getPage(pageNum);
-  const viewport = page.getViewport({ scale });
+  const effectiveScale = scale || Math.min(2.5, REVIEW_PAGE_MAX_WIDTH_PX / page.getViewport({ scale: 1 }).width);
+  const viewport = page.getViewport({ scale: effectiveScale });
   const canvas = document.createElement("canvas");
   canvas.width = Math.round(viewport.width);
   canvas.height = Math.round(viewport.height);
   const ctx = canvas.getContext("2d");
   await page.render({ canvasContext: ctx, viewport }).promise;
-  const entry = { canvas, ctx, scaleUsed: scale };
+  // page.render()'s promise can resolve successfully while having
+  // painted nothing at all -- a real failure mode seen directly after a
+  // browser memory-pressure crash-and-recover, where pdf.js's
+  // underlying decoder state came back broken but render() didn't
+  // surface that as a rejection. A canvas that was never painted stays
+  // fully TRANSPARENT (alpha 0) by spec, unlike a legitimately blank
+  // source page (which paints real white, alpha 255) -- sampling a few
+  // pixels' alpha channel tells the two apart cheaply, without reading
+  // the whole canvas. Left undetected, this used to silently succeed
+  // as a real thumbnail: a transparent canvas encoded as JPEG (no alpha
+  // channel) comes out solid BLACK, indistinguishable from real content
+  // at a glance, and every page rendered after the same crash fails the
+  // exact same way -- explains a maintainer report of "all pages look
+  // the same now" after exactly this kind of stall-then-recover.
+  const probe = ctx.getImageData(0, 0, canvas.width, canvas.height);
+  let sawPaint = false;
+  for (let i = 3; i < probe.data.length; i += 4001) { // alpha byte, sparse sample
+    if (probe.data[i] !== 0) { sawPaint = true; break; }
+  }
+  if (!sawPaint) {
+    throw new Error(`page ${pageNum} rendered blank (likely a stale PDF decoder after a browser stall) -- refresh the page and use "Continue reviewing" to pick this back up`);
+  }
+  const entry = { canvas, ctx, scaleUsed: effectiveScale };
   reviewPageCache.set(pageNum, entry);
   if (reviewPageCache.size > REVIEW_PAGE_CACHE_CAP) {
     reviewPageCache.delete(reviewPageCache.keys().next().value); // evict oldest
@@ -285,7 +324,7 @@ async function refreshFigThumbnail(imgEl, entry) {
     out.width = w; out.height = h;
     out.getContext("2d").drawImage(canvas, x0 * sx, y0 * sy, w, h, 0, 0, w, h);
     imgEl.src = out.toDataURL("image/jpeg", 0.85);
-    imgEl.classList.remove("thumb-failed");
+    imgEl.classList.remove("thumb-failed", "thumb-loading");
     imgEl.title = "";
     if (!entry._seen) {
       entry._seen = true;
@@ -297,6 +336,7 @@ async function refreshFigThumbnail(imgEl, entry) {
     // page genuinely out of range in a partial test run) looked
     // identical to "hasn't loaded yet," with no way to tell which.
     // Now visibly distinct and logged, not just invisible.
+    imgEl.classList.remove("thumb-loading");
     imgEl.classList.add("thumb-failed");
     imgEl.title = `Couldn't render page ${entry.page}: ${e.message}`;
     appendLog?.(`Thumbnail for ${entry.procedure_id} (page ${entry.page}) failed to render: ${e.message}`);
@@ -305,7 +345,7 @@ async function refreshFigThumbnail(imgEl, entry) {
 
 // ---- page modal: same drag/resize/add pattern proven in generate_review.py
 // and review-panel.js, operating on in-memory entries instead of a server ----
-let modalDrag = null, modalPageNum = null, modalNewDrag = null;
+let modalDrag = null, modalPageNum = null;
 
 async function openReviewPageModal(pageNum) {
   modalPageNum = pageNum;
@@ -366,7 +406,7 @@ function renderModalOverlays() {
     box.dataset.id = entry.procedure_id;
     box.style.left = (x0 * sx) + "px"; box.style.top = (y0 * sy) + "px";
     box.style.width = ((x1 - x0) * sx) + "px"; box.style.height = ((y1 - y0) * sy) + "px";
-    box.innerHTML = `<div class="handle nw" data-corner="nw"></div><div class="handle se" data-corner="se"></div>`;
+    box.innerHTML = `<div class="handle nw" data-corner="nw"></div><div class="handle ne" data-corner="ne"></div><div class="handle sw" data-corner="sw"></div><div class="handle se" data-corner="se"></div>`;
     wrap.appendChild(box);
   });
 }
@@ -379,6 +419,35 @@ function renderModalOverlays() {
 // mousedown, not a simulation artifact).
 {
   const wrap = document.getElementById("pageModalWrap");
+  // A NEW_BOX-sized box, positional only -- no free-text prompt. Typing
+  // a label while looking at the actual page is exactly the
+  // paraphrase-or-copy risk the rest of this system was redesigned to
+  // avoid (see LEGAL.md's systematic-extraction concern, and
+  // indexer-core.js's positionalId): a human describing what they see
+  // from the manual is functionally the same act as OCR, just done by
+  // hand. The crop thumbnail itself is the real identifying signal for
+  // a reviewer -- an accidental add costs one click to delete, same as
+  // any other false positive.
+  const NEW_BOX_W = 160, NEW_BOX_H = 110;
+  function addFigureAt(x, y) {
+    const canvasInfo = reviewPageCache.get(modalPageNum);
+    const maxW = canvasInfo.canvas.width, maxH = canvasInfo.canvas.height;
+    const x0 = Math.max(0, Math.min(x - NEW_BOX_W / 2, maxW - NEW_BOX_W));
+    const y0 = Math.max(0, Math.min(y - NEW_BOX_H / 2, maxH - NEW_BOX_H));
+    const x1 = Math.min(maxW, x0 + NEW_BOX_W), y1 = Math.min(maxH, y0 + NEW_BOX_H);
+    const geo = reviewManifest.page_geometry[String(modalPageNum)];
+    const sx = canvasInfo.canvas.width / geo.composite_width_px, sy = canvasInfo.canvas.height / geo.composite_height_px;
+    const addedN = nextAddedIdx++;
+    const pid = `p${String(modalPageNum).padStart(3, "0")}_manualadd${addedN}`;
+    reviewManifest.entries.push({
+      procedure_id: pid, page: modalPageNum, section_heading: `Page ${modalPageNum}, added figure`,
+      pixel_bbox: [x0 / sx, y0 / sy, x1 / sx, y1 / sy],
+      source_layout: "flattened_scan_ocr", content_type: "photo",
+      contributed_photo_path: `images/${reviewManifest.vehicle}/${pid}/`,
+      status: "needs_contributed_photo", _touched: true,
+    });
+    return pid;
+  }
   wrap.addEventListener("mousedown", (e) => {
     const handle = e.target.closest(".handle");
     const box = e.target.closest(".overlay-box");
@@ -391,7 +460,17 @@ function renderModalOverlays() {
       modalDrag = { mode: "move", id: box.dataset.id, box, startX: x, startY: y,
         orig: { left: parseFloat(box.style.left), top: parseFloat(box.style.top), width: parseFloat(box.style.width), height: parseFloat(box.style.height) } };
     } else {
-      modalNewDrag = { startX: x, startY: y };
+      // Click anywhere empty to add a box -- no drag-to-draw (direct
+      // report: drawing a precise rectangle on an empty canvas was
+      // itself the finicky part, made worse by the underlying image
+      // being natively draggable and fighting this exact gesture,
+      // fixed separately via draggable="false" on #pageModalImg).
+      // Always a fixed, reasonable starting size -- resize afterward
+      // with the same handles as any other box, from whichever corner
+      // is closest to the edge that actually needs adjusting.
+      addFigureAt(x, y);
+      renderModalOverlays();
+      renderReviewGallery();
     }
   });
   wrap.addEventListener("mousemove", (e) => {
@@ -403,8 +482,14 @@ function renderModalOverlays() {
       let left = o.left, top = o.top, width = o.width, height = o.height;
       if (modalDrag.mode === "move") { left = o.left + dx; top = o.top + dy; }
       else {
-        if (modalDrag.corner === "nw") { left = o.left + dx; top = o.top + dy; width = o.width - dx; height = o.height - dy; }
-        else { width = o.width + dx; height = o.height + dy; }
+        // Every corner independently moves only ITS own two edges --
+        // e.g. "ne" moves the top and right edges, leaving left/bottom
+        // fixed. Previously only nw/se existed and everything else
+        // (had there been another handle) would have wrongly reused
+        // se's math; now each of the four is explicit and correct.
+        const c = modalDrag.corner;
+        if (c === "nw" || c === "sw") { left = o.left + dx; width = o.width - dx; } else { width = o.width + dx; }
+        if (c === "nw" || c === "ne") { top = o.top + dy; height = o.height - dy; } else { height = o.height + dy; }
       }
       if (width > 8 && height > 8) {
         modalDrag.box.style.left = left + "px"; modalDrag.box.style.top = top + "px";
@@ -425,40 +510,6 @@ function renderModalOverlays() {
       entry._touched = true;
       box.classList.add("touched");
       modalDrag = null;
-      renderReviewGallery();
-      return;
-    }
-    if (modalNewDrag) {
-      const rect = wrap.getBoundingClientRect();
-      const x = e.clientX - rect.left + wrap.scrollLeft, y = e.clientY - rect.top + wrap.scrollTop;
-      const x0 = Math.min(x, modalNewDrag.startX), x1 = Math.max(x, modalNewDrag.startX);
-      const y0 = Math.min(y, modalNewDrag.startY), y1 = Math.max(y, modalNewDrag.startY);
-      modalNewDrag = null;
-      if (x1 - x0 < 15 || y1 - y0 < 15) return;
-      // Positional only, same as every machine-detected figure -- no
-      // free-text prompt. Typing a label while looking at the actual
-      // page is exactly the paraphrase-or-copy risk the rest of this
-      // system was redesigned to avoid (see LEGAL.md's
-      // systematic-extraction concern, and indexer-core.js's
-      // positionalId): a human describing what they see from the
-      // manual is functionally the same act as OCR, just done by hand.
-      // The crop thumbnail itself is the real identifying signal for a
-      // reviewer -- an accidental add costs one click to delete, same
-      // as any other false positive.
-      const geo = reviewManifest.page_geometry[String(modalPageNum)];
-      const canvasInfo = reviewPageCache.get(modalPageNum);
-      const sx = canvasInfo.canvas.width / geo.composite_width_px, sy = canvasInfo.canvas.height / geo.composite_height_px;
-      const bbox = [x0 / sx, y0 / sy, x1 / sx, y1 / sy];
-      const addedN = nextAddedIdx++;
-      const pid = `p${String(modalPageNum).padStart(3, "0")}_manualadd${addedN}`;
-      const label = `Page ${modalPageNum}, added figure`;
-      reviewManifest.entries.push({
-        procedure_id: pid, page: modalPageNum, section_heading: label, pixel_bbox: bbox,
-        source_layout: "flattened_scan_ocr", content_type: "photo",
-        contributed_photo_path: `images/${reviewManifest.vehicle}/${pid}/`,
-        status: "needs_contributed_photo", _touched: true,
-      });
-      renderModalOverlays();
       renderReviewGallery();
     }
   });
@@ -507,6 +558,20 @@ function renderModalOverlays() {
     // no exceptions -- delete already removed anything that isn't real,
     // so there's no separate "excluded" set to compute or forget to filter.
     appendLog(`[submit] ${total} candidates submitted, ${pct}% reviewed before submitting -- this is what the org quorum's light review would see`);
+
+    // [mock] real action here would be opening the new-vehicle proposal
+    // PR (propose_new_vehicle.py's real flow, not yet ported to the
+    // browser -- see ROADMAP.md). Direct report: clicking this button
+    // "doesn't seem to do anything" -- true even on a successful
+    // submit, since the only feedback was one appendLog line into #log,
+    // which sits at the top of the page, far out of view from this
+    // button at the bottom of a long review gallery. Now shown right
+    // here instead, and the button disables so a second click can't
+    // look like the first one silently failed.
+    const successEl = document.getElementById("submitSuccess");
+    successEl.textContent = `Submitted -- ${total} candidates, ${pct}% reviewed. An org maintainer will review this next.`;
+    successEl.style.display = "block";
+    document.getElementById("submitBtn").disabled = true;
 
     // The whole point of persisting review state was to survive a
     // refresh before submission -- once actually submitted, keeping it
