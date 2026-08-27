@@ -519,7 +519,7 @@ async function buildCoverPage(doc, { vehicleDisplayName, nPatched, totalFigures,
   // moment anyone else patches a newer copy.
   if (vehicleSlug) {
     const trackUrl = new URL(`registry-browse.html?vehicle=${encodeURIComponent(vehicleSlug)}`, location.href).href;
-    linkLine("See what's still missing, and if a newer copy exists:", trackUrl, trackUrl);
+    linkLine("Check for updates. Repatch as needed:", trackUrl, trackUrl);
   }
 
   const disclaimer = "Independent, community-run documentation project. Not affiliated with, " +
