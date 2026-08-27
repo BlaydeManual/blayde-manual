@@ -256,19 +256,30 @@ Available now via `TheBlayde` for the parts that don't need a real pending submi
 | 4.7 | `POST /approve-vehicle` (real, not dry-run) on a genuine, clean submission | Repo flips public, `registry.json` gets a real new entry | **Live, PASS, 2026-08-27** -- real 415-page `suzuki-sv650-1999` manual (indexed by hypnolope, approved by TheBlayde via the real browser UI). Commit `c0175ec5` "Approve suzuki-sv650-1999 (OEM)"; `registry.json` has the correct entry (`status: approved`, correct `repo_url`, correct notarized `source_pdf_sha256`); repo confirmed `private: false`. Note: verify via `gh api repos/.../contents/registry.json`, NOT `raw.githubusercontent.com` -- the latter lagged behind the real commit by several minutes on this check (CDN cache, not a bug) |
 | 4.8 | Try `/approve-vehicle` a second time on the same, already-approved repo | Should fail gracefully -- confirms no double-registration | **Live, PASS, 2026-08-27 (after fix + redeploy, PR #22).** `dry_run: true` on the already-public `suzuki-sv650-1999` now correctly rejects: `"suzuki-sv650-1999" is already public -- it's already been approved, not a pending proposal.` Control check (a genuinely nonexistent repo name) still returns a plain `Not Found`, confirming no false positives from the new guard |
 
-### Tier 5: Vehicle-repo maintainer management (`my-vehicles.js`, direct GitHub calls, no Worker involved)
+### Tier 5: the whole Maintainer Portal against real approved repos (direct GitHub calls, no Worker involved)
 
-Unlike everything above, these calls never touch the Worker or the
-installation credential at all -- they run with the maintainer's own
-classic OAuth token directly against GitHub, which is why they're
-organized by real GitHub *repo* permission level rather than org
-membership tier. All of them are blocked until at least one real
-vehicle repo exists (Tier 4's 4.7) -- there is nothing to manage a
-roster on yet.
+Broadened, 2026-08-27, per direct instruction: not just `my-vehicles.js`'s
+roster in isolation -- My Vehicles AND Review Photo Requests both draw
+from the same real `discoverMaintainedRepos()` list now (PR #23 fixes
+that list to include org-role access, not just explicit collaborator
+grants), so both need to actually work end-to-end against the two real
+approved repos (`suzuki-sv650-1999`, `blayde-manual-2026`) before this
+counts as done. **Issue Requests stays explicitly out of scope** -- it
+has its own separate, already-documented mock-registry problem
+(`MOCK_REGISTRY`, `mockVehicleSlugForRepo`) unrelated to this pass, not
+something this testing round is meant to fix.
+
+Unlike everything above, all of these calls run with the maintainer's
+own classic OAuth token directly against GitHub, never the Worker or
+the installation credential -- organized by real GitHub *repo*
+permission level rather than org membership tier.
+
+**My Vehicles:**
 
 | # | Call | Expected | Status |
 |---|---|---|---|
-| 5.1 | Sign in as a real repo **admin** on a vehicle repo, load My Vehicles | Roster loads real collaborators + pending invitations; invite input and Remove buttons are shown | Pending -- needs a real vehicle repo |
+| 5.0 | Load My Vehicles after PR #23 deploys | Both `suzuki-sv650-1999` and `blayde-manual-2026` appear as cards -- confirms the `organization_member` affiliation fix actually works in the real browser UI, not just via direct API calls | Pending deploy |
+| 5.1 | Sign in as a real repo **admin** on a vehicle repo, load My Vehicles | Roster loads real collaborators + pending invitations; invite input and Remove buttons are shown | Pending 5.0 |
 | 5.2 | Same account, `PUT .../collaborators/{a-real-github-handle}` via the Invite button | `201` (outside user, invitation sent) or `204` (already an org member, added directly) -- both surface as success, roster re-renders and shows the new row | Pending |
 | 5.3 | Invite a handle that doesn't exist | Clean error shown inline (`no GitHub user named "..."`), not a raw GitHub error dump | Pending |
 | 5.4 | Remove an already-accepted collaborator | `DELETE .../collaborators/{handle}`, row disappears | Pending |
@@ -276,6 +287,13 @@ roster on yet.
 | 5.6 | Sign in as someone with **push but not admin** on the same repo, load My Vehicles | Read-only roster -- no invite input, no Remove buttons, a note explaining why | Pending -- needs a second real account with push-only access, or a repo where `TheBlayde` isn't the only collaborator |
 | 5.7 | That push-only account tries the invite/remove calls directly (bypassing the hidden UI, e.g. via curl with their own token) | GitHub itself rejects with `403` -- confirms the UI gate isn't the only thing standing between push access and roster control | Pending |
 | 5.8 | A repo the signed-in account has NO access to at all | Doesn't appear in `discoverMaintainedRepos()`'s result, no card rendered | Pending -- implicitly covered by 5.1's `GET /user/repos` only ever returning repos with real access, but worth a direct look |
+
+**Review Photo Requests:**
+
+| # | Call | Expected | Status |
+|---|---|---|---|
+| 5.9 | Load Review Photo Requests after PR #23 deploys | Repo-scope check passes for both real repos (`reposToCheck()` now draws from the fixed `discoverMaintainedRepos()`), tab shows the PR list area (likely empty -- no real photo-submission PRs exist against either repo yet) | Pending deploy |
+| 5.10 | Submit a real photo contribution (via `contribute.js`, Public or Private path) against one of the two real repos, then check it shows up here | A real PR appears in the review list, reviewable/mergeable for real -- exercises the full contribute -> review loop against a real, live vehicle for the first time | Pending -- needs a real contribution submitted first |
 
 ## Sequencing (do these in order, not all at once)
 
@@ -287,13 +305,16 @@ roster on yet.
 6. ~~Redeploy the Worker~~ -- **done, confirmed live 2026-08-27** (`/pending-vehicles` with a real admin token now returns `{"pending":[]}` cleanly).
 7. ~~Fix the org-settings gaps~~ -- **done, confirmed live 2026-08-27**: member repo creation off (all three sub-toggles `false`), org-wide 2FA required (`true`). `enforce_admins` and `submission-log`'s branch protection reviewed and kept as deliberate decisions (escape hatch retained for now; append-only-by-permission-economics accepted) -- documented in SECURITY.md, not left as unstated gaps.
 8. ~~Merge this PR and confirm the site deploys to Pages~~ -- **done, confirmed live 2026-08-27** (merged, `https://blaydemanual.com/auth.js` contains `signInWithGitHubApp`).
-9. **In progress**: Run Tier 3 in full with hypnolope's account (a real member). hypnolope is currently indexing a real vehicle document -- submitting it creates the real direct-submit repo Tier 4 and Tier 5 both need. **Stop and fix before continuing if 2.6/repo-scope validation doesn't behave as expected** (run as part of this tier now) -- that's the critical fix from the security audit.
-10. Run Tier 4 items 4.3-4.5 and 4.7-4.8 (4.1, 4.2, 4.6 already live-confirmed above) using the repo created in step 9.
-11. Only once 4.3-4.6 all pass cleanly: run 4.7 (the real approval) and 4.8, on a real, intentionally-throwaway test vehicle -- not a real manual -- since this is the one step in the whole plan that makes a real repo public and writes to the real registry.
-12. Run Tier 5 (maintainer/collaborator management) against the now-public test vehicle repo from step 11 -- this is the first point any of it can run live.
-13. Clean up: decide whether to keep or delete the throwaway approved test-vehicle repo/registry entry (and any test collaborators added in step 12).
-14. **Backlog item**: run a real Tier 2 pass with a third, never-invited GitHub account, specifically for rows 2.4 and 2.8 (the membership-gate rejections) -- the only two checks in this whole plan that genuinely require someone who has never had any standing in the org.
-15. **In progress**: build a small, original, no-copyright "staging" test vehicle PDF (a few pages, easy to OCR) specifically to unblock 4.4/4.5 (which need to safely tamper with a pending repo's files/manifest -- not something to do to `suzuki-sv650-1999`, a real submission) and Tier 5 (collaborator management, which needs its own repo to add/remove test collaborators on without touching real vehicle repos).
+9. ~~Run Tier 3 with hypnolope's account, creating the real `suzuki-sv650-1999` submission~~ -- **done**. 2.6 (repo-scope validation, the critical fix) passed live.
+10. ~~Run Tier 4 items 4.1-4.3, 4.6~~ -- **done, all PASS**, against the real `suzuki-sv650-1999` submission.
+11. ~~Run 4.7 (the real approval) and 4.8~~ -- **done**. `suzuki-sv650-1999` approved for real; 4.8 initially FAILED (found bug #4, the missing re-approval guard), fixed and reconfirmed PASS after redeploy (PR #22).
+12. ~~Build a disposable "staging" test vehicle (`blayde-manual-2026`, original/no-copyright) and run 4.4/4.5 against it~~ -- **done, both PASS**. Submitted, approved for real, repo restored to clean state after tampering.
+13. ~~Found and fixed: My Vehicles missing repos accessed via org role~~ -- **done** (PR #23, stacked on #22).
+14. **Next**: finish Tier 5 (now broadened to cover My Vehicles AND Review Photo Requests against both real approved repos, not just the collaborator roster in isolation -- see Tier 5's table above; Issue Requests stays out of scope).
+15. Once Tier 5 passes: merge PR #22 and #23 onto a clean `main`.
+16. **Then**, from that clean base: start the UI-consistency work, one page at a time -- first the shared review-gallery layout fix (Prev/Next above the thumbnails, submit closes to a summary, across `indexer-review.js` and `org-approval.js`), then the sign-in-consolidation redesign as its own separate PR (per direct instruction, not folded into the layout work).
+17. **Backlog item, still not blocking**: run a real Tier 2 pass with a third, never-invited GitHub account, specifically for rows 2.4 and 2.8 (the membership-gate rejections) -- the only two checks in this whole plan that genuinely require someone who has never had any standing in the org.
+18. **Backlog item, still not blocking**: decide whether to keep or delete the disposable staging repo (`blayde-manual-2026` only -- `suzuki-sv650-1999` is hypnolope's real work, not a throwaway, and stays regardless) and any test collaborators added during Tier 5.
 
 ## What this plan does NOT cover
 
