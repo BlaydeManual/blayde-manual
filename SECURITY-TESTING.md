@@ -7,11 +7,10 @@ real, live infrastructure -- run through before merging, and again
 after each deploy step, not written once and forgotten.
 
 **Four real bugs found during this live pass, none caught by any
-synthetic test -- each one only surfaced by actually calling the
+synthetic test, all four now fixed, redeployed, and confirmed live as
+of 2026-08-27** -- each one only surfaced by actually calling the
 deployed Worker with a real token, exactly the scenario this whole
-document exists to catch. First three fixed, redeployed, confirmed live
-2026-08-27; fourth found later the same day via 4.8, fixed, not yet
-redeployed:**
+document exists to catch:
 
 1. **Missing `User-Agent` header** on every GitHub API call the Worker
    makes -- GitHub's API rejects outright (403), confirmed against
@@ -57,7 +56,8 @@ redeployed:**
    checking the repo's current `private` status before running the
    other checks -- a direct-submit repo starts private and only this
    endpoint ever flips it public, so already-public means already
-   approved. **Needs a redeploy** before 4.8 can be re-confirmed live.
+   approved. **Redeployed (PR #22, kept open pending the rest of this
+   testing pass) and confirmed live** -- see 4.8's row below.
 
 ## What's already been verified, and how
 
@@ -250,11 +250,11 @@ Available now via `TheBlayde` for the parts that don't need a real pending submi
 | 4.1 | `gh api orgs/BlaydeManual/memberships/TheBlayde` | `role: admin, state: active` | **Live, confirmed** (this is how the audit found the account's real role) |
 | 4.2 | `GET /pending-vehicles` | Succeeds, shows real pending repos | **Live, PASS** -- returns `{"pending":[]}` correctly (empty because no vehicle repos exist yet, confirmed separately via `gh api orgs/BlaydeManual/repos?type=private`); re-run once a real pending repo exists to confirm it's actually listed, not just that empty works |
 | 4.3 | `POST /approve-vehicle` `dry_run: true` on a genuine, untampered pending submission | All 4 checks pass, `{"checked": true}` | Synthetic only so far -- **needs a real direct-submit repo to re-run live** |
-| 4.4 | Manually push an extra file (e.g. a dummy `.github/workflows/x.yml`) to a pending repo, then `dry_run: true` | **Rejected** -- file-allowlist check | Synthetic only -- **this is the scenario the file-allowlist exists for, worth a real live confirmation, not just trust in the mock** |
-| 4.5 | Manually edit `manifest.json` on a pending repo (any change), then `dry_run: true` | **Rejected** -- notarization hash mismatch | Synthetic only -- same, worth a real live confirmation |
+| 4.4 | Manually push an extra file (e.g. a dummy `.github/workflows/x.yml`) to a pending repo, then `dry_run: true` | **Rejected** -- file-allowlist check | Synthetic only -- **this is the scenario the file-allowlist exists for, worth a real live confirmation, not just trust in the mock**. Blocked on a disposable "staging" test vehicle (see note below) since it can't run against `suzuki-sv650-1999`, a real submission |
+| 4.5 | Manually edit `manifest.json` on a pending repo (any change), then `dry_run: true` | **Rejected** -- notarization hash mismatch | Synthetic only -- same, worth a real live confirmation. Same staging-vehicle blocker as 4.4 |
 | 4.6 | `POST /approve-vehicle` with `repo_name: "registry"` (or `submission-log`, `blayde-manual`, `vehicle-scaffold`) | **Rejected** -- reserved-name check, before any GitHub calls happen | **Live, PASS** -- confirmed with a real admin token: `{"error":"\"registry\" is a reserved repo, not a pending vehicle proposal."}` |
 | 4.7 | `POST /approve-vehicle` (real, not dry-run) on a genuine, clean submission | Repo flips public, `registry.json` gets a real new entry | **Live, PASS, 2026-08-27** -- real 415-page `suzuki-sv650-1999` manual (indexed by hypnolope, approved by TheBlayde via the real browser UI). Commit `c0175ec5` "Approve suzuki-sv650-1999 (OEM)"; `registry.json` has the correct entry (`status: approved`, correct `repo_url`, correct notarized `source_pdf_sha256`); repo confirmed `private: false`. Note: verify via `gh api repos/.../contents/registry.json`, NOT `raw.githubusercontent.com` -- the latter lagged behind the real commit by several minutes on this check (CDN cache, not a bug) |
-| 4.8 | Try `/approve-vehicle` a second time on the same, already-approved repo | Should fail gracefully -- confirms no double-registration | **Live, FAILED, then fixed -- bug #4 above.** `dry_run: true` on the already-public `suzuki-sv650-1999` incorrectly returned `{"checked":true}` instead of rejecting. Fix applied, not yet redeployed; re-run after redeploy to confirm PASS |
+| 4.8 | Try `/approve-vehicle` a second time on the same, already-approved repo | Should fail gracefully -- confirms no double-registration | **Live, PASS, 2026-08-27 (after fix + redeploy, PR #22).** `dry_run: true` on the already-public `suzuki-sv650-1999` now correctly rejects: `"suzuki-sv650-1999" is already public -- it's already been approved, not a pending proposal.` Control check (a genuinely nonexistent repo name) still returns a plain `Not Found`, confirming no false positives from the new guard |
 
 ### Tier 5: Vehicle-repo maintainer management (`my-vehicles.js`, direct GitHub calls, no Worker involved)
 
@@ -293,6 +293,7 @@ roster on yet.
 12. Run Tier 5 (maintainer/collaborator management) against the now-public test vehicle repo from step 11 -- this is the first point any of it can run live.
 13. Clean up: decide whether to keep or delete the throwaway approved test-vehicle repo/registry entry (and any test collaborators added in step 12).
 14. **Backlog item**: run a real Tier 2 pass with a third, never-invited GitHub account, specifically for rows 2.4 and 2.8 (the membership-gate rejections) -- the only two checks in this whole plan that genuinely require someone who has never had any standing in the org.
+15. **In progress**: build a small, original, no-copyright "staging" test vehicle PDF (a few pages, easy to OCR) specifically to unblock 4.4/4.5 (which need to safely tamper with a pending repo's files/manifest -- not something to do to `suzuki-sv650-1999`, a real submission) and Tier 5 (collaborator management, which needs its own repo to add/remove test collaborators on without touching real vehicle repos).
 
 ## What this plan does NOT cover
 
