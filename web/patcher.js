@@ -303,10 +303,6 @@ async function drawCreditTab(page, box, contributor, font) {
   const fontSize = Math.max(8, Math.min(13, box.height * 0.06));
   const stripeW = fontSize * 0.55;
   const padX = fontSize * 0.7;
-  // Minimal top/bottom padding -- the text should fill the plate's
-  // height, not float in a lot of empty space around it.
-  const padY = fontSize * 0.16;
-  const tabH = fontSize + padY * 2;
   const measuredWidth = font.widthOfTextAtSize(label, fontSize);
   const maxTabW = box.width * 0.55;
   const tabW = Math.min(stripeW + padX * 2 + measuredWidth, maxTabW);
@@ -315,12 +311,26 @@ async function drawCreditTab(page, box, contributor, font) {
   const finalSize = stripeW + padX * 2 + measuredWidth > maxTabW
     ? fontSize * ((maxTabW - stripeW - padX * 2) / measuredWidth)
     : fontSize;
+  // `size` is nominal em size, not glyph height -- a naive size+padding
+  // formula leaves a lot of dead air above all-caps text, since caps
+  // only reach the font's cap-height, well short of the full em (this
+  // was a real bug, caught visually: the plate had much more empty
+  // space above the letters than below). Measure the label's actual
+  // rendered bounds instead: cap-height above the baseline (no
+  // descender -- every glyph here is a capital, digit, "@", or "_")
+  // plus the font's real descender depth (kept, since "_" sits at/
+  // below the baseline), then size the plate tightly around that with
+  // one small, equal margin top and bottom.
+  const capHeight = font.heightAtSize(finalSize, { descender: false });
+  const descent = font.heightAtSize(finalSize) - capHeight;
+  const margin = finalSize * 0.14;
+  const tabH = capHeight + descent + margin * 2;
   const tabX = box.x + box.width - tabW;
   const tabY = box.y;
   page.drawRectangle({ x: tabX, y: tabY, width: tabW, height: tabH, color: BLACK });
   page.drawRectangle({ x: tabX, y: tabY, width: stripeW, height: tabH, color: RED });
   page.drawText(label, {
-    x: tabX + stripeW + padX, y: tabY + padY * 0.9, size: finalSize, font, color: WHITE,
+    x: tabX + stripeW + padX, y: tabY + margin + descent, size: finalSize, font, color: WHITE,
   });
 }
 
