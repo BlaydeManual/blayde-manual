@@ -78,10 +78,10 @@ async function checkResumeState() {
       + `<button id="discardReviewBtn" style="margin-top:8px;">Discard and start fresh</button>`;
     runBtn.disabled = true;
     document.getElementById("continueReviewBtn").addEventListener("click", () => {
-      lastManifest = savedReview;
+      lastManifest = savedReview.manifest;
       document.getElementById("downloadBtn").style.display = "inline-block";
       card.style.display = "none";
-      startReview(savedReview);
+      startReview(savedReview.manifest, savedReview.reviewChunkIdx);
     });
     document.getElementById("discardReviewBtn").addEventListener("click", async () => {
       await clearReviewState(jobId);
