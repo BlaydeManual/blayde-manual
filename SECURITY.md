@@ -179,11 +179,22 @@ maintainer need not be an org member at all.
 
 `my-vehicles.js` implements this with real GitHub calls: repo list from
 `GET /user/repos` (`discoverMaintainedRepos()`), filtered to push-or-
-better access + registry-approved. Roster management (invite/remove) is
-gated on that repo's real `permissions.admin`; push-only access gets a
-read-only roster. Invite/remove call `PUT`/`DELETE
-/repos/{owner}/{repo}/collaborators/{handle}` with the caller's own
-OAuth token, granting `push` (not `admin`).
+better access + registry-approved. Listing the roster uses the caller's
+own OAuth token directly (GitHub allows any push-or-better collaborator
+to list collaborators). Inviting/removing does not: GitHub only allows
+collaborator management at repo **Admin** -- confirmed against GitHub's
+own repository-roles docs, `Maintain` does not include it -- and Admin
+carries real, unrelated blast radius (delete the repo, transfer it,
+flip it back private, rename it and silently break `registry.json`'s
+`repo_url` pointer) that a maintainer inviting a contributor has no
+reason to hold. Those two actions instead go through the Worker's
+`POST /manage-collaborator`, using the installation token: the caller's
+own real permission on that specific repo is re-checked server-side
+(`GET .../collaborators/{login}/permission`, requiring `admin`,
+`maintain`, or `write`) before anything happens, and any invite this
+endpoint performs always grants `push`, never higher -- the same floor
+as the automatic grant on approval. No maintainer ever needs to hold
+real repo Admin to manage who else is on their vehicle.
 
 ## Repo-level protection
 

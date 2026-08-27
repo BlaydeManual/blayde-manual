@@ -1,20 +1,28 @@
 // Blayde Manual -- "My Vehicles": each vehicle you maintain and who
-// else has real write access to it. Real GitHub collaborator API calls
-// as of this pass, using the maintainer's OWN classic OAuth token --
-// managing collaborators on a repo you already have admin rights to is
-// exactly the kind of action SECURITY.md's "two trust models" section
-// describes as belonging to the caller's own token, not the Worker: no
-// privileged installation credential is involved, because none is
-// needed -- GitHub itself enforces that only a real repo admin can add
-// or remove a collaborator, the same way it already enforces who can
-// merge a PR in review-panel.js.
+// else has real write access to it.
+//
+// Listing the roster (fetchRoster) uses the maintainer's own classic
+// OAuth token directly -- GitHub allows any push-or-better collaborator
+// to list collaborators, so no privileged credential is needed just to
+// look. Inviting/removing is different: GitHub only allows collaborator
+// management at repo Admin (confirmed against GitHub's own repository-
+// roles docs -- Maintain, one level down, does NOT include it), and
+// Admin also carries real, unrelated blast radius (delete the repo,
+// transfer it, flip it back private, rename it and silently break
+// registry.json's repo_url pointer) that a maintainer who just needs to
+// invite a contributor has no reason to hold. Those two actions go
+// through the Worker's /manage-collaborator instead, using the
+// installation token, re-checking the caller's real permission
+// server-side rather than trusting anything this page claims -- the
+// same "zero trust, bare minimum for the app's own functions" floor as
+// the automatic grant on approval, so every real maintainer stays at
+// `push`, never Admin, on their own repos.
 //
 // Repo list comes from maintainer-portal.js's discoverMaintainedRepos()
 // (maintainedRepos -- real GET /user/repos, filtered to push-or-better
-// + registry-approved), not a mock. Per-repo "can I manage this
-// roster" is the real `permissions.admin` GitHub already returned for
-// that repo -- someone with push but not admin sees a read-only roster,
-// same as GitHub's own UI would show them.
+// + registry-approved), not a mock -- everything in that list already
+// qualifies to manage its own roster, since push-or-better is exactly
+// what /manage-collaborator itself requires.
 
 function ghHeaders(token) {
   return { Authorization: `Bearer ${token}`, Accept: "application/vnd.github+json" };
@@ -59,36 +67,37 @@ async function renderVehicleTeams() {
       .filter((v) => norm(v.repo_url) === norm(repoUrl))
       .map((v) => v.edition_id);
     const vehicleSlug = await vehicleSlugForRepo(repoUrl);
-    const canManage = !!permissions?.admin; // GitHub itself would refuse add/remove without this -- gate the controls to match, not just the calls
+    // Anything reaching this point already passed discoverMaintainedRepos()'s
+    // own push-or-better filter, which is exactly what /manage-collaborator
+    // itself requires server-side -- no separate client-side gate needed,
+    // unlike the old admin-only design.
     const card = document.createElement("div");
     card.className = "card";
     card.innerHTML = `<h3 class="vehicle-bar">${vehicleSlug}</h3>
       <p class="sub" style="margin:0 0 10px;">Covers ${editions.length} edition${editions.length === 1 ? "" : "s"}: ${editions.join(", ")}</p>
       <div class="roster"><p class="sub" style="margin:0;">Loading roster&hellip;</p></div>
-      ${canManage ? `<div style="display:flex; gap:8px; margin-top:12px;">
+      <div style="display:flex; gap:8px; margin-top:12px;">
         <input type="text" class="invite-input" placeholder="GitHub handle to invite" style="flex:1; width:auto; margin:0;">
         <button class="invite-btn" style="margin:0; flex-shrink:0;">Invite</button>
       </div>
-      <p class="sub invite-status" style="margin:6px 0 0;"></p>` : `<p class="sub" style="margin:12px 0 0;">You have ${highestPermission(permissions)} access here -- only a repo admin can manage its collaborators.</p>`}`;
+      <p class="sub invite-status" style="margin:6px 0 0;"></p>`;
     const rosterEl = card.querySelector(".roster");
-    renderRoster(rosterEl, repoUrl, canManage);
-    if (canManage) {
-      const statusEl = card.querySelector(".invite-status");
-      card.querySelector(".invite-btn").addEventListener("click", async () => {
-        const input = card.querySelector(".invite-input");
-        const handle = input.value.trim().replace(/^@/, "");
-        if (!handle) return;
-        statusEl.textContent = `Inviting @${handle}…`;
-        try {
-          await inviteCollaborator(repoUrl, handle);
-          statusEl.textContent = "";
-          input.value = "";
-          renderRoster(rosterEl, repoUrl, canManage);
-        } catch (e) {
-          statusEl.textContent = `Couldn't invite @${handle}: ${e.message}`;
-        }
-      });
-    }
+    renderRoster(rosterEl, repoUrl);
+    const statusEl = card.querySelector(".invite-status");
+    card.querySelector(".invite-btn").addEventListener("click", async () => {
+      const input = card.querySelector(".invite-input");
+      const handle = input.value.trim().replace(/^@/, "");
+      if (!handle) return;
+      statusEl.textContent = `Inviting @${handle}…`;
+      try {
+        await inviteCollaborator(repoUrl, handle);
+        statusEl.textContent = "";
+        input.value = "";
+        renderRoster(rosterEl, repoUrl);
+      } catch (e) {
+        statusEl.textContent = `Couldn't invite @${handle}: ${e.message}`;
+      }
+    });
     wrap.appendChild(card);
   }
 }
@@ -120,7 +129,7 @@ async function fetchRoster(repoUrl) {
   ];
 }
 
-async function renderRoster(rosterEl, repoUrl, canManage) {
+async function renderRoster(rosterEl, repoUrl) {
   let members;
   try {
     members = await fetchRoster(repoUrl);
@@ -130,7 +139,7 @@ async function renderRoster(rosterEl, repoUrl, canManage) {
   }
   rosterEl.innerHTML = "";
   if (!members.length) {
-    rosterEl.innerHTML = `<p class="sub" style="margin:0;">No maintainers yet${canManage ? " -- invite someone below." : "."}</p>`;
+    rosterEl.innerHTML = `<p class="sub" style="margin:0;">No maintainers yet -- invite someone below.</p>`;
     return;
   }
   members.forEach((m) => {
@@ -141,11 +150,10 @@ async function renderRoster(rosterEl, repoUrl, canManage) {
         <div class="pr-title">@${m.handle} ${m.pending ? `<span style="font-size:0.7rem; font-weight:700; color:#8a8f98;">&#9679; invite pending</span>` : ""}</div>
         <div class="pr-meta">${m.permission} access</div>
       </div>
-      ${canManage ? `<button class="secondary remove-btn" data-handle="${m.handle}" data-pending="${m.pending}" data-invitation-id="${m.invitationId || ""}">Remove</button>` : ""}
+      <button class="secondary remove-btn" data-handle="${m.handle}" data-pending="${m.pending}" data-invitation-id="${m.invitationId || ""}">Remove</button>
     `;
     rosterEl.appendChild(row);
   });
-  if (!canManage) return;
   rosterEl.querySelectorAll(".remove-btn").forEach((btn) => {
     btn.addEventListener("click", async () => {
       const vehicleSlug = await vehicleSlugForRepo(repoUrl);
@@ -154,7 +162,7 @@ async function renderRoster(rosterEl, repoUrl, canManage) {
       try {
         if (isPending) await cancelInvitation(repoUrl, btn.dataset.invitationId);
         else await removeCollaborator(repoUrl, btn.dataset.handle);
-        renderRoster(rosterEl, repoUrl, canManage);
+        renderRoster(rosterEl, repoUrl);
       } catch (e) {
         alert(`Couldn't remove @${btn.dataset.handle}: ${e.message}`);
       }
@@ -162,51 +170,33 @@ async function renderRoster(rosterEl, repoUrl, canManage) {
   });
 }
 
-// "push" (GitHub's write role), not "admin" -- enough to merge photo
-// PRs and manage a vehicle's day-to-day, without also handing out the
-// ability to manage the repo's OWN collaborators or settings. Someone
-// who genuinely needs that can be granted it directly on github.com by
-// an existing repo admin -- this tool only ever grants the level a
-// maintainer actually needs for the job described here.
-async function inviteCollaborator(repoUrl, handle) {
-  const { owner, repo } = ownerRepoFromUrl(repoUrl);
+// Invite/remove/cancel all go through the Worker's /manage-collaborator
+// (installation token) instead of calling GitHub directly -- GitHub
+// only allows collaborator management at repo Admin, which this app
+// deliberately never grants a maintainer just to let them invite a
+// contributor (see the file header). The Worker re-checks the caller's
+// real permission on this specific repo server-side before doing
+// anything; the caller's own OAuth token here only proves who's asking.
+async function callManageCollaborator(body) {
   const token = BlaydeAuth.getSession().token;
-  const resp = await fetch(`https://api.github.com/repos/${owner}/${repo}/collaborators/${handle}`, {
-    method: "PUT",
-    headers: { ...ghHeaders(token), "Content-Type": "application/json" },
-    body: JSON.stringify({ permission: "push" }),
+  const resp = await fetch(`${BlaydeAuth.AUTH_WORKER_URL}manage-collaborator`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+    body: JSON.stringify(body),
   });
-  if (resp.status === 404) throw new Error(`no GitHub user named "${handle}"`);
-  if (!resp.ok) {
-    const body = await resp.json().catch(() => ({}));
-    throw new Error(body.message || `GitHub API error (${resp.status})`);
-  }
-  // 201 = invitation sent (outside user); 204 = added directly (already
-  // an org member) -- both are success, nothing else to do here.
+  const result = await resp.json().catch(() => ({}));
+  if (!resp.ok || result.error) throw new Error(result.error || `Request failed (${resp.status}).`);
+  return result;
+}
+
+async function inviteCollaborator(repoUrl, handle) {
+  await callManageCollaborator({ repo_url: repoUrl, handle, action: "invite" });
 }
 
 async function removeCollaborator(repoUrl, handle) {
-  const { owner, repo } = ownerRepoFromUrl(repoUrl);
-  const token = BlaydeAuth.getSession().token;
-  const resp = await fetch(`https://api.github.com/repos/${owner}/${repo}/collaborators/${handle}`, {
-    method: "DELETE",
-    headers: ghHeaders(token),
-  });
-  if (!resp.ok && resp.status !== 204) {
-    const body = await resp.json().catch(() => ({}));
-    throw new Error(body.message || `GitHub API error (${resp.status})`);
-  }
+  await callManageCollaborator({ repo_url: repoUrl, handle, action: "remove" });
 }
 
 async function cancelInvitation(repoUrl, invitationId) {
-  const { owner, repo } = ownerRepoFromUrl(repoUrl);
-  const token = BlaydeAuth.getSession().token;
-  const resp = await fetch(`https://api.github.com/repos/${owner}/${repo}/invitations/${invitationId}`, {
-    method: "DELETE",
-    headers: ghHeaders(token),
-  });
-  if (!resp.ok && resp.status !== 204) {
-    const body = await resp.json().catch(() => ({}));
-    throw new Error(body.message || `GitHub API error (${resp.status})`);
-  }
+  await callManageCollaborator({ repo_url: repoUrl, invitation_id: invitationId, action: "cancel_invitation" });
 }
