@@ -113,6 +113,16 @@ refused outright before any of the above runs, as an explicit rule
 rather than something that happens to fall out of the file-allowlist
 check.
 
+**Identity chain, submit to grant.** On approval, the original submitter
+is granted real `push` access to their own newly-public repo -- the
+only way anyone becomes a maintainer of it. That identity is never
+re-derived or client-supplied: it's the same GitHub login captured by
+`requireRealUser` at submit time (verified against GitHub's own `/user`
+endpoint, not request-body input), written once into the notarization
+entry, and reused unmodified for the grant. The grant only runs after
+checks 1-4 above pass, so a tampered or forged submission is rejected
+before anyone is ever added as a collaborator.
+
 **Viewing** the pending queue (`GET /pending-vehicles`) requires real,
 active BlaydeManual org membership, not just any signed-in GitHub
 account -- without that, a stranger with a throwaway GitHub account
