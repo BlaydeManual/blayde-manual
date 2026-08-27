@@ -18,6 +18,44 @@ and corrections in both directions -- see
 
 ## [Unreleased]
 
+- **GitHub App migration, security audit, and org hardening (PR #21, not yet merged).**
+  - Two logins: existing classic OAuth App (`public_repo`), plus a new
+    GitHub App for "submit directly" and contribute's Public path.
+    `POST /direct-submit` creates a new vehicle repo private, under
+    BlaydeManual, via the App's installation credential -- the
+    submitter never gets write access. A notarization entry (manifest
+    sha256, submitter, timestamp) is committed to
+    `BlaydeManual/submission-log`. `contribute.js` has a real
+    Public (App, immediate PR, no fork) / Private (fork, PR opened
+    later) choice. `org-approval.js` is a real implementation: four
+    server-side checks (file allowlist, notarization hash match,
+    manifest schema, real org-admin role check) gate
+    `POST /approve-vehicle`.
+  - Security audit found and fixed 4 issues: missing repo-scope
+    validation on `/direct-contribute` (installation token could target
+    `registry`/`submission-log` directly), unvalidated `procedure_id`
+    (path traversal risk), `/pending-vehicles` readable by any signed-in
+    account (not just org members), notarization log keyed on raw
+    client input instead of GitHub's echoed repo name. `SECURITY.md`
+    rewritten.
+  - `SECURITY-TESTING.md` added: 4-tier live testing plan (anonymous /
+    non-member / member / admin).
+  - Three bugs found via live testing, fixed and confirmed live: missing
+    `User-Agent` header on all Worker->GitHub calls (403s); PKCS#1 vs
+    PKCS#8 private key mismatch (JWT signing never worked); missing
+    `Members` App permission caused `getOrgMembership` to swallow the
+    real error and report a permission failure as "not a member."
+  - Org settings corrected: member repo creation disabled, org-wide 2FA
+    required, App permissions corrected (added Members read, removed
+    unused Issues write). `enforce_admins` and `submission-log`'s lack
+    of branch protection reviewed and kept as documented tradeoffs.
+  - `my-vehicles.js` maintainer/collaborator roster is now real:
+    `GET/PUT/DELETE .../collaborators` and `GET/DELETE .../invitations`
+    with the caller's own OAuth token. Repo list now comes from live
+    `GET /user/repos` discovery (`discoverMaintainedRepos()`), replacing
+    a hardcoded two-repo mock; `review-panel.js`'s repo-scope candidate
+    list uses the same source.
+
 - **Real GitHub sign-in went live, and broke two things the first pass
   didn't catch until testing against the actual deployed site.**
   1. **The popup-to-opener handoff.** The original implementation told

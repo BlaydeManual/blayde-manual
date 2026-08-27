@@ -6,23 +6,57 @@
 // identity at sign-in. Approve New Vehicles still carries an ORG badge
 // since that action's authority is worth flagging explicitly; the
 // per-repo tabs dropped their REPO badges once that distinction no
-// longer needed spelling out.
-// Sign-in itself is real (auth.js, GitHub OAuth) as of 2026-08-25.
-// Which repos someone actually maintains, and whether they're on the
-// org's approval quorum, is NOT real yet -- that needs GitHub API
-// calls this project doesn't make anywhere yet (checking collaborator
-// status or team membership), so it stays this fixed stand-in until
-// that's built. Tracked in ROADMAP.md as the real-auth-wiring gap,
-// separate from the sign-in gap this file used to also have.
+// longer needed spelling out. org-approval.js gates the actual
+// approve/reject actions on a real org-admin check via the Worker
+// (BlaydeAuth.getAppSession() + /approve-vehicle's own server-side
+// membership check), not on anything in this file -- this portal only
+// ever controls tab VISIBILITY, never authority.
+// Sign-in is real (auth.js, GitHub OAuth). Which repos someone actually
+// maintains is real too, as of this pass: discoverMaintainedRepos()
+// below replaces the old fixed two-repo mock with a live GET /user/repos
+// call, filtered to repos this person has real push/admin access to AND
+// the real registry lists as approved -- see SECURITY.md's "maintaining
+// a repo is a separate designation from org membership" note for why
+// both checks matter (a real GitHub permission, not an org role, is
+// what actually governs repo access).
 const MOCK_MAINTAINER = {
-  // Two repos on purpose -- demonstrates Review Photo Requests grouping
-  // requests by vehicle instead of assuming a maintainer only ever has one.
-  reposmaintained: [
-    "https://github.com/BlaydeManual/suzuki-sv650-1999-2002",
-    "https://github.com/BlaydeManual/kawasaki-kx250-1998-2000",
-  ],
-  isOrgMaintainer: false, // flip to true locally to see the ORG tab enabled
+  isOrgMaintainer: false, // flip to true locally to see the ORG tab enabled -- unrelated to repo maintainership, still a stand-in
 };
+
+// {repoUrl, permissions}[] -- populated by discoverMaintainedRepos() once
+// per sign-in. permissions is the real GitHub permissions object for
+// that repo ({admin, maintain, push, triage, pull}), kept around (not
+// just the URL) so my-vehicles.js can decide whether THIS signed-in
+// person should see collaborator-management controls on THAT repo
+// without a second round-trip.
+let maintainedRepos = [];
+
+// Real repo discovery -- GET /user/repos with affiliation=collaborator
+// covers both ways someone can legitimately have write access to a
+// vehicle repo: being a BlaydeManual org member with an explicit
+// collaborator grant, or being an outside collaborator who was invited
+// without ever joining the org at all. Filtered to push-or-better (pull
+// alone can't merge a PR or manage collaborators, so it doesn't make
+// someone a maintainer here) and cross-checked against the real,
+// public registry -- the same repo-scope guard review-panel.js already
+// applies, since "GitHub says I can push here" and "this is actually a
+// registered Blayde Manual vehicle repo" are two different questions.
+async function discoverMaintainedRepos() {
+  const session = BlaydeAuth.getSession();
+  if (!session) return [];
+  try {
+    const resp = await fetch("https://api.github.com/user/repos?affiliation=collaborator&per_page=100", {
+      headers: { Authorization: `Bearer ${session.token}`, Accept: "application/vnd.github+json" },
+    });
+    if (!resp.ok) return [];
+    const repos = await resp.json();
+    const candidates = repos.filter((r) => r.owner?.login === "BlaydeManual" && r.permissions?.push);
+    const checks = await Promise.all(candidates.map(async (r) => [r, await isRegisteredRepo(r.html_url)]));
+    return checks.filter(([, ok]) => ok).map(([r]) => ({ repoUrl: r.html_url, permissions: r.permissions }));
+  } catch (e) {
+    return []; // fail closed -- an unreachable GitHub/registry means no discovered repos, not a broken portal
+  }
+}
 
 const carriedOverHash = new URLSearchParams(location.search).get("hash");
 if (carriedOverHash) {
@@ -31,13 +65,18 @@ if (carriedOverHash) {
   note.style.display = "block";
 }
 
-function enterPortal() {
+// Async now -- discovering real maintained repos is a network call, and
+// tab enablement below has to wait for it rather than judging an
+// always-populated mock array synchronously.
+async function enterPortal() {
   document.getElementById("signInCard").style.display = "none";
   document.getElementById("portalBody").style.display = "block";
 
+  maintainedRepos = await discoverMaintainedRepos();
+
   const reviewTabBtn = document.querySelector('.tab-btn[data-tab="review"]');
   const vehiclesTabBtn = document.querySelector('.tab-btn[data-tab="vehicles"]');
-  if (MOCK_MAINTAINER.reposmaintained.length) {
+  if (maintainedRepos.length) {
     initReviewTab(); // review-panel.js -- repo-scope check + PR list
     initVehiclesTab(); // my-vehicles.js -- per-vehicle rosters
     initIssuesTab(); // issue-requests.js -- needs a repo to issue against
@@ -53,9 +92,7 @@ function enterPortal() {
   }
 
   // Approve New Vehicles is visible and readable by every maintainer --
-  // useful before starting to index a vehicle that's already pending --
-  // org-approval.js itself gates the actual approve/reject actions on
-  // MOCK_MAINTAINER.isOrgMaintainer, not tab visibility.
+  // useful before starting to index a vehicle that's already pending.
   initApproveTab();
 }
 
@@ -94,7 +131,7 @@ document.querySelectorAll(".tab-btn").forEach((btn) => {
     // Review Photo Requests re-syncs from storage on every visit, not just
     // at sign-in -- Issue Requests can add a new request to the same queue
     // from this same page session (see review-panel.js's initReviewTab).
-    if (btn.dataset.tab === "review" && MOCK_MAINTAINER.reposmaintained.length) {
+    if (btn.dataset.tab === "review" && maintainedRepos.length) {
       initReviewTab();
     }
   });

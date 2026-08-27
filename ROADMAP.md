@@ -204,16 +204,19 @@ that in the first place -- `review-panel.js`'s repo-scope guard already
 lives by this same logic (never trust a `repo_url` from a URL param,
 always check it against the registry before acting on it).
 
-**Important caveat, stated plainly so it isn't later mistaken for
-already being true:** this property describes the TARGET architecture,
-once real GitHub OAuth replaces the mock. The CURRENT build has no real
-security boundary at all -- `MOCK_MAINTAINER` is a plain JS object,
-editable from the browser console by anyone, by design, since this is
-still a UI prototype with no live OAuth wired in yet. The "impossible to
-escape" property only becomes real once the OAuth proxy (already flagged
-above as needing its own dedicated review pass before trusted) is
-actually built and every mock role flag is replaced by a real API call
-authenticated with the user's own token.
+**Update, 2026-08-26: this property is now real, not just a target.**
+Real GitHub OAuth (auth.js), the real repo-scope-guarded review/approval
+flows, and -- as of today -- real `GET/PUT/DELETE .../collaborators`
+calls in `my-vehicles.js` (replacing `MOCK_MAINTAINER.reposmaintained`
+with `discoverMaintainedRepos()`'s live `GET /user/repos` discovery)
+mean every one of this app's role/capability signals is now backed by an
+actual GitHub API call authenticated with the signed-in person's own
+token, checked against the real registry and real GitHub permissions,
+not a client-side flag. `MOCK_MAINTAINER.isOrgMaintainer` is the one
+remaining mock flag (org-approval.js's tab-visibility convenience only
+-- its actual Approve/Reject authority already goes through the Worker's
+real org-admin check, per SECURITY.md); everything else described in
+this section is live.
 
 **The actual governance gate, worth naming explicitly: who gets GitHub
 org membership / repo collaborator access in the first place.** This
@@ -3216,3 +3219,9 @@ The UI's Approve button runs these same four checks via a `dry_run` flag on the 
 **Deliberately NOT built in this pass:** a real REJECT action. Unlike approve, rejecting a direct-submit proposal would mean deciding what happens to a real, already-created private GitHub repo (delete it? leave it? ask for a fix?) -- a genuinely destructive, hard-to-reverse decision not part of the original ask. Reject stays a logged/mock action for now. Also not built: making the personal-account submission path's "propose -> approve -> transfer" flow real (still needs a human to actually initiate the GitHub-side transfer, since no org-side credential can pull a repo out of someone else's account without their cooperation regardless of auth model) -- only the direct-submit path's full loop is real end-to-end.
 
 **Manual setup still needed (can't self-provision credentials):** register the actual GitHub App (permissions: contents/pull_requests/issues/administration read-write, metadata read; installed on BlaydeManual, all repositories; user-to-server auth enabled with token expiry left OFF for now to avoid needing refresh-token handling in this first cut -- the exact objection that shelved this migration the first time it was considered); generate its private key and a client ID/secret, add all of it as Wrangler secrets on `auth-worker`; create the `BlaydeManual/submission-log` repo. Everything in this pass was verified by mocking `fetch`/`githubApi` in-browser and testing the exact request sequences/payloads and pass/fail check paths through the real click handlers -- not a real end-to-end test against actual GitHub, which needs those credentials provisioned first and should get one real live pass (a real direct-submit, a real Public contribute, a real approval) once they are.
+
+## Backlog: the indexer's "Download manifest.json" button has no matching way back in (2026-08-27)
+
+Direct question, raised while a real vehicle was being indexed: "you can download the index, but you can't re-upload it later as a savepoint... so why download the index?" Checked the actual code rather than assuming an answer -- `indexer-ui.js`'s `downloadBtn` exports the in-memory manifest as a plain file download once indexing finishes, with no explanatory comment anywhere for what it's for. There is a real, separate resume system already (`indexer-core.js`'s job-based resume, checkpointed to IndexedDB), but it only resumes the SAME browser tab/profile's own stored job -- it has no import path that accepts a manifest.json file at all. So today: downloading the manifest produces a file that cannot be fed back into the indexer, the reviewer, or anything else in this codebase. Its only real use right now is as a raw artifact for manual inspection or an external backup copy, not a savepoint in any functional sense -- and nothing in the UI says that's all it's for, which is exactly what prompted the question.
+
+Not fixed in this pass, logged directly per request. Two real directions, not decided yet: (1) build a real "load manifest.json" import path so the download genuinely functions as a portable savepoint (works across browsers/devices, unlike the IndexedDB-only resume); or (2) if the button was only ever meant as a raw-data escape hatch, say so in the UI rather than leaving it looking like a savepoint feature it isn't.

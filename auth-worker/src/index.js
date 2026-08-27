@@ -126,12 +126,48 @@ async function makeAppJwt(env) {
   return `${toSign}.${base64url(new Uint8Array(signature))}`;
 }
 
+// GitHub Apps hand out their private key as PKCS#1 ("-----BEGIN RSA
+// PRIVATE KEY-----") by default, not PKCS#8 -- confirmed live: the secret
+// pasted from GitHub's own download is PKCS#1, and Web Crypto's
+// importKey("pkcs8", ...) below rejects that outright. Detect and wrap it
+// rather than requiring whoever sets the secret to convert the file by
+// hand first (a step nothing here would warn them to take).
 function pemToDer(pem) {
-  const b64 = pem.replace(/-----BEGIN PRIVATE KEY-----/, "").replace(/-----END PRIVATE KEY-----/, "").replace(/\s+/g, "");
+  const isPkcs1 = /-----BEGIN RSA PRIVATE KEY-----/.test(pem);
+  const b64 = pem.replace(/-----BEGIN (RSA )?PRIVATE KEY-----/, "").replace(/-----END (RSA )?PRIVATE KEY-----/, "").replace(/\s+/g, "");
   const raw = atob(b64);
   const bytes = new Uint8Array(raw.length);
   for (let i = 0; i < raw.length; i++) bytes[i] = raw.charCodeAt(i);
-  return bytes.buffer;
+  return (isPkcs1 ? pkcs1ToPkcs8(bytes) : bytes).buffer;
+}
+
+// Wraps a PKCS#1 RSAPrivateKey DER blob in the minimal PKCS#8
+// PrivateKeyInfo structure Web Crypto requires: SEQUENCE { version,
+// AlgorithmIdentifier(rsaEncryption), OCTET STRING(pkcs1) }. The
+// AlgorithmIdentifier bytes are a fixed, well-known DER encoding of
+// { OID 1.2.840.113549.1.1.1, NULL } -- constant regardless of key size.
+function pkcs1ToPkcs8(pkcs1) {
+  const algId = new Uint8Array([0x30, 0x0d, 0x06, 0x09, 0x2a, 0x86, 0x48, 0x86, 0xf7, 0x0d, 0x01, 0x01, 0x01, 0x05, 0x00]);
+  const version = new Uint8Array([0x02, 0x01, 0x00]);
+  const privateKeyOctet = concatBytes(new Uint8Array([0x04, ...derLength(pkcs1.length)]), pkcs1);
+  const body = concatBytes(version, algId, privateKeyOctet);
+  return concatBytes(new Uint8Array([0x30, ...derLength(body.length)]), body);
+}
+
+function derLength(len) {
+  if (len < 0x80) return [len];
+  const bytes = [];
+  let n = len;
+  while (n > 0) { bytes.unshift(n & 0xff); n >>= 8; }
+  return [0x80 | bytes.length, ...bytes];
+}
+
+function concatBytes(...arrays) {
+  const total = arrays.reduce((n, a) => n + a.length, 0);
+  const out = new Uint8Array(total);
+  let offset = 0;
+  for (const a of arrays) { out.set(a, offset); offset += a.length; }
+  return out;
 }
 
 function base64url(bytes) {
@@ -386,7 +422,17 @@ async function getOrgMembership(login, installationToken) {
     const membership = await ghApi(`/orgs/${REGISTRY_OWNER}/memberships/${login}`, installationToken);
     return membership.state === "active" ? membership : null;
   } catch (e) {
-    return null;
+    // Deliberately NOT treated as "not a member" -- confirmed live that
+    // GitHub returns the exact same 404 {"message":"Not Found"} both for
+    // a real non-member AND for a caller lacking the "Members" org
+    // permission (it doesn't distinguish, to avoid leaking who's a member
+    // to an unauthorized caller). Silently mapping this to null previously
+    // made a missing App permission indistinguishable from a real
+    // non-member. Surfacing it instead means a real non-member now sees
+    // this error too (Tier 2 test rows 2.4/2.8 in SECURITY-TESTING.md
+    // need to account for that), but that's honest -- "we can't tell" is
+    // the true state until the App has the Members permission.
+    throw new Error(`Could not verify @${login}'s org membership (${e.status || "?"}: ${e.message}) -- if @${login} IS an active member, confirm the GitHub App has the "Members" organization permission (read).`);
   }
 }
 
@@ -452,6 +498,18 @@ async function handleApproveVehicle(request, env) {
 
   const installationToken = await getInstallationToken(env);
   await requireOrgApprover(login, installationToken);
+
+  // Confirmed live, 2026-08-27: none of the checks below reference
+  // whether this repo was already approved, so a second real approval
+  // of the same repo would silently push a DUPLICATE entry into
+  // registry.json's vehicles array. A direct-submit repo starts private
+  // and only this endpoint ever flips it public -- already-public means
+  // already approved (or approved outside this flow entirely), either
+  // way not a pending proposal anymore.
+  const repoInfo = await ghApi(`/repos/${REGISTRY_OWNER}/${repoName}`, installationToken);
+  if (!repoInfo.private) {
+    throw new Error(`Rejected: "${repoName}" is already public -- it's already been approved, not a pending proposal.`);
+  }
 
   // 1. Negative file-allowlist: exactly {README.md, manifest.json}, one branch.
   const contents = await ghApi(`/repos/${REGISTRY_OWNER}/${repoName}/contents/`, installationToken);

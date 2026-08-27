@@ -159,6 +159,22 @@ or contributes beyond the notarization log entries described above
 model, timestamp) is stripped from every contributed photo
 client-side, before it's ever saved, not just checked afterward.
 
+## Maintaining a vehicle repo is a separate designation from org membership
+
+BlaydeManual **org membership** (member/admin) governs two things only:
+viewing the pending-vehicle queue, and approving a new vehicle (admin
+only). No write access to any vehicle repo. **Maintaining** a specific
+vehicle repo is a separate, per-repo GitHub collaborator grant -- a
+maintainer need not be an org member at all.
+
+`my-vehicles.js` implements this with real GitHub calls: repo list from
+`GET /user/repos` (`discoverMaintainedRepos()`), filtered to push-or-
+better access + registry-approved. Roster management (invite/remove) is
+gated on that repo's real `permissions.admin`; push-only access gets a
+read-only roster. Invite/remove call `PUT`/`DELETE
+/repos/{owner}/{repo}/collaborators/{handle}` with the caller's own
+OAuth token, granting `push` (not `admin`).
+
 ## Repo-level protection
 
 `blayde-manual`, `registry`, and `vehicle-scaffold` all require a
@@ -177,14 +193,25 @@ authenticated non-member, member, admin). Required reading before
 treating any of the direct-submit/direct-contribute/approve-vehicle
 controls as proven in production, not just in a mocked test.
 
-- The GitHub App itself needs to actually be registered and its
-  credentials provisioned (App ID, private key, client ID/secret, as
-  Wrangler secrets on `auth-worker`) before any of the direct-submit/
-  direct-contribute/approve-vehicle flows work against real GitHub --
-  see ROADMAP.md's GitHub App migration entry for the exact setup
-  steps. Everything described above has been verified by unit-testing
-  the validation logic in isolation and mocking the network layer
-  through the real client-side call sites, not against live GitHub.
+- **Closed, 2026-08-27**: GitHub App registered, installed (all
+  repositories), credentials provisioned as Wrangler secrets. Three bugs
+  found via live testing, fixed and confirmed live: missing
+  `User-Agent` header (every GitHub call was rejected), PKCS#1-vs-PKCS#8
+  private key mismatch (JWT signing never worked), and `getOrgMembership`
+  swallowing a missing-permission error as "not a member." Org
+  configuration audited and corrected: member repo creation disabled,
+  org-wide 2FA required, App permission set corrected (added Members
+  read, removed unused Issues write). Detail and live evidence:
+  `SECURITY-TESTING.md`.
+- **Deliberate, not an oversight**: `enforce_admins` is `false` on
+  `blayde-manual`/`registry`/`vehicle-scaffold` -- the sole admin can
+  bypass required review. Kept as an escape hatch while there is exactly
+  one admin; revisit once a co-maintainer team exists. `submission-log`
+  has no branch protection -- its append-only property depends on write
+  access being limited to the App's installation token and org admins,
+  not on anything GitHub enforces, since the App writes
+  directly to `main` by design and a PR requirement would need the App
+  exempted from its own rule anyway.
 - Token expiry is currently disabled at the App level for the
   user-to-server flow, to avoid needing refresh-token handling in the
   first cut -- a real, deliberate tradeoff (see ROADMAP.md), not an
