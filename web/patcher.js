@@ -287,31 +287,40 @@ function drawImageAt(page, image, pageGeometry, pixelBbox) {
 // Contributor credit, drawn fresh on every patch from the photo's own
 // filename convention -- never burned into the stored photo file
 // itself (direct request: styling/placement needs to stay changeable
-// later without anyone re-uploading anything). A flat horizontal tag
-// flush in the photo's own bottom-right corner -- NOT a diagonal
-// ribbon: these photos exist for instructional purposes and a
-// diagonal cut eats into the image well past the corner itself,
-// which risks covering the actual subject matter. A flat corner tag
-// only ever touches the corner. Skipped entirely below a size floor
-// where a legible tag has no room to exist without becoming the
-// dominant thing in a small photo.
+// later without anyone re-uploading anything). Locked design, after
+// two earlier passes: a stamped "data-plate" tag -- flat black, sharp
+// corners (no rounding, no rotation), a solid red accent stripe down
+// the left edge, bold monospace uppercase text -- flush against the
+// photo's own bottom-right corner only, never touching neighboring
+// content. An interim version added a small rotated-square "rivet"
+// accent at the tag's outer corner; dropped after direct feedback
+// ("weird") -- the plate alone is the whole design now. Skipped
+// entirely below a size floor where a legible tag has no room to
+// exist without becoming the dominant thing in a small photo.
 async function drawCreditTab(page, box, contributor, font) {
   if (!contributor || box.width < 60 || box.height < 40) return;
-  const label = `@${contributor}`;
-  const fontSize = Math.max(7, Math.min(11, box.height * 0.05));
-  const padX = fontSize * 0.6;
-  const tabH = fontSize + padX;
+  const label = `@${contributor}`.toUpperCase();
+  const fontSize = Math.max(8, Math.min(13, box.height * 0.06));
+  const stripeW = fontSize * 0.55;
+  const padX = fontSize * 0.7;
+  // Minimal top/bottom padding -- the text should fill the plate's
+  // height, not float in a lot of empty space around it.
+  const padY = fontSize * 0.16;
+  const tabH = fontSize + padY * 2;
   const measuredWidth = font.widthOfTextAtSize(label, fontSize);
-  const maxTabW = box.width * 0.6;
-  const tabW = Math.min(measuredWidth + padX * 2, maxTabW);
+  const maxTabW = box.width * 0.55;
+  const tabW = Math.min(stripeW + padX * 2 + measuredWidth, maxTabW);
   // Shrinks further only if even the capped tab width can't fit the
   // label -- a real check against measured text width, not a guess.
-  const finalSize = measuredWidth + padX * 2 > maxTabW ? fontSize * ((maxTabW - padX * 2) / measuredWidth) : fontSize;
+  const finalSize = stripeW + padX * 2 + measuredWidth > maxTabW
+    ? fontSize * ((maxTabW - stripeW - padX * 2) / measuredWidth)
+    : fontSize;
   const tabX = box.x + box.width - tabW;
   const tabY = box.y;
-  page.drawRectangle({ x: tabX, y: tabY, width: tabW, height: tabH, color: RED });
+  page.drawRectangle({ x: tabX, y: tabY, width: tabW, height: tabH, color: BLACK });
+  page.drawRectangle({ x: tabX, y: tabY, width: stripeW, height: tabH, color: RED });
   page.drawText(label, {
-    x: tabX + padX, y: tabY + tabH * 0.28, size: finalSize, font, color: WHITE, maxWidth: tabW - padX * 2,
+    x: tabX + stripeW + padX, y: tabY + padY * 0.9, size: finalSize, font, color: WHITE,
   });
 }
 
@@ -321,10 +330,20 @@ async function drawCreditTab(page, box, contributor, font) {
 // instead of staying blank. Someone flipping through their own patched
 // manual later -- on the bike, not at a computer -- sees exactly where
 // they could help, no need to come back to the site first. Points at
-// contribute.html?repo=...&procedure=..., a lightweight page scoped to
+// contribute.html?v=...&procedure=..., a lightweight page scoped to
 // that one procedure -- see contribute.html for what happens there.
-function contributeUrl(repoUrl, procedureId) {
-  return new URL(`contribute.html?repo=${encodeURIComponent(repoUrl)}&procedure=${encodeURIComponent(procedureId)}`, location.href).href;
+//
+// Uses the vehicle's short slug, not its full repo URL: every QR in one
+// patched manual points at the same vehicle, so encoding the full
+// "https://github.com/BlaydeManual/..." string into every single one
+// (dozens per manual) needlessly inflates every code's module count --
+// contribute.js resolves the slug back to a repo_url via the same
+// registry.json it can already reach. A `repo=` URL still works for
+// any already-patched PDF with the old param baked into its QRs (see
+// contribute.js's legacy fallback) -- this only changes what new
+// patches encode going forward.
+function contributeUrl(vehicleSlug, procedureId) {
+  return new URL(`contribute.html?v=${encodeURIComponent(vehicleSlug)}&procedure=${encodeURIComponent(procedureId)}`, location.href).href;
 }
 
 // qrcode.js (vendored) only emits a GIF data URL -- pdf-lib embeds PNG/
@@ -473,7 +492,7 @@ async function patchViaRegistry(doc, priorState, priorityList) {
   const patchedFigures = { ...((priorState && priorState.patched_figures) || {}) };
   let nPatched = 0, nSkippedUnchanged = 0, nNoPhoto = 0;
   const helvFont = await doc.embedFont(StandardFonts.Helvetica);
-  const creditFont = await doc.embedFont(StandardFonts.HelveticaBold);
+  const creditFont = await doc.embedFont(StandardFonts.CourierBold);
 
   // Group every candidate photo by procedure_id -- there can be more
   // than one (alternate angles, multiple contributors), never just the
@@ -496,7 +515,7 @@ async function patchViaRegistry(doc, priorState, priorityList) {
       if (missingGeo && e.pixel_bbox) {
         try {
           const page = doc.getPage(e.page - 1);
-          const url = contributeUrl(entry.repo_url, e.procedure_id);
+          const url = contributeUrl(entry.vehicle_slug, e.procedure_id);
           await drawContributeMarker(doc, page, missingGeo, e.pixel_bbox, url, helvFont);
         } catch (err) {
           appendLog(`  couldn't draw contribute marker for ${e.procedure_id}: ${err.message}`);
