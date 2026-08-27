@@ -135,14 +135,6 @@ async function loadOpenPhotoPRs(repoUrl) {
         // paths (fork-based Private PRs use the same filename
         // convention), so it's the one real signal here, not a fallback.
         number: pr.number, title: pr.title, author: contributor || pr.user?.login || "unknown",
-        // The exact commit the maintainer is about to review -- passed
-        // to GitHub's merge call as `sha` so the merge fails rather than
-        // silently pulling in whatever's CURRENTLY on the branch if it
-        // moved since. Real gap otherwise: a fork-based (Private) PR's
-        // owner keeps push access to their own branch for as long as it
-        // sits open, so nothing stopped them swapping the photo between
-        // when a maintainer looked at it and when they clicked Accept.
-        headSha: pr.head.sha,
         repo_url: repoUrl, edition_id: manifest.edition_id || "(edition not set)",
         procedure_id: procedureId, page: entry.page, section_heading: entry.section_heading,
         photo_raw_url: `https://raw.githubusercontent.com/${pr.head.repo.full_name}/${pr.head.ref}/${photoFile.filename}`,
@@ -224,16 +216,6 @@ async function openPR(number) {
 
   log(`opened request #${currentPR.number} -- fetching the submitted photo...`);
   try {
-    // Re-fetch the PR's real current head SHA right here, as close as
-    // possible to the moment the photo actually gets shown -- tighter
-    // than relying on the snapshot taken when the whole list loaded,
-    // which could be stale by however long the maintainer spent
-    // deciding which PR to open. See headSha's own comment above for
-    // why this matters at all.
-    const session = BlaydeAuth.getSession();
-    const [owner, repo] = ownerRepo(currentPR.repo_url);
-    const freshPr = await githubApi(`/repos/${owner}/${repo}/pulls/${currentPR.number}`, session.token);
-    currentPR.headSha = freshPr.head.sha;
     const resp = await fetch(currentPR.photo_raw_url);
     if (!resp.ok) throw new Error(`photo fetch failed (${resp.status})`);
     const blob = await resp.blob();
@@ -387,16 +369,23 @@ document.getElementById("acceptBtn").addEventListener("click", async () => {
   document.getElementById("acceptBtn").disabled = true;
   document.getElementById("rejectBtn").disabled = true;
   try {
-    log(`merging request #${currentPR.number}...`);
-    // sha pins this merge to the exact commit fetched and shown during
-    // review (refreshed in openPR, right before the photo was
-    // displayed) -- GitHub refuses the merge with a 409 if the branch
-    // moved since, rather than silently merging whatever's there now.
-    await githubApi(`/repos/${owner}/${repo}/pulls/${currentPR.number}/merge`, session.token, {
-      method: "PUT",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ commit_title: `Merge #${currentPR.number}: ${currentPR.title}`, sha: currentPR.headSha }),
+    log(`checking and merging request #${currentPR.number}...`);
+    // Routed through the Worker, not merged directly with this
+    // maintainer's own token -- it independently re-verifies real
+    // permission, re-checks the PR changes exactly one real contributed
+    // photo (nothing else riding along), re-validates and scans that
+    // photo's actual current bytes for embedded metadata, and only then
+    // merges (pinned to the exact commit it just checked). None of that
+    // is something this page's own UI can guarantee on its own, since a
+    // maintainer's browser has no way to stop a fork owner from having
+    // changed the branch's content in ways this page never re-fetched.
+    const acceptResp = await fetch(`${BlaydeAuth.AUTH_WORKER_URL}accept-photo-pr`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${session.token}` },
+      body: JSON.stringify({ repo_url: currentPR.repo_url, pr_number: currentPR.number, commit_title: `Merge #${currentPR.number}: ${currentPR.title}` }),
     });
+    const acceptResult = await acceptResp.json().catch(() => ({}));
+    if (!acceptResp.ok || acceptResult.error) throw new Error(acceptResult.error || `Accept failed (${acceptResp.status}).`);
     log(`merged.`);
 
     const finalBbox = canvasToBbox(box);

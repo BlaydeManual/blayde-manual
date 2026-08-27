@@ -47,6 +47,7 @@ export default {
       if (request.method === "GET" && pathname === "/pending-vehicles") return await handlePendingVehicles(request, env);
       if (request.method === "POST" && pathname === "/approve-vehicle") return await handleApproveVehicle(request, env);
       if (request.method === "POST" && pathname === "/manage-collaborator") return await handleManageCollaborator(request, env);
+      if (request.method === "POST" && pathname === "/accept-photo-pr") return await handleAcceptPhotoPr(request, env);
     } catch (e) {
       // Any unexpected throw (a malformed GitHub response, a crypto
       // error, etc.) still needs to come back as JSON with CORS headers --
@@ -724,6 +725,93 @@ async function handleManageCollaborator(request, env) {
   return json({ cancelled: true });
 }
 
+// Real gap this closes, found live: review-panel.js used to merge a
+// photo PR directly with the maintainer's own token, no server-side
+// check beyond whatever the UI itself displayed. Two ways that's not
+// enough: (1) a fork-based (Private) PR's owner keeps push access to
+// their own branch for as long as it's open, so nothing stopped them
+// swapping the file's content, or adding extra files alongside it,
+// between when a maintainer looked and when they clicked Accept; (2) a
+// contributor can bypass the site entirely and push straight to their
+// fork, skipping contribute.js's canvas re-encode (which is what
+// actually strips EXIF/GPS/camera metadata today) -- nothing server-
+// side ever re-checked that. Both are real regardless of how careful
+// the maintainer is, since neither is something the UI can see on its
+// own; this is a hard gate a maintainer's own token can't bypass,
+// matching org-approval.js's checks for vehicle submissions, which are
+// hard blocks too, not just a warning the human can click past.
+//
+// Deliberately merges via the App's installation token, not the
+// caller's own -- same "server independently re-verifies the caller's
+// real permission, then acts with its own trusted credential" shape as
+// handleManageCollaborator above, not a proxy that just forwards the
+// caller's token through after a client-side-only check.
+async function handleAcceptPhotoPr(request, env) {
+  const login = await requireRealUser(request);
+  const body = await parseJson(request);
+  const { repo_url: repoUrl, pr_number: prNumber, commit_title: commitTitle } = body;
+  if (!repoUrl || !prNumber) return json({ error: "missing repo_url or pr_number" }, 400);
+
+  await requireRegisteredRepo(repoUrl);
+  const [owner, repo] = new URL(repoUrl).pathname.replace(/^\//, "").split("/");
+  const installationToken = await getInstallationToken(env);
+
+  let callerPermission;
+  try {
+    const permData = await ghApi(`/repos/${owner}/${repo}/collaborators/${login}/permission`, installationToken);
+    callerPermission = permData.permission;
+  } catch (e) {
+    throw new Error(`@${login} isn't a collaborator on ${repoUrl}.`);
+  }
+  if (!["admin", "maintain", "write"].includes(callerPermission)) {
+    throw new Error(`@${login} needs push access or better on ${repoUrl} to accept photo requests (has: ${callerPermission}).`);
+  }
+
+  // Fetched fresh here, not trusted from the client -- the one moment
+  // that actually matters is right before merging, not whenever the
+  // maintainer happened to open the review.
+  const pr = await ghApi(`/repos/${owner}/${repo}/pulls/${prNumber}`, installationToken);
+  const files = await ghApi(`/repos/${owner}/${repo}/pulls/${prNumber}/files`, installationToken);
+
+  // Negative allowlist: exactly one file, a real contributed photo,
+  // nothing else riding along. The severe case this stops isn't a bad
+  // photo -- it's a PR quietly also touching something like
+  // .github/workflows/*.yml, which merged into an org-owned repo means
+  // real code execution in this org's CI, not just a bad image.
+  if (files.length !== 1) {
+    throw new Error(`This request changes ${files.length} files, not 1 -- only a single contributed photo is allowed. Rejecting rather than merging something broader than a photo submission.`);
+  }
+  const photoFile = files[0];
+  if (photoFile.status !== "added" || !/^images\/[^/]+__by_[^/]+(__alt\d+)?\.(jpe?g|png|webp)$/i.test(photoFile.filename)) {
+    throw new Error(`"${photoFile.filename}" (${photoFile.status}) doesn't match a real contributed-photo submission -- refusing to merge.`);
+  }
+  if (!pr.head?.repo) throw new Error("The contributor's fork is gone -- can't fetch the photo to verify it.");
+
+  const photoUrl = `https://raw.githubusercontent.com/${pr.head.repo.full_name}/${pr.head.sha}/${photoFile.filename}`;
+  const photoResp = await fetch(photoUrl);
+  if (!photoResp.ok) throw new Error(`Could not fetch the submitted photo (${photoResp.status}) -- refusing to merge.`);
+  const photoBytes = new Uint8Array(await photoResp.arrayBuffer());
+
+  const validation = validatePhoto(photoBytes);
+  if (!validation.valid) throw new Error(`Photo failed validation: ${validation.error}`);
+  if (hasEmbeddedMetadata(photoBytes, validation.format)) {
+    throw new Error(
+      "This photo still has embedded metadata (location, camera, or timestamp info) -- looks like it didn't go through the Contributor Portal's own upload, which strips this automatically. Ask the contributor to resubmit through blaydemanual.com/contribute.html rather than pushing directly."
+    );
+  }
+
+  // sha pins this merge to the exact commit just validated above --
+  // GitHub refuses with a real error if the branch moved in the tiny
+  // window between the fetch above and this call, rather than silently
+  // merging something that was never checked.
+  await ghApi(`/repos/${owner}/${repo}/pulls/${prNumber}/merge`, installationToken, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ commit_title: commitTitle || `Merge #${prNumber}`, sha: pr.head.sha }),
+  });
+  return json({ merged: true });
+}
+
 function base64ToUtf8(b64) {
   const bin = atob(b64.replace(/\n/g, ""));
   const bytes = new Uint8Array(bin.length);
@@ -840,6 +928,65 @@ function validatePhoto(bytes) {
     return { valid: false, error: `image is ${dims.width}x${dims.height} -- larger than allowed` };
   }
   return { valid: true, format, width: dims.width, height: dims.height };
+}
+
+// ---- real, dependency-free EXIF/metadata detection -- for the
+// Public path, contribute.js's canvas re-encode already strips this
+// before /direct-contribute ever sees the bytes, so this mostly
+// guards the Private (fork-based) path, which never touches this
+// Worker at push time at all -- a contributor could bypass the site
+// entirely and push a raw camera photo straight to their fork via git
+// or the API. A hash of "sanitized" content can't catch that (there's
+// nothing trustworthy to hash against when the Worker never saw the
+// original bytes), so this scans the actual bytes about to be merged
+// for the real, standard metadata containers instead: JPEG's APP1
+// (Exif/XMP) and APP13 (Photoshop/IPTC) segments, PNG's eXIf/tEXt/
+// zTXt/iTXt chunks, WEBP's EXIF/XMP RIFF sub-chunks. Scans for
+// presence only, not full parsing -- knowing metadata exists is
+// enough to block; reading its actual content isn't needed for that. ----
+function jpegHasMetadata(bytes) {
+  let offset = 2;
+  while (offset + 4 <= bytes.length) {
+    if (bytes[offset] !== 0xff) { offset++; continue; }
+    const marker = bytes[offset + 1];
+    if (marker === 0xd8 || marker === 0x01 || (marker >= 0xd0 && marker <= 0xd7)) { offset += 2; continue; }
+    if (marker === 0xd9 || marker === 0xda) break; // EOI or start-of-scan -- no more markers to check
+    const segmentLength = readUint16BE(bytes, offset + 2);
+    if (marker === 0xe1 || marker === 0xed) return true; // APP1 (Exif/XMP), APP13 (Photoshop/IPTC)
+    offset += 2 + segmentLength;
+  }
+  return false;
+}
+
+function pngHasMetadata(bytes) {
+  const metadataChunks = new Set(["eXIf", "tEXt", "zTXt", "iTXt"]);
+  let offset = 8; // past the 8-byte PNG signature
+  while (offset + 8 <= bytes.length) {
+    const length = readUint32BE(bytes, offset);
+    const type = String.fromCharCode(bytes[offset + 4], bytes[offset + 5], bytes[offset + 6], bytes[offset + 7]);
+    if (metadataChunks.has(type)) return true;
+    if (type === "IEND") break;
+    offset += 8 + length + 4; // length + type + data + crc
+  }
+  return false;
+}
+
+function webpHasMetadata(bytes) {
+  let offset = 12; // past "RIFF"(4) + size(4) + "WEBP"(4)
+  while (offset + 8 <= bytes.length) {
+    const fourcc = String.fromCharCode(bytes[offset], bytes[offset + 1], bytes[offset + 2], bytes[offset + 3]);
+    const size = readUint32BE(bytes, offset + 4); // WEBP chunk sizes are little-endian, but only equality-checked here, direction doesn't matter for that
+    if (fourcc === "EXIF" || fourcc === "XMP ") return true;
+    offset += 8 + size + (size % 2); // chunks are padded to an even byte count
+  }
+  return false;
+}
+
+function hasEmbeddedMetadata(bytes, format) {
+  if (format === "jpeg") return jpegHasMetadata(bytes);
+  if (format === "png") return pngHasMetadata(bytes);
+  if (format === "webp") return webpHasMetadata(bytes);
+  return false;
 }
 
 async function parseJson(request) {
