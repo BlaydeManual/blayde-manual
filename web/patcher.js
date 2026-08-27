@@ -216,11 +216,35 @@ pdfInput.addEventListener("change", async () => {
   appendLog(`SHA-256: ${pdfFingerprint}`);
   appendLog("Computed locally -- nothing was uploaded.");
 
+  // A previously-patched Blayde Manual output has different bytes
+  // entirely from the pristine PDF it came from (an extra cover page,
+  // drawn overlays, this very attachment) -- its fingerprint can never
+  // match source_pdf_sha256 in the registry, which is the ORIGINAL's
+  // hash. Without this check, feeding a patched file back in (exactly
+  // what the tool's own "feed this file back in to test incremental
+  // re-patching" instruction asks for) would always fail registry
+  // lookup and leave the Patch button disabled -- a real, confirmed
+  // bug, not hypothetical. Detected the same way as everywhere else in
+  // this codebase now checks for it: the embedded state attachment,
+  // which already stores the exact repo_url needed to resolve directly.
+  let priorRepoUrl = null;
+  try {
+    const probeDoc = await PDFDocument.load(pdfBytes);
+    const priorState = await readEmbeddedState(probeDoc);
+    if (priorState?.repo_url) priorRepoUrl = priorState.repo_url;
+  } catch (e) { /* not a loadable/prior Blayde Manual file -- fingerprint path handles it */ }
+
   setProgress(0, 1, "checking the registry...");
   appendLog(`\nChecking the registry...`);
   try {
-    registryResolution = await resolveViaRegistry(pdfFingerprint, DEFAULT_REGISTRY_URL,
-      (i, total, name) => setProgress(i, total, `fetching ${name} (${i}/${total})`));
+    registryResolution = priorRepoUrl
+      ? await (async () => {
+          appendLog(`Recognized an already-patched Blayde Manual file -- resolving by its own repo (${priorRepoUrl}), not by fingerprint.`);
+          return resolveViaRepoUrl(priorRepoUrl, DEFAULT_REGISTRY_URL,
+            (i, total, name) => setProgress(i, total, `fetching ${name} (${i}/${total})`));
+        })()
+      : await resolveViaRegistry(pdfFingerprint, DEFAULT_REGISTRY_URL,
+          (i, total, name) => setProgress(i, total, `fetching ${name} (${i}/${total})`));
     const { entry, manifest, photos } = registryResolution;
     appendLog(`Found: ${entry.vehicle_display_name} (${entry.edition_id}) -> ${entry.repo_url}`);
     appendLog(`Manifest: ${manifest.entries.length} indexed figures, ${photos.size} photo(s) available.`);
