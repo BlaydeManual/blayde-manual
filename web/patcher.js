@@ -664,16 +664,13 @@ patchBtn.addEventListener("click", async () => {
     // convention (registry.json has no separate structured fields for
     // those, see ROADMAP.md), so it does the same job the original
     // "make_model_year_version" request wanted without inventing new
-    // data capture. Dated instead of versioned, matching the cover
-    // page -- distinguishes copies made on different days without an
-    // arbitrary incrementing number nobody found meaningful. Sanitized
-    // defensively even though slug/edition_id are expected to already
-    // be filesystem-safe.
+    // data capture. No date in the filename -- direct feedback, not
+    // needed there (it's already on the cover page as "DATE PATCHED").
+    // Sanitized defensively even though slug/edition_id are expected
+    // to already be filesystem-safe.
     const sanitize = (s) => (s || "").replace(/[^a-zA-Z0-9._-]+/g, "-");
     const namedParts = [sanitize(result.vehicleSlug), sanitize(result.editionId)].filter(Boolean);
-    const outName = namedParts.length
-      ? `BlaydeManual_${namedParts.join("_")}_${todayStr()}.pdf`
-      : `BlaydeManual_${todayStr()}.pdf`;
+    const outName = namedParts.length ? `BlaydeManual_${namedParts.join("_")}.pdf` : `BlaydeManual.pdf`;
     a.download = outName;
     a.click();
     appendLog("Download triggered. Feed this file back in as the input to test incremental re-patching.");
