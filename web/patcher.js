@@ -546,12 +546,25 @@ async function buildCoverPage(doc, { vehicleDisplayName, nPatched, totalFigures,
     linkLine("Check for updates. Repatch as needed:", trackUrl, trackUrl);
   }
 
+  // The redistribution sentences below are a direct, deliberate
+  // addition to the affiliation/liability disclaimer above -- LEGAL.md's
+  // whole architecture (the "local-context rule") is built on this
+  // being patched locally from a copy the person already owns, but
+  // nothing stops that person from then handing the OUTPUT file to
+  // someone who never owned one. This is the one artifact that
+  // actually travels if that happens, so it's the one place this
+  // needs to be stated plainly, not just assumed internally.
   const disclaimer = "Independent, community-run documentation project. Not affiliated with, " +
     "endorsed by, or sponsored by the original manufacturer. This is informational, community-sourced " +
     "documentation. Use it at your own risk, and verify safety-critical specs (torque, brake/fuel " +
     "system procedures) against an authoritative source before relying on them. This document was " +
-    "generated entirely in-browser. Nothing about it was uploaded anywhere.";
-  page.drawText(disclaimer, { x: 56, y: 90, size: 8, font: helv, color: STEEL, maxWidth: 500, lineHeight: 11 });
+    "generated entirely in-browser. Nothing about it was uploaded anywhere. Patching adds " +
+    "community-contributed photos only. It does not change the copyright status of the original " +
+    "manual's own content, and it does not grant any right to redistribute that content. This copy " +
+    "should have been generated from a source PDF you legally own. If you received this file from " +
+    "someone else rather than patching your own copy, get your own legally-obtained source PDF and " +
+    "patch it yourself.";
+  page.drawText(disclaimer, { x: 56, y: 108, size: 8, font: helv, color: STEEL, maxWidth: 500, lineHeight: 11 });
 
   return page;
 }
