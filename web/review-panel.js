@@ -126,7 +126,15 @@ async function loadOpenPhotoPRs(repoUrl) {
       if (!entry || !geo) return null; // photo doesn't match a known procedure -- shouldn't happen if checker.py ran, skip defensively
       if (!pr.head?.repo) return null; // contributor's fork was deleted after opening the PR -- can't fetch the photo
       return {
-        number: pr.number, title: pr.title, author: pr.user?.login || contributor || "unknown",
+        // contributor (parsed from the photo's own filename convention)
+        // takes priority over pr.user?.login -- real bug, caught live:
+        // for a Public (direct-contribute) submission, the GitHub App's
+        // installation token is what actually opens the PR, so GitHub's
+        // own "opened by" field is always the App's bot identity, never
+        // the real person. contributor is reliable for BOTH submission
+        // paths (fork-based Private PRs use the same filename
+        // convention), so it's the one real signal here, not a fallback.
+        number: pr.number, title: pr.title, author: contributor || pr.user?.login || "unknown",
         repo_url: repoUrl, edition_id: manifest.edition_id || "(edition not set)",
         procedure_id: procedureId, page: entry.page, section_heading: entry.section_heading,
         photo_raw_url: `https://raw.githubusercontent.com/${pr.head.repo.full_name}/${pr.head.ref}/${photoFile.filename}`,
@@ -173,8 +181,8 @@ async function renderPRList(approvedRepos) {
         row.className = "pr-row";
         row.innerHTML = `
           <div>
-            <div class="pr-title">PG. ${pr.page} &mdash; ${pr.title}</div>
-            <div class="pr-meta">@${pr.author} &middot; ${pr.procedure_id} &middot; Request #${pr.number}</div>
+            <div class="pr-title">${formatProcedureLabel(pr.procedure_id, pr.page, pr.section_heading)}</div>
+            <div class="pr-meta">@${pr.author} &middot; Request #${pr.number}</div>
           </div>
           <button data-pr="${pr.number}">Review</button>
         `;
@@ -198,9 +206,9 @@ async function openPR(number) {
   submittedPhotoImg = null;
   document.getElementById("prLog").textContent = "";
   document.getElementById("reviewArea").classList.add("open");
-  document.getElementById("reviewTitle").textContent = `PG. ${currentPR.page} -- Request #${currentPR.number} -- ${currentPR.title}`;
-  document.getElementById("reviewMeta").textContent =
-    `${currentPR.section_heading} (${currentPR.procedure_id}) -- submitted by @${currentPR.author}`;
+  document.getElementById("reviewTitle").textContent =
+    `${formatProcedureLabel(currentPR.procedure_id, currentPR.page, currentPR.section_heading)} - Request #${currentPR.number}`;
+  document.getElementById("reviewMeta").textContent = `Submitted by @${currentPR.author}`;
   document.getElementById("compareWrap").style.display = "none";
   document.getElementById("acceptBtn").disabled = true;
   document.getElementById("rejectBtn").disabled = false;
@@ -242,7 +250,13 @@ document.getElementById("pdfPicker").addEventListener("change", async (e) => {
 });
 
 async function renderPage() {
-  const page = await pdfDoc.getPage(currentPR.page);
+  // Shared with every other viewer that does this same local-context
+  // render -- see registry.js's resolvePageForLocalPdf for why.
+  const { targetPage, isPatchedOutput } = await resolvePageForLocalPdf(pdfDoc, currentPR.page);
+  if (isPatchedOutput) {
+    log("This looks like an already-patched Blayde Manual, not the original scan -- adjusting for its extra cover page.");
+  }
+  const page = await pdfDoc.getPage(targetPage);
   const viewport = page.getViewport({ scale: renderScale });
   const canvas = document.getElementById("pageCanvas");
   canvas.width = Math.round(viewport.width);

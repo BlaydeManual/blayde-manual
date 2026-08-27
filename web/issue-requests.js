@@ -18,6 +18,7 @@ let issueRepoUrl = null;
 let issueManifest = null;
 let issuePhotos = null; // Map filename -> Uint8Array/bytes-like
 let issuePdfDoc = null;
+let issuePdfIsPatchedOutput = false;
 let issuePageCache = {};
 let issuePageNum = 1;
 let pendingIssues = []; // {kind, procedure_id, page, bbox, note, label}
@@ -111,6 +112,14 @@ document.getElementById("issueOpenEditorBtn").addEventListener("click", async ()
   issueLog(`loading ${file.name}...`);
   const buf = await file.arrayBuffer();
   issuePdfDoc = await pdfjsLib.getDocument({ data: buf }).promise;
+  // Shared with every other viewer that does this same local-context
+  // render -- see registry.js's resolvePageForLocalPdf for why. Checked
+  // once per PDF load here (not per page), since getIssuePage renders
+  // many pages from the same file as someone jumps around.
+  ({ isPatchedOutput: issuePdfIsPatchedOutput } = await resolvePageForLocalPdf(issuePdfDoc, 0));
+  if (issuePdfIsPatchedOutput) {
+    issueLog("This looks like an already-patched Blayde Manual, not the original scan -- adjusting for its extra cover page.");
+  }
   issuePageCache = {};
   pendingIssues = [];
   renderPendingIssues();
@@ -135,7 +144,7 @@ document.getElementById("issueJumpBtn").addEventListener("click", () => {
 
 async function getIssuePage(pageNum, scale = 2.0) {
   if (issuePageCache[pageNum]) return issuePageCache[pageNum];
-  const page = await issuePdfDoc.getPage(pageNum);
+  const page = await issuePdfDoc.getPage(pageNum + (issuePdfIsPatchedOutput ? 1 : 0));
   const viewport = page.getViewport({ scale });
   const canvas = document.createElement("canvas");
   canvas.width = Math.round(viewport.width);

@@ -27,6 +27,7 @@ const ORG_CHUNK_SIZE = 10;
 let orgPending = []; // [{name, html_url, manifest, submitted_by, submitted_at}] from /pending-vehicles
 let orgManifest = null;
 let orgPdfDoc = null;
+let orgPdfIsPatchedOutput = false;
 let orgPageCache = {};
 let orgChunkIdx = 0;
 let orgCurrentEntry = null;
@@ -108,6 +109,7 @@ async function openPendingVehicle(idx) {
   orgCurrentEntry = entry;
   orgManifest = entry.manifest;
   orgPdfDoc = null;
+  orgPdfIsPatchedOutput = false;
   orgPageCache = {};
   orgChunkIdx = 0;
   // Clears any leftover inline display:none from a previous approval's
@@ -187,6 +189,15 @@ document.getElementById("orgPdfPicker").addEventListener("change", async (e) => 
   if (!file || !orgCurrentEntry) return;
   const buf = await file.arrayBuffer();
   orgPdfDoc = await pdfjsLib.getDocument({ data: buf }).promise;
+  // Shared with every other viewer that does this same local-context
+  // render -- see registry.js's resolvePageForLocalPdf for why. Checked
+  // once per PDF load here (not per page), since getOrgPage renders
+  // many pages from the same file across the gallery.
+  ({ isPatchedOutput: orgPdfIsPatchedOutput } = await resolvePageForLocalPdf(orgPdfDoc, 0));
+  if (orgPdfIsPatchedOutput) {
+    log_org("This looks like an already-patched Blayde Manual, not the original scan -- adjusting for its extra cover page.");
+  }
+  orgPageCache = {};
   orgChunkIdx = 0;
   renderOrgGallery();
 });
@@ -239,7 +250,7 @@ function buildOrgFigCard(entry) {
 
 async function getOrgPage(pageNum, scale = 2.5) {
   if (orgPageCache[pageNum]) return orgPageCache[pageNum];
-  const page = await orgPdfDoc.getPage(pageNum);
+  const page = await orgPdfDoc.getPage(pageNum + (orgPdfIsPatchedOutput ? 1 : 0));
   const viewport = page.getViewport({ scale });
   const canvas = document.createElement("canvas");
   canvas.width = Math.round(viewport.width);

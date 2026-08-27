@@ -125,9 +125,36 @@
     font-family: ui-monospace, monospace; font-size: 0.76rem; color: var(--mint);
     white-space: pre-wrap; margin-top: 10px;
   }
+
+  /* A completed submission is a real milestone -- a scrolling log line
+     among dozens of others doesn't read as one. Fixed, high-contrast,
+     and animated so it's unmistakable even if you're not looking at
+     the log at that moment. */
+  #toast {
+    position: fixed; top: 20px; left: 50%; z-index: 1000;
+    display: flex; align-items: center; gap: 10px;
+    background: var(--mint); color: #06231a; font-weight: 700; font-size: 0.92rem;
+    padding: 14px 22px; border-radius: 10px;
+    box-shadow: 0 10px 30px rgba(0,0,0,0.5), 0 0 0 1px rgba(6,35,26,0.15);
+    pointer-events: none; opacity: 0;
+    transform: translate(-50%, -16px) scale(0.94);
+  }
+  #toast.show { animation: toast-pop 3.6s ease forwards; }
+  #toast .toast-icon { font-size: 1.15rem; line-height: 1; }
+  @keyframes toast-pop {
+    0%   { opacity: 0; transform: translate(-50%, -16px) scale(0.9); }
+    12%  { opacity: 1; transform: translate(-50%, 0) scale(1.04); }
+    18%  { transform: translate(-50%, 0) scale(1); }
+    85%  { opacity: 1; transform: translate(-50%, 0) scale(1); }
+    100% { opacity: 0; transform: translate(-50%, -10px) scale(0.98); }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    #toast.show { animation: none; opacity: 1; transform: translate(-50%, 0) scale(1); }
+  }
 </style>
 </head>
 <body>
+<div id="toast" role="status" aria-live="polite"></div>
 <main>
   <div class="top-nav">
     <span id="authStatus"></span>

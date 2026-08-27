@@ -96,6 +96,16 @@ let currentUsername = null;
 let pendingAction = null; // "draft" | "submit" -- what to actually do once sign-in completes
 let pendingSubmitMode = null; // "public" | "private" -- only meaningful when pendingAction is "submit"
 let pendingMaintainRequest = null; // vehicle key -- same deferred-sign-in pattern, separate action
+// Real bug, caught live: two identical pull requests opened for the
+// same photo from one click, because nothing stopped a second click
+// (or a second call through the deferred-sign-in path) from starting
+// a second real submission while the first was still in flight.
+// review-panel.js's Accept/Reject and org-approval.js's Approve
+// already guard this by disabling their own button immediately; this
+// is the same guard, just keyed by uploadId since multiple upload rows
+// can legitimately submit independently of each other.
+let actionInFlight = false;
+const submittingIds = new Set();
 let context = null;
 let selectedPhotoDataUrl = null;
 let selectedPhotoFilename = null;
@@ -169,6 +179,21 @@ function log(msg) {
   const el = document.getElementById("log");
   el.textContent += msg + "\n";
   el.scrollTop = el.scrollHeight;
+}
+
+// A distinct, hard-to-miss confirmation for a real milestone (a
+// completed submission), separate from the plain scrolling log --
+// see #toast's own CSS for the pop animation. Restarting the
+// animation on a re-trigger (rather than letting an in-progress one
+// keep playing) means a second submission shortly after the first
+// still gets its own visible pop instead of silently reusing the tail
+// end of the first one.
+function showToast(message) {
+  const el = document.getElementById("toast");
+  el.innerHTML = `<span class="toast-icon">&#9989;</span><span>${message}</span>`;
+  el.classList.remove("show");
+  void el.offsetWidth; // force reflow so removing+re-adding the class actually restarts the animation
+  el.classList.add("show");
 }
 
 // ---- context lookup: try the real manifest first (works once a repo
@@ -329,6 +354,7 @@ document.getElementById("submitNowBtn").addEventListener("click", () => {
 // separately, only when actually chosen, so Private submitters (and
 // drafts) never see a sign-in screen for an app they don't need.
 function requestAction(action, mode) {
+  if (actionInFlight) return;
   if (!signedIn) {
     pendingAction = action;
     pendingSubmitMode = mode;
@@ -382,6 +408,18 @@ function performMaintainRequest(vehicleKey) {
 }
 
 async function performAction(action, mode) {
+  actionInFlight = true;
+  document.getElementById("saveDraftBtn").disabled = true;
+  document.getElementById("submitNowBtn").disabled = true;
+  try {
+    await performActionInner(action, mode);
+  } finally {
+    actionInFlight = false;
+    updateSubmitEnabled();
+  }
+}
+
+async function performActionInner(action, mode) {
   const upload = {
     id: `${procedureId}_${Date.now()}`,
     repoUrl, procedureId,
@@ -596,25 +634,44 @@ async function submitPhotoPublic(upload) {
 async function markSubmitted(uploadId) {
   const upload = uploads.find((u) => u.id === uploadId);
   if (!upload || upload.status !== "draft") return;
-  if (!BlaydeAuth.getAppSession()) {
-    log(`Signing in for Public submit...`);
-    try {
-      await BlaydeAuth.signInWithGitHubApp();
-    } catch (err) {
-      log(`Sign-in failed: ${err.message}`);
-      return;
-    }
-  }
-  log(`Submitting publicly on ${upload.repoUrl} (opens the pull request immediately)...`);
+  // Real bug, caught live: two identical PRs opened for the same photo
+  // from what should have been one click. See submittingIds' own
+  // comment above for why this is keyed by id.
+  if (submittingIds.has(uploadId)) return;
+  submittingIds.add(uploadId);
+  document.querySelectorAll(`[data-submit="${uploadId}"]`).forEach((btn) => { btn.disabled = true; });
   try {
-    const pr = await submitPhotoPublic(upload);
-    upload.status = "submitted";
-    upload.prUrl = pr.prUrl;
-    saveUploads();
-    renderUploads();
-    log(`Submitted -- pull request opened: ${pr.prUrl}`);
-  } catch (err) {
-    log(`Submit failed: ${err.message}`);
+    if (!BlaydeAuth.getAppSession()) {
+      log(`Signing in for Public submit...`);
+      try {
+        await BlaydeAuth.signInWithGitHubApp();
+      } catch (err) {
+        log(`Sign-in failed: ${err.message}`);
+        return;
+      }
+    }
+    log(`Submitting publicly on ${upload.repoUrl} (opens the pull request immediately)...`);
+    try {
+      const pr = await submitPhotoPublic(upload);
+      upload.status = "submitted";
+      upload.prUrl = pr.prUrl;
+      saveUploads();
+      renderUploads();
+      log(`Submitted -- pull request opened: ${pr.prUrl}`);
+      // A completed submission is a real milestone -- a scrolling log
+      // line among dozens of others doesn't read as one. Also collapses
+      // the compare viewer if it's still open for this exact upload;
+      // it's done its job once the submission is in.
+      showToast("Submitted! Your photo is now a real pull request.");
+      if (compareUpload?.id === uploadId) {
+        document.getElementById("compareArea").style.display = "none";
+      }
+    } catch (err) {
+      log(`Submit failed: ${err.message}`);
+    }
+  } finally {
+    submittingIds.delete(uploadId);
+    document.querySelectorAll(`[data-submit="${uploadId}"]`).forEach((btn) => { btn.disabled = false; });
   }
 }
 
@@ -784,19 +841,6 @@ function openCompare(uploadId) {
   document.getElementById("compareArea").scrollIntoView({ behavior: "smooth", block: "nearest" });
 }
 
-// Must match patcher.js's own EMBED_NAME -- the one real, structural
-// signal that a locally-picked PDF is a Blayde Manual OUTPUT, not the
-// original scan. Real bug, caught live: patcher.js always inserts
-// exactly one cover page at position 0, so `compareUpload.page` (a
-// page number computed against the ORIGINAL PDF) is off by one on any
-// patched file -- picking a patched copy here silently rendered the
-// wrong page (e.g. the table of contents instead of the real target)
-// with no indication anything was wrong. Detected via pdf.js's own
-// getAttachments(), not OCR or a registry round-trip -- deterministic
-// (the file either carries this exact attachment or it doesn't) and
-// needs no network call, unlike either alternative considered.
-const PATCHED_STATE_ATTACHMENT = "blayde_manual_state.json";
-
 document.getElementById("comparePdfPicker").addEventListener("change", async (e) => {
   const file = e.target.files[0];
   if (!file || !compareUpload || !compareUpload.pixelBbox) {
@@ -805,12 +849,12 @@ document.getElementById("comparePdfPicker").addEventListener("change", async (e)
   }
   const buf = await file.arrayBuffer();
   const pdfDoc = await pdfjsLib.getDocument({ data: buf }).promise;
-  const attachments = await pdfDoc.getAttachments();
-  const isPatchedOutput = !!(attachments && attachments[PATCHED_STATE_ATTACHMENT]);
+  // Shared with every other viewer that does this same local-context
+  // render -- see registry.js's resolvePageForLocalPdf for why.
+  const { targetPage, isPatchedOutput } = await resolvePageForLocalPdf(pdfDoc, compareUpload.page);
   if (isPatchedOutput) {
     log("This looks like an already-patched Blayde Manual, not the original scan -- adjusting for its extra cover page.");
   }
-  const targetPage = compareUpload.page + (isPatchedOutput ? 1 : 0);
   const page = await pdfDoc.getPage(targetPage);
   const scale = 2.5;
   const viewport = page.getViewport({ scale });

@@ -401,7 +401,10 @@ async function handleDirectContribute(request, env) {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
-      title: `Photo for ${procedureId}${sectionHeading ? ` (${sectionHeading})` : ""}`,
+      // Matches the fork-based (Private) path's own PR title convention
+      // -- the raw procedure_id has no reason to be user-facing; it's
+      // still in the PR body below for anyone diagnosing on GitHub itself.
+      title: `Add photo: ${sectionHeading || procedureId}`,
       head: branchName,
       base: defaultBranch,
       body: [
