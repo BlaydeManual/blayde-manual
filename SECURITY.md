@@ -161,6 +161,43 @@ to write outside the intended `images/` directory via a crafted value
 containing `../` segments. `vehicle_slug` (used as the new repo's name
 on `/direct-submit`) gets the equivalent check.
 
+`photo_data_url` is independently re-validated as real image content,
+not just a well-formed data URL: real magic-byte checks per format
+(JPEG/PNG/WEBP), and real dimensions extracted by parsing each format's
+own header (PNG's IHDR chunk, JPEG's SOF marker, WEBP's VP8/VP8L/VP8X
+chunk) -- no full pixel decode, no dependency. Rejects corrupt/near-empty
+uploads and absurd dimensions before a branch is ever created on the
+upstream repo. Deliberately no minimum file-size check: confirmed live
+against a real, validly-encoded 800x600 WEBP that compressed under 1KB
+-- byte size varies too much by content and format to be a reliable
+signal on its own, so dimension checking is the real floor.
+
+## Dual-approval on photo contributions, enforced by GitHub, not app logic
+
+`POST /approve-vehicle` sets real branch protection
+(`required_approving_review_count: 2`) on a vehicle's default branch at
+the moment of approval, using the installation token. This is
+deliberately GitHub's own enforcement, not a check inside
+`review-panel.js`: a maintainer with real `push` access can always
+merge a PR directly via `git`/github.com, bypassing anything this app's
+own UI would check -- app-level "requires 2 approvals" would be exactly
+as bypassable as no check at all. Branch protection is the one version
+that can't be. `enforce_admins` stays `false`, matching the same
+deliberate org-wide escape-hatch decision already made for the main
+tooling repos.
+
+**Real, immediate operational consequence, stated plainly**: a vehicle
+repo with only one real maintainer -- which is every vehicle, right
+after approval, since the automatic grant above just created its
+first -- cannot merge ANY photo PR until a second real maintainer is
+added. This is intentional (one person approving their own photo isn't
+dual anything), not a bug, but it means a freshly-approved vehicle has
+zero contribution throughput until staffed with a second maintainer.
+Applied going forward only, not retroactively to vehicles approved
+before this existed -- those need a second maintainer added first,
+same as any new one, before branch protection can be turned on for
+them without immediately freezing their existing review flow.
+
 ## What's never collected or stored
 
 No analytics, no tracking, no server-side logs of what anyone patches

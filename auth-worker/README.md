@@ -11,6 +11,30 @@ works once deployed.
 
 ## Deploy
 
+**As of 2026-08-27, this deploys automatically.** `.github/workflows/deploy-worker.yml`
+runs `wrangler deploy` on every push to `main` that touches `auth-worker/`
+-- merging a PR that changes this Worker's code is the whole deploy, no
+manual dashboard paste needed anymore. One-time setup, not something to
+repeat per change:
+
+1. Cloudflare dashboard -> My Profile -> API Tokens -> Create Token ->
+   use the **"Edit Cloudflare Workers"** template, scoped to this
+   account. Copy the token (shown once).
+2. Cloudflare dashboard -> any page showing your account -> copy the
+   **Account ID** from the right-hand sidebar.
+3. GitHub repo -> Settings -> Secrets and variables -> Actions -> add
+   two **repository secrets** (these are GitHub's own secrets store,
+   separate from the Worker's own Cloudflare secrets below):
+   - `CLOUDFLARE_API_TOKEN` -- the token from step 1.
+   - `CLOUDFLARE_ACCOUNT_ID` -- the ID from step 2.
+
+Once both exist, every future `auth-worker/` change deploys itself on
+merge. The manual `wrangler deploy` steps below still work and are
+useful for a one-off local deploy (e.g. testing a change before
+opening a PR), but are no longer required for normal changes.
+
+## Manual deploy (fallback, not the normal path anymore)
+
 1. Install wrangler if you don't have it: `npm install -g wrangler`
 2. `cd auth-worker`
 3. `wrangler login`
