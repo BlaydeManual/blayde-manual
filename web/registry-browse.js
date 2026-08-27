@@ -194,6 +194,18 @@ function populateClassFilter() {
 document.getElementById("searchInput").addEventListener("input", render);
 document.getElementById("classFilter").addEventListener("change", render);
 
+// A `?vehicle=<slug>` param arrives from two real, currently-dead
+// links elsewhere -- this page's own vehicle-title links
+// (`index.html?vehicle=...`, pointed at a per-vehicle page that
+// doesn't exist) and the patcher's cover page (`registry-browse.html?
+// vehicle=...`, added so someone reading a patched PDF can jump
+// straight to "how much is left" for their own vehicle). Neither
+// needs a real per-vehicle page -- prefilling the existing search box
+// with the slug already narrows the list to just that vehicle, since
+// matchesSearch() matches against vehicle_slug too.
+const prefillSlug = new URLSearchParams(location.search).get("vehicle");
+if (prefillSlug) document.getElementById("searchInput").value = prefillSlug;
+
 (async () => {
   const results = document.getElementById("results");
   results.innerHTML = `<p class="sub">Loading real registry data&hellip;</p>`;

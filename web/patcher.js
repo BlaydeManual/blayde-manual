@@ -256,15 +256,8 @@ async function readEmbeddedState(doc) {
 async function writeEmbeddedState(doc, state) {
   await doc.attach(new TextEncoder().encode(JSON.stringify(state, null, 2)), EMBED_NAME, {
     mimeType: "application/json",
-    description: "Blayde Manual identity/version record -- do not edit",
+    description: "Blayde Manual patch-state record -- do not edit",
   });
-}
-
-function nextVersion(priorState) {
-  if (!priorState) return "1.0";
-  const [major, minor] = (priorState.version || "1.0").split(".");
-  const nextMinor = parseInt(minor, 10) + 1;
-  return isNaN(nextMinor) ? "1.1" : `${major}.${nextMinor}`;
 }
 
 function todayStr() {
@@ -449,7 +442,7 @@ async function drawContributeMarker(doc, page, pageGeometry, pixelBbox, url, fon
   addLinkAnnotation(page, { x: ptX0, y: boxY, width: boxW, height: boxH }, url);
 }
 
-async function buildCoverPage(doc, { vehicleDisplayName, version, nPatched, totalFigures, repoUrl }) {
+async function buildCoverPage(doc, { vehicleDisplayName, nPatched, totalFigures, repoUrl, vehicleSlug }) {
   const page = doc.insertPage(0, [612, 792]);
   page.drawRectangle({ x: 0, y: 0, width: 612, height: 792, color: BLACK });
   page.drawRectangle({ x: 0, y: 782, width: 612, height: 10, color: RED });
@@ -466,22 +459,47 @@ async function buildCoverPage(doc, { vehicleDisplayName, version, nPatched, tota
   });
   page.drawLine({ start: { x: 56, y: 644 }, end: { x: 556, y: 644 }, thickness: 1, color: STEEL });
 
+  // Version numbering dropped -- direct feedback: nobody re-patches on
+  // any regular cadence (only when they hit a manual missing a
+  // procedure they need), so an incrementing counter told nobody
+  // anything real. A DATE says exactly the same thing more plainly --
+  // when THIS copy was made -- and naturally distinguishes copies made
+  // on different days without an arbitrary number attached to them.
   const stats = [
-    ["VERSION", version],
     ["PHOTOS CONTRIBUTED", `${nPatched} / ${totalFigures}`],
-    ["GENERATED", todayStr()],
+    ["DATE PATCHED", todayStr()],
   ];
   let x = 56;
   for (const [label, value] of stats) {
     page.drawRectangle({ x, y: 566, width: 4, height: 26, color: RED });
     page.drawText(label, { x: x + 14, y: 584, size: 8, font: helv, color: STEEL });
     page.drawText(String(value), { x: x + 14, y: 568, size: 13, font: bold, color: WHITE });
-    x += 170;
+    x += 220;
   }
 
   page.drawLine({ start: { x: 56, y: 540 }, end: { x: 556, y: 540 }, thickness: 0.5, color: STEEL });
+
+  // Both lines below are real, tappable links (same PDF Link-annotation
+  // mechanism as the in-manual QR markers) -- not just printed text.
   page.drawText("Source repo:", { x: 56, y: 518, size: 9, font: helv, color: STEEL });
-  page.drawText(repoUrl || "(unknown)", { x: 56, y: 504, size: 10, font: helv, color: RED });
+  const repoLabel = repoUrl || "(unknown)";
+  page.drawText(repoLabel, { x: 56, y: 504, size: 10, font: helv, color: RED });
+  if (repoUrl) {
+    const repoLabelWidth = helv.widthOfTextAtSize(repoLabel, 10);
+    addLinkAnnotation(page, { x: 56, y: 501, width: repoLabelWidth, height: 12 }, repoUrl);
+  }
+
+  // Points at this vehicle's real coverage on the live site -- how
+  // many procedures still need a photo -- rather than making someone
+  // guess from the two static numbers above, which go stale the
+  // moment anyone else patches a newer copy.
+  if (vehicleSlug) {
+    const trackUrl = new URL(`registry-browse.html?vehicle=${encodeURIComponent(vehicleSlug)}`, location.href).href;
+    page.drawText("See what's still missing, and if a newer copy exists:", { x: 56, y: 480, size: 9, font: helv, color: STEEL });
+    page.drawText(trackUrl, { x: 56, y: 466, size: 9, font: helv, color: RED, maxWidth: 500 });
+    const trackLabelWidth = Math.min(helv.widthOfTextAtSize(trackUrl, 9), 500);
+    addLinkAnnotation(page, { x: 56, y: 463, width: trackLabelWidth, height: 11 }, trackUrl);
+  }
 
   const disclaimer = "Independent, community-run documentation project. Not affiliated with, " +
     "endorsed by, or sponsored by the original manufacturer. This is informational, community-sourced " +
@@ -567,7 +585,11 @@ async function patchViaRegistry(doc, priorState, priorityList) {
   }
 
   appendLog(`Patched ${nPatched} new/changed, ${nSkippedUnchanged} already up to date, ${nNoPhoto} still need a photo.`);
-  return { patchedFigures, totalFigures: activeEntries.length, vehicleDisplayName: entry.vehicle_display_name, repoUrl: entry.repo_url, sourceIdentifier: manifest.source_markers?.source_identifier };
+  return {
+    patchedFigures, totalFigures: activeEntries.length, vehicleDisplayName: entry.vehicle_display_name,
+    repoUrl: entry.repo_url, sourceIdentifier: manifest.source_markers?.source_identifier,
+    vehicleSlug: entry.vehicle_slug, editionId: entry.edition_id,
+  };
 }
 
 patchBtn.addEventListener("click", async () => {
@@ -577,7 +599,11 @@ patchBtn.addEventListener("click", async () => {
     const doc = await PDFDocument.load(pdfBytes);
     const priorState = await readEmbeddedState(doc);
     if (priorState) {
-      appendLog(`Recognized existing Blayde Manual file: v${priorState.version}. Applying only what's new or changed.`);
+      // Older files carry a `version` field from before versioning was
+      // dropped -- harmless, just never read anymore. `generated_at`
+      // is the real prior-patch signal now.
+      const priorDate = priorState.generated_at ? priorState.generated_at.slice(0, 10) : "an earlier date";
+      appendLog(`Recognized existing Blayde Manual file, last patched ${priorDate}. Applying only what's new or changed.`);
       doc.removePage(0); // finding valid state IS the proof page 0 is our cover
     } else {
       appendLog("No embedded state found -- treating as a pristine input.");
@@ -588,32 +614,46 @@ patchBtn.addEventListener("click", async () => {
 
     const result = await patchViaRegistry(doc, priorState, priorityList);
 
-    const version = nextVersion(priorState);
     const nPatchedTotal = Object.keys(result.patchedFigures).length;
     setProgress(1, 1, "building cover page...");
     await buildCoverPage(doc, {
-      vehicleDisplayName: result.vehicleDisplayName, version,
+      vehicleDisplayName: result.vehicleDisplayName,
       nPatched: nPatchedTotal, totalFigures: result.totalFigures, repoUrl: result.repoUrl,
+      vehicleSlug: result.vehicleSlug,
     });
 
     await writeEmbeddedState(doc, {
       source_identifier: result.sourceIdentifier,
       repo_url: result.repoUrl,
-      version,
       generated_at: new Date().toISOString(),
       patched_figures: result.patchedFigures,
     });
 
     setProgress(1, 1, "saving...");
     const outBytes = await doc.save();
-    appendLog(`v${version}: patched PDF built in-memory (${(outBytes.length / 1e6).toFixed(1)} MB)`);
-    setProgress(1, 1, `done -- v${version}`);
+    appendLog(`Patched PDF built in-memory (${(outBytes.length / 1e6).toFixed(1)} MB)`);
+    setProgress(1, 1, "done");
 
     const blob = new Blob([outBytes], { type: "application/pdf" });
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url;
-    a.download = `BlaydeManual_v${version}.pdf`;
+    // Named from real registry fields, not a generic "BlaydeManual_v3"
+    // -- vehicle_slug already carries make/model/year by naming
+    // convention (registry.json has no separate structured fields for
+    // those, see ROADMAP.md), so it does the same job the original
+    // "make_model_year_version" request wanted without inventing new
+    // data capture. Dated instead of versioned, matching the cover
+    // page -- distinguishes copies made on different days without an
+    // arbitrary incrementing number nobody found meaningful. Sanitized
+    // defensively even though slug/edition_id are expected to already
+    // be filesystem-safe.
+    const sanitize = (s) => (s || "").replace(/[^a-zA-Z0-9._-]+/g, "-");
+    const namedParts = [sanitize(result.vehicleSlug), sanitize(result.editionId)].filter(Boolean);
+    const outName = namedParts.length
+      ? `BlaydeManual_${namedParts.join("_")}_${todayStr()}.pdf`
+      : `BlaydeManual_${todayStr()}.pdf`;
+    a.download = outName;
     a.click();
     appendLog("Download triggered. Feed this file back in as the input to test incremental re-patching.");
   } catch (err) {
