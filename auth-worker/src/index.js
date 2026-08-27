@@ -560,6 +560,27 @@ async function handleApproveVehicle(request, env) {
     body: JSON.stringify({ private: false }),
   });
 
+  // Grant the original submitter real, explicit maintainer access to
+  // their own now-public repo -- deliberately at APPROVAL time, never
+  // at submit time, since granting it earlier would undo the entire
+  // point of the locked-repo design (the submitter can't touch the
+  // manifest between submitting and this exact check passing). This is
+  // also deliberately the ONLY way anyone becomes a maintainer here --
+  // an org admin approving a vehicle does NOT become its maintainer
+  // just by approving it, and org membership/ownership never implies
+  // repo access on its own (see SECURITY.md's "maintaining a vehicle
+  // repo is a separate designation from org membership"). Best-effort:
+  // a failure here shouldn't undo an otherwise-valid approval, since
+  // `logEntry.github_login` is always a real, already-verified GitHub
+  // identity from submit time, not user input that could be malformed.
+  try {
+    await ghApi(`/repos/${REGISTRY_OWNER}/${repoName}/collaborators/${logEntry.github_login}`, installationToken, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ permission: "push" }),
+    });
+  } catch (e) { /* approval itself already succeeded; a maintainer can always be added manually via My Vehicles */ }
+
   const registryFile = await ghApi(`/repos/${REGISTRY_OWNER}/${REGISTRY_REPO}/contents/registry.json`, installationToken);
   const registryData = JSON.parse(base64ToUtf8(registryFile.content));
   registryData.vehicles = registryData.vehicles || [];
