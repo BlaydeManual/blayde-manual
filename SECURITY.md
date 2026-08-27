@@ -170,6 +170,13 @@ stays at normal review, not gated the same way.
 
 ## Known gaps, not yet closed
 
+See `SECURITY-TESTING.md` for the active testing plan covering the
+GitHub App migration -- what's been verified live vs. synthetically vs.
+still pending deploy, organized by caller identity (anonymous,
+authenticated non-member, member, admin). Required reading before
+treating any of the direct-submit/direct-contribute/approve-vehicle
+controls as proven in production, not just in a mocked test.
+
 - The GitHub App itself needs to actually be registered and its
   credentials provisioned (App ID, private key, client ID/secret, as
   Wrangler secrets on `auth-worker`) before any of the direct-submit/
