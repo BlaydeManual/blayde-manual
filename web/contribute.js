@@ -59,19 +59,35 @@ const hasProcedureContext = (params.has("v") || params.has("repo")) && params.ha
 let repoUrl = legacyRepoUrl || "https://github.com/BlaydeManual/suzuki-sv650-1999-2002";
 const procedureId = params.get("procedure") || "p040_2-10-periodic-maintenance_fig1";
 
+// registry.json is the only place edition_id lives (a real vehicle's
+// manifest.json has no such field -- edition is a registry-level
+// concept, since two editions of the same vehicle can be two separate
+// repos sharing one vehicle_slug). Without this, every real upload
+// against a live manifest -- as opposed to the MOCK_MANIFEST_CONTEXT
+// fixtures above, which hardcode edition_id -- got "(edition not
+// set)" in My uploads: a real, live bug, not a display quirk.
+let resolvedEditionId = null;
+
 // Resolves `v=<vehicle_slug>` to a real repo_url via registry.json --
 // the same lookup registry-browse.js already does per vehicle, just
-// for one slug instead of the whole list. Falls back to the default
-// mock repo (silently, matching every other real-repo-unreachable
-// fallback on this page) if the registry or the slug can't be found,
-// so a broken/offline registry degrades to "showing what's known
-// locally" instead of a dead end.
+// for one slug instead of the whole list -- and captures that same
+// entry's edition_id along the way. For the legacy `repo=` path,
+// repoUrl is already known, so this looks the entry up by repo_url
+// instead, purely to still recover edition_id. Falls back silently
+// (matching every other real-repo-unreachable fallback on this page)
+// if the registry or the match can't be found, so a broken/offline
+// registry degrades to "showing what's known locally" instead of a
+// dead end.
 async function resolveRepoUrl() {
-  if (legacyRepoUrl || !vehicleSlug) return;
+  if (!vehicleSlug && !legacyRepoUrl) return;
   try {
     const registryData = await loadRegistry(CANONICAL_REGISTRY_URL);
-    const match = (registryData.vehicles || []).find((v) => v.vehicle_slug === vehicleSlug && v.status === "approved");
-    if (match) repoUrl = match.repo_url;
+    const match = (registryData.vehicles || []).find((v) =>
+      v.status === "approved" && (vehicleSlug ? v.vehicle_slug === vehicleSlug : v.repo_url === legacyRepoUrl));
+    if (match) {
+      if (vehicleSlug) repoUrl = match.repo_url;
+      resolvedEditionId = match.edition_id || null;
+    }
   } catch (e) { /* registry unreachable -- fall through to the default mock repo */ }
 }
 
@@ -168,7 +184,7 @@ async function loadContext() {
         section_heading: entry.section_heading, page: entry.page, pixel_bbox: entry.pixel_bbox,
         composite_width_px: geo.composite_width_px, composite_height_px: geo.composite_height_px,
         page_width_pt: geo.page_width_pt, page_height_pt: geo.page_height_pt,
-        vehicle_slug: manifest.vehicle, real: true,
+        vehicle_slug: manifest.vehicle, edition_id: resolvedEditionId, real: true,
       };
     }
   } catch (e) { /* repo unreachable -- fall through to mock context */ }
