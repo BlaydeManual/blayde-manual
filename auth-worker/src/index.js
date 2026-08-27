@@ -46,6 +46,7 @@ export default {
       if (request.method === "POST" && pathname === "/direct-contribute") return await handleDirectContribute(request, env);
       if (request.method === "GET" && pathname === "/pending-vehicles") return await handlePendingVehicles(request, env);
       if (request.method === "POST" && pathname === "/approve-vehicle") return await handleApproveVehicle(request, env);
+      if (request.method === "POST" && pathname === "/manage-collaborator") return await handleManageCollaborator(request, env);
     } catch (e) {
       // Any unexpected throw (a malformed GitHub response, a crypto
       // error, etc.) still needs to come back as JSON with CORS headers --
@@ -603,6 +604,69 @@ async function handleApproveVehicle(request, env) {
   });
 
   return json({ approved: true, repoUrl: `https://github.com/${REGISTRY_OWNER}/${repoName}` });
+}
+
+// Lets a real vehicle maintainer manage their own repo's collaborators
+// without ever holding real GitHub repo Admin themselves -- GitHub only
+// allows collaborator management at the Admin role (confirmed against
+// GitHub's own repository-roles docs; Maintain, one level down, does
+// NOT include it), and Admin also carries real, unrelated blast radius
+// this app doesn't want to hand out just to let someone invite a
+// contributor: deleting the repo, transferring it out of the org,
+// flipping it back private, renaming it (which would silently break
+// registry.json's repo_url pointer -- nothing re-syncs that
+// automatically). Routing through the installation token instead keeps
+// every maintainer at `push`, the same "zero trust, bare minimum for
+// the app's own functions" floor as the automatic grant on approval.
+async function handleManageCollaborator(request, env) {
+  const login = await requireRealUser(request);
+  const body = await parseJson(request);
+  const { repo_url: repoUrl, handle, action, invitation_id: invitationId } = body;
+  if (!repoUrl || !action) return json({ error: "missing repo_url or action" }, 400);
+  if (!["invite", "remove", "cancel_invitation"].includes(action)) {
+    return json({ error: `unknown action "${action}"` }, 400);
+  }
+  if ((action === "invite" || action === "remove") && !handle) return json({ error: "missing handle" }, 400);
+  if (action === "cancel_invitation" && !invitationId) return json({ error: "missing invitation_id" }, 400);
+
+  await requireRegisteredRepo(repoUrl);
+  const [owner, repo] = new URL(repoUrl).pathname.replace(/^\//, "").split("/");
+  const installationToken = await getInstallationToken(env);
+
+  // Never trust the browser's own claim about its permission on this
+  // repo -- re-checked here, independently, with the installation
+  // token, the same "server re-verifies, never trusts the client"
+  // principle as every other privileged action in this Worker.
+  let callerPermission;
+  try {
+    const permData = await ghApi(`/repos/${owner}/${repo}/collaborators/${login}/permission`, installationToken);
+    callerPermission = permData.permission;
+  } catch (e) {
+    throw new Error(`@${login} isn't a collaborator on ${repoUrl}.`);
+  }
+  if (!["admin", "maintain", "write"].includes(callerPermission)) {
+    throw new Error(`@${login} needs push access or better on ${repoUrl} to manage its collaborators (has: ${callerPermission}).`);
+  }
+
+  if (action === "invite") {
+    // Always "push", never anything higher -- a maintainer inviting
+    // someone else grants exactly what this app's own functions need,
+    // the same floor as the automatic grant on approval, never an
+    // escalation path to Admin.
+    await ghApi(`/repos/${owner}/${repo}/collaborators/${handle}`, installationToken, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ permission: "push" }),
+    });
+    return json({ invited: true });
+  }
+  if (action === "remove") {
+    await ghApi(`/repos/${owner}/${repo}/collaborators/${handle}`, installationToken, { method: "DELETE" });
+    return json({ removed: true });
+  }
+  // cancel_invitation
+  await ghApi(`/repos/${owner}/${repo}/invitations/${invitationId}`, installationToken, { method: "DELETE" });
+  return json({ cancelled: true });
 }
 
 function base64ToUtf8(b64) {
