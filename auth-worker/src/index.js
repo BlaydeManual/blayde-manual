@@ -201,6 +201,17 @@ async function handleDirectSubmit(request, env) {
   const body = await parseJson(request);
   const { vehicle_slug: repoName, manifest } = body;
   if (!repoName || !manifest) return json({ error: "missing vehicle_slug or manifest" }, 400);
+  if (!/^[a-z0-9][a-z0-9-]{2,90}$/.test(repoName)) {
+    return json({ error: "vehicle_slug doesn't match the expected make-model-year shape -- refusing rather than create a repo with an unexpected name." }, 400);
+  }
+  // A repo named exactly like one of BlaydeManual's own critical repos
+  // would be refused by GitHub's own "name already exists" check anyway,
+  // but that's relying on a side effect, not stating the actual rule --
+  // explicit here, so it stays true even if one of these were ever
+  // renamed or the registry/submission-log repos moved.
+  if ([REGISTRY_REPO, SUBMISSION_LOG_REPO, "blayde-manual", "vehicle-scaffold"].includes(repoName.toLowerCase())) {
+    return json({ error: `"${repoName}" collides with a reserved repo name.` }, 400);
+  }
 
   const installationToken = await getInstallationToken(env);
 
@@ -228,17 +239,47 @@ async function handleDirectSubmit(request, env) {
     body: JSON.stringify({ message: "Add manifest.json", content: utf8ToBase64(manifestText), branch: repo.default_branch }),
   });
 
+  // repo.name (GitHub's own echoed, canonical name), not the raw
+  // repoName the client sent -- if GitHub ever normalizes a submitted
+  // name differently than what was requested, using the raw value here
+  // would notarize under a filename that doesn't match the repo
+  // handleApproveVehicle later looks up, wrongly rejecting a real
+  // submission as "never notarized."
   const manifestHash = await sha256Hex(manifestText);
-  await ghApi(`/repos/${REGISTRY_OWNER}/${SUBMISSION_LOG_REPO}/contents/submissions/${repoName}.json`, installationToken, {
+  await ghApi(`/repos/${REGISTRY_OWNER}/${SUBMISSION_LOG_REPO}/contents/submissions/${repo.name}.json`, installationToken, {
     method: "PUT",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
-      message: `Notarize ${repoName}`,
+      message: `Notarize ${repo.name}`,
       content: utf8ToBase64(JSON.stringify({ repo_url: repo.html_url, manifest_sha256: manifestHash, github_login: login, timestamp: new Date().toISOString() }, null, 2)),
     }),
   });
 
   return json({ repoUrl: repo.html_url });
+}
+
+// Real, not just app-level: the SAME repo-scope validation review-panel.js/
+// my-vehicles.js already apply to the maintainer's own token applies here
+// too, and matters MORE here -- the installation token behind this
+// endpoint has write access to every BlaydeManual repo, not just the
+// ones the calling browser has any business touching. Without this, a
+// crafted repo_url could point this endpoint at BlaydeManual/registry or
+// BlaydeManual/submission-log itself and get a branch/commit/PR created
+// there using the App's own privileged credential. Checked against the
+// real, public registry.json -- a repo not found there, approved, is
+// refused outright, not just warned about.
+async function requireRegisteredRepo(repoUrl) {
+  const norm = (u) => (u || "").replace(/\/$/, "").toLowerCase();
+  let registryData;
+  try {
+    const resp = await fetch("https://raw.githubusercontent.com/BlaydeManual/registry/main/registry.json");
+    if (!resp.ok) throw new Error(`registry unreachable (${resp.status})`);
+    registryData = await resp.json();
+  } catch (e) {
+    throw new Error(`Could not verify ${repoUrl} against the registry: ${e.message}`);
+  }
+  const found = (registryData.vehicles || []).some((v) => norm(v.repo_url) === norm(repoUrl) && v.status === "approved");
+  if (!found) throw new Error(`${repoUrl} isn't a registered, approved vehicle repo.`);
 }
 
 // Photo contribution's "Public" path -- App creates a branch directly on
@@ -250,6 +291,10 @@ async function handleDirectContribute(request, env) {
   const body = await parseJson(request);
   const { repo_url: repoUrl, procedure_id: procedureId, section_heading: sectionHeading, photo_data_url: photoDataUrl, photo_filename: photoFilename } = body;
   if (!repoUrl || !procedureId || !photoDataUrl) return json({ error: "missing repo_url, procedure_id, or photo_data_url" }, 400);
+  if (!/^[a-z0-9][a-z0-9_-]{0,120}$/i.test(procedureId)) {
+    return json({ error: "procedure_id has an unexpected shape -- refusing rather than risk writing outside images/." }, 400);
+  }
+  await requireRegisteredRepo(repoUrl);
 
   const [owner, repo] = new URL(repoUrl).pathname.replace(/^\//, "").split("/");
   const installationToken = await getInstallationToken(env);
@@ -273,7 +318,9 @@ async function handleDirectContribute(request, env) {
   });
 
   const ext = (photoFilename?.match(/\.(jpe?g|png|webp)$/i)?.[0] || ".jpg").toLowerCase();
-  const content = photoDataUrl.split(",")[1] || "";
+  const dataUrlMatch = photoDataUrl.match(/^data:image\/(?:jpeg|png|webp);base64,(.+)$/);
+  if (!dataUrlMatch) return json({ error: "photo_data_url isn't a recognized image data URL." }, 400);
+  const content = dataUrlMatch[1];
   let path = `images/${procedureId}__by_${login}${ext}`;
   for (let altN = 2; ; altN++) {
     try {
@@ -320,14 +367,18 @@ async function handleDirectContribute(request, env) {
 // membership record with the installation token (never the caller's own
 // token, which has no way to prove this either way).
 async function requireOrgApprover(login, installationToken) {
-  let membership;
-  try {
-    membership = await ghApi(`/orgs/${REGISTRY_OWNER}/memberships/${login}`, installationToken);
-  } catch (e) {
-    throw new Error(`@${login} isn't a member of ${REGISTRY_OWNER}.`);
-  }
-  if (membership.state !== "active" || membership.role !== "admin") {
+  const membership = await getOrgMembership(login, installationToken);
+  if (!membership || membership.role !== "admin") {
     throw new Error(`@${login} isn't an active admin of ${REGISTRY_OWNER} -- only org admins can approve.`);
+  }
+}
+
+async function getOrgMembership(login, installationToken) {
+  try {
+    const membership = await ghApi(`/orgs/${REGISTRY_OWNER}/memberships/${login}`, installationToken);
+    return membership.state === "active" ? membership : null;
+  } catch (e) {
+    return null;
   }
 }
 
@@ -335,10 +386,17 @@ async function requireOrgApprover(login, installationToken) {
 // direct-submit vehicle proposals (private, has a manifest.json) -- the
 // installation token can see these; an approver's own token generally
 // can't, since they're not a collaborator on a repo that was never
-// theirs to begin with.
+// theirs to begin with. Gated on real org membership, not just "any
+// signed-in GitHub user" -- without this, literally anyone with a
+// GitHub account could enumerate every private BlaydeManual repo that
+// happens to contain a manifest.json, including ones never meant to be
+// part of the public review queue.
 async function handlePendingVehicles(request, env) {
-  await requireRealUser(request); // any real signed-in person can VIEW the queue; approving is checked separately
+  const login = await requireRealUser(request);
   const installationToken = await getInstallationToken(env);
+  if (!(await getOrgMembership(login, installationToken))) {
+    throw new Error(`@${login} isn't a member of ${REGISTRY_OWNER} -- only members can view the pending queue.`);
+  }
   const repos = await ghApi(`/orgs/${REGISTRY_OWNER}/repos?type=private&per_page=100`, installationToken);
   const pending = [];
   for (const repo of repos) {
@@ -375,6 +433,14 @@ async function handleApproveVehicle(request, env) {
   const body = await parseJson(request);
   const { repo_name: repoName, edition_id: editionId, dry_run: dryRun } = body;
   if (!repoName) return json({ error: "missing repo_name" }, 400);
+  // The file-allowlist check below would reject any of BlaydeManual's
+  // own real repos anyway (they all have far more than two files) --
+  // this states that rule explicitly instead of relying on it as a side
+  // effect, so it stays true even if one of these repos were ever
+  // reduced to something that could coincidentally pass.
+  if ([REGISTRY_REPO, SUBMISSION_LOG_REPO, "blayde-manual", "vehicle-scaffold"].includes(repoName.toLowerCase())) {
+    return json({ error: `"${repoName}" is a reserved repo, not a pending vehicle proposal.` }, 400);
+  }
 
   const installationToken = await getInstallationToken(env);
   await requireOrgApprover(login, installationToken);
