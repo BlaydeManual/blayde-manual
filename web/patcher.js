@@ -216,11 +216,35 @@ pdfInput.addEventListener("change", async () => {
   appendLog(`SHA-256: ${pdfFingerprint}`);
   appendLog("Computed locally -- nothing was uploaded.");
 
+  // A previously-patched Blayde Manual output has different bytes
+  // entirely from the pristine PDF it came from (an extra cover page,
+  // drawn overlays, this very attachment) -- its fingerprint can never
+  // match source_pdf_sha256 in the registry, which is the ORIGINAL's
+  // hash. Without this check, feeding a patched file back in (exactly
+  // what the tool's own "feed this file back in to test incremental
+  // re-patching" instruction asks for) would always fail registry
+  // lookup and leave the Patch button disabled -- a real, confirmed
+  // bug, not hypothetical. Detected the same way as everywhere else in
+  // this codebase now checks for it: the embedded state attachment,
+  // which already stores the exact repo_url needed to resolve directly.
+  let priorRepoUrl = null;
+  try {
+    const probeDoc = await PDFDocument.load(pdfBytes);
+    const priorState = await readEmbeddedState(probeDoc);
+    if (priorState?.repo_url) priorRepoUrl = priorState.repo_url;
+  } catch (e) { /* not a loadable/prior Blayde Manual file -- fingerprint path handles it */ }
+
   setProgress(0, 1, "checking the registry...");
   appendLog(`\nChecking the registry...`);
   try {
-    registryResolution = await resolveViaRegistry(pdfFingerprint, DEFAULT_REGISTRY_URL,
-      (i, total, name) => setProgress(i, total, `fetching ${name} (${i}/${total})`));
+    registryResolution = priorRepoUrl
+      ? await (async () => {
+          appendLog(`Recognized an already-patched Blayde Manual file -- resolving by its own repo (${priorRepoUrl}), not by fingerprint.`);
+          return resolveViaRepoUrl(priorRepoUrl, DEFAULT_REGISTRY_URL,
+            (i, total, name) => setProgress(i, total, `fetching ${name} (${i}/${total})`));
+        })()
+      : await resolveViaRegistry(pdfFingerprint, DEFAULT_REGISTRY_URL,
+          (i, total, name) => setProgress(i, total, `fetching ${name} (${i}/${total})`));
     const { entry, manifest, photos } = registryResolution;
     appendLog(`Found: ${entry.vehicle_display_name} (${entry.edition_id}) -> ${entry.repo_url}`);
     appendLog(`Manifest: ${manifest.entries.length} indexed figures, ${photos.size} photo(s) available.`);
@@ -522,12 +546,25 @@ async function buildCoverPage(doc, { vehicleDisplayName, nPatched, totalFigures,
     linkLine("Check for updates. Repatch as needed:", trackUrl, trackUrl);
   }
 
+  // The redistribution sentences below are a direct, deliberate
+  // addition to the affiliation/liability disclaimer above -- LEGAL.md's
+  // whole architecture (the "local-context rule") is built on this
+  // being patched locally from a copy the person already owns, but
+  // nothing stops that person from then handing the OUTPUT file to
+  // someone who never owned one. This is the one artifact that
+  // actually travels if that happens, so it's the one place this
+  // needs to be stated plainly, not just assumed internally.
   const disclaimer = "Independent, community-run documentation project. Not affiliated with, " +
     "endorsed by, or sponsored by the original manufacturer. This is informational, community-sourced " +
     "documentation. Use it at your own risk, and verify safety-critical specs (torque, brake/fuel " +
     "system procedures) against an authoritative source before relying on them. This document was " +
-    "generated entirely in-browser. Nothing about it was uploaded anywhere.";
-  page.drawText(disclaimer, { x: 56, y: 90, size: 8, font: helv, color: STEEL, maxWidth: 500, lineHeight: 11 });
+    "generated entirely in-browser. Nothing about it was uploaded anywhere. Patching adds " +
+    "community-contributed photos only. It does not change the copyright status of the original " +
+    "manual's own content, and it does not grant any right to redistribute that content. This copy " +
+    "should have been generated from a source PDF you legally own. If you received this file from " +
+    "someone else rather than patching your own copy, get your own legally-obtained source PDF and " +
+    "patch it yourself.";
+  page.drawText(disclaimer, { x: 56, y: 108, size: 8, font: helv, color: STEEL, maxWidth: 500, lineHeight: 11 });
 
   return page;
 }
@@ -664,16 +701,13 @@ patchBtn.addEventListener("click", async () => {
     // convention (registry.json has no separate structured fields for
     // those, see ROADMAP.md), so it does the same job the original
     // "make_model_year_version" request wanted without inventing new
-    // data capture. Dated instead of versioned, matching the cover
-    // page -- distinguishes copies made on different days without an
-    // arbitrary incrementing number nobody found meaningful. Sanitized
-    // defensively even though slug/edition_id are expected to already
-    // be filesystem-safe.
+    // data capture. No date in the filename -- direct feedback, not
+    // needed there (it's already on the cover page as "DATE PATCHED").
+    // Sanitized defensively even though slug/edition_id are expected
+    // to already be filesystem-safe.
     const sanitize = (s) => (s || "").replace(/[^a-zA-Z0-9._-]+/g, "-");
     const namedParts = [sanitize(result.vehicleSlug), sanitize(result.editionId)].filter(Boolean);
-    const outName = namedParts.length
-      ? `BlaydeManual_${namedParts.join("_")}_${todayStr()}.pdf`
-      : `BlaydeManual_${todayStr()}.pdf`;
+    const outName = namedParts.length ? `BlaydeManual_${namedParts.join("_")}.pdf` : `BlaydeManual.pdf`;
     a.download = outName;
     a.click();
     appendLog("Download triggered. Feed this file back in as the input to test incremental re-patching.");

@@ -156,6 +156,17 @@ function findByFingerprint(registryData, sha256) {
   return (registryData.vehicles || []).find(e => e.source_pdf_sha256 === sha256) || null;
 }
 
+// A previously-patched Blayde Manual output has different bytes
+// entirely from the original PDF it was patched from (an extra cover
+// page, drawn overlays, an embedded state attachment) -- its
+// fingerprint can never match source_pdf_sha256, which is the
+// ORIGINAL's hash. Matching by the repo_url already stored in that
+// output's own embedded state sidesteps fingerprinting entirely for
+// this case. See patcher.js's pdfInput handler for where this applies.
+function findByRepoUrl(registryData, repoUrl) {
+  return (registryData.vehicles || []).find(e => e.repo_url === repoUrl) || null;
+}
+
 function ownerRepo(repoUrl) {
   const parts = repoUrl.replace(/\/$/, "").split("/");
   return [parts[parts.length - 2], parts[parts.length - 1]];
@@ -290,12 +301,9 @@ async function fetchManifestAndPhotos(repoUrl, onProgress) {
  * there's an approved match, fetch its manifest + photos. Returns
  * {entry, manifest, photos} or throws with a clear message otherwise --
  * mirrors patch_pdf.py's resolve_via_registry. */
-async function resolveViaRegistry(pdfFingerprint, registryUrl, onProgress) {
-  const registryData = await loadRegistry(registryUrl);
-  const entry = findByFingerprint(registryData, pdfFingerprint);
+async function resolveEntry(entry, notFoundMessage, onProgress) {
   if (!entry) {
-    const err = new Error(`No registry entry for this PDF (fingerprint ${pdfFingerprint.slice(0, 16)}...). ` +
-      `Not registered yet.`);
+    const err = new Error(notFoundMessage);
     // Distinguished from other failures (network error, still-pending
     // status) so the patcher UI can offer a "become a maintainer" CTA
     // specifically here, not on every kind of registry lookup failure.
@@ -308,4 +316,19 @@ async function resolveViaRegistry(pdfFingerprint, registryUrl, onProgress) {
   }
   const { manifest, photos } = await fetchManifestAndPhotos(entry.repo_url, onProgress);
   return { entry, manifest, photos };
+}
+
+async function resolveViaRegistry(pdfFingerprint, registryUrl, onProgress) {
+  const registryData = await loadRegistry(registryUrl);
+  const entry = findByFingerprint(registryData, pdfFingerprint);
+  return resolveEntry(entry, `No registry entry for this PDF (fingerprint ${pdfFingerprint.slice(0, 16)}...). Not registered yet.`, onProgress);
+}
+
+// For a PDF that's already a Blayde Manual output (detected via its
+// embedded state attachment, which stores its own repo_url) -- see
+// findByRepoUrl's comment for why fingerprint matching can't work here.
+async function resolveViaRepoUrl(repoUrl, registryUrl, onProgress) {
+  const registryData = await loadRegistry(registryUrl);
+  const entry = findByRepoUrl(registryData, repoUrl);
+  return resolveEntry(entry, `No registry entry for repo ${repoUrl} (from this file's own embedded state).`, onProgress);
 }
