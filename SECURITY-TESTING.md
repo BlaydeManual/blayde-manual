@@ -54,12 +54,13 @@ Checked directly, not assumed -- three passes so far:
   shows it alongside Cloudflare's own integration). Its Client ID is in
   `web/auth.js`.
 - **`BlaydeManual/submission-log` exists** (public, as intended).
-- **`hypnolope` still has a PENDING invitation**, not yet accepted
-  (`gh api orgs/BlaydeManual/members/hypnolope` still 404s as of this
-  check). Needs accepting from that account before Tier 2/3 below can
-  run for real.
-- **`BlaydeManual` still has exactly one ACTIVE member** (`TheBlayde`,
-  role `admin`) until that invitation is accepted.
+- **`hypnolope` has ACCEPTED the invitation** (`role: member, state:
+  active`, confirmed live) -- `BlaydeManual` now has two active
+  members. This closed the window to test true Tier 2
+  ("authenticated, not yet a member") against that specific account;
+  see Tier 2's note below -- backlogged, needs a third account, not
+  blocking. Tier 3 (member) is ready to run with hypnolope's account
+  now.
 - **registry.json is live and real, currently empty** (`{"vehicles":
   []}`) -- no vehicles registered yet at all.
 - **The deployed site's `auth.js` doesn't have `signInWithGitHubApp`
@@ -74,10 +75,10 @@ same manual step again unless `wrangler deploy` (or a git-connected
 Cloudflare Workers Build) gets set up properly. Worth doing before this
 becomes a recurring manual chore.
 
-**What's still blocking a full pass:** (1) this PR needs merging and
-the site needs to actually deploy to Pages (for `signInWithGitHubApp`
-to exist client-side), (2) hypnolope needs to accept the pending
-invitation. Everything else required for Tier 1 is now done and
+**What's still blocking a full pass:** (1) the User-Agent fix above
+needs redeploying, (2) this PR needs merging and the site needs to
+actually deploy to Pages (for `signInWithGitHubApp` to exist
+client-side). Everything else required for Tier 1 is now done and
 confirmed. Each item below states explicitly whether it's checked live,
 checked only synthetically, or still pending one of these two things.
 
@@ -149,7 +150,7 @@ Worker is redeployed and the GitHub App exists.
 
 ### Tier 3: Authenticated, real BlaydeManual member, role `member` (not `admin`)
 
-**Needs someone invited to the org as `member` role specifically** -- create a real second test account, invite it, run these, then remove it (or keep a permanent low-privilege test account around for future passes).
+**Ready now** -- hypnolope is a real, active member (not admin). Run these against that account once the User-Agent fix is redeployed.
 
 | # | Call | Expected | Status |
 |---|---|---|---|
