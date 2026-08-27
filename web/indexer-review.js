@@ -68,7 +68,9 @@ function startReview(manifest, savedChunkIdx) {
   document.getElementById("vehicleClassConfirm").value = manifest.vehicle_class || "";
   document.getElementById("vehicleClassRequiredError").style.display = "none";
   document.getElementById("submitSuccess").style.display = "none";
+  document.getElementById("submitError").style.display = "none";
   document.getElementById("submitBtn").disabled = false;
+  document.getElementById("submitBtn").textContent = "Looks good, submit it";
   renderReviewGallery();
   saveReviewStateNow(); // persist immediately -- don't wait for a first edit
 }
@@ -553,31 +555,119 @@ function renderModalOverlays() {
     }
     reviewManifest.source_markers = { source_identifier: sourceUrl };
 
-    const { total, touched, pct } = reviewStats();
     // Everything in reviewManifest.entries at this point gets submitted,
     // no exceptions -- delete already removed anything that isn't real,
     // so there's no separate "excluded" set to compute or forget to filter.
-    appendLog(`[submit] ${total} candidates submitted, ${pct}% reviewed before submitting -- this is what the org quorum's light review would see`);
-
-    // [mock] real action here would be opening the new-vehicle proposal
-    // PR (propose_new_vehicle.py's real flow, not yet ported to the
-    // browser -- see ROADMAP.md). Direct report: clicking this button
-    // "doesn't seem to do anything" -- true even on a successful
-    // submit, since the only feedback was one appendLog line into #log,
-    // which sits at the top of the page, far out of view from this
-    // button at the bottom of a long review gallery. Now shown right
-    // here instead, and the button disables so a second click can't
-    // look like the first one silently failed.
+    const submitBtn = document.getElementById("submitBtn");
     const successEl = document.getElementById("submitSuccess");
-    successEl.textContent = `Submitted -- ${total} candidates, ${pct}% reviewed. An org maintainer will review this next.`;
-    successEl.style.display = "block";
-    document.getElementById("submitBtn").disabled = true;
+    const errorEl = document.getElementById("submitError");
+    errorEl.style.display = "none";
+    submitBtn.disabled = true;
+    submitBtn.textContent = "Submitting...";
+    try {
+      const result = await submitNewVehicleProposal(reviewManifest);
+      appendLog(`[submit] created ${result.repoUrl}, opened proposal ${result.issueUrl}`);
+      // Direct report: clicking this button "doesn't seem to do
+      // anything" -- true even on a successful submit before this,
+      // since the only feedback was one appendLog line into #log,
+      // which sits at the top of the page, far out of view from this
+      // button at the bottom of a long review gallery. Shown right
+      // here instead.
+      successEl.innerHTML = `Submitted -- ${result.total} candidates, ${result.pct}% reviewed. `
+        + `<a href="${result.repoUrl}" target="_blank" rel="noopener">Repo</a> &middot; `
+        + `<a href="${result.issueUrl}" target="_blank" rel="noopener">Proposal for org review</a>`;
+      successEl.style.display = "block";
+      submitBtn.textContent = "Submitted";
 
-    // The whole point of persisting review state was to survive a
-    // refresh before submission -- once actually submitted, keeping it
-    // around would just mean a future re-open of this same PDF offers
-    // to "continue reviewing" something already sent.
-    const jobId = currentJobId();
-    if (jobId) await clearReviewState(jobId).catch(() => {});
+      // The whole point of persisting review state was to survive a
+      // refresh before submission -- once actually submitted, keeping
+      // it around would just mean a future re-open of this same PDF
+      // offers to "continue reviewing" something already sent.
+      const jobId = currentJobId();
+      if (jobId) await clearReviewState(jobId).catch(() => {});
+    } catch (e) {
+      errorEl.textContent = `Submit failed: ${e.message}`;
+      errorEl.style.display = "block";
+      appendLog(`[submit] failed: ${e.message}`);
+      submitBtn.disabled = false;
+      submitBtn.textContent = "Looks good, submit it";
+    }
   });
+}
+
+// Real GitHub actions: creates the new vehicle's repo under the
+// SIGNED-IN MAINTAINER'S OWN account (their token is public_repo scope
+// only -- it can't create a repo directly under the BlaydeManual org,
+// and most maintainers aren't org members with that permission either),
+// pushes the reviewed manifest, then opens a real proposal issue on the
+// canonical BlaydeManual/registry repo for an org approver. One level
+// up from the fork -> PR -> merge shape already used for photo
+// submissions: propose -> approve -> transfer, where "transfer" (moving
+// the new repo from the maintainer's account into BlaydeManual, adding
+// its registry.json entry) is a privileged org-admin action that
+// belongs in org-approval.js's real implementation, not here -- this
+// function's job ends at opening a reviewable, real proposal.
+async function submitNewVehicleProposal(manifest) {
+  const session = BlaydeAuth.getSession();
+  if (!session) throw new Error("Not signed in.");
+
+  const repoName = manifest.vehicle;
+  let repo;
+  try {
+    repo = await githubApi("/user/repos", session.token, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        name: repoName,
+        description: `${manifest.vehicle} service manual photos -- proposed via Blayde Manual, pending org review.`,
+        private: false,
+        auto_init: true,
+      }),
+    });
+  } catch (e) {
+    if (e.status === 422) {
+      throw new Error(`A repo named "${repoName}" already exists on your account -- if this is a resubmission, delete or rename it first, or fix the vehicle slug above.`);
+    }
+    throw e;
+  }
+
+  await githubApi(`/repos/${repo.owner.login}/${repo.name}/contents/manifest.json`, session.token, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      message: "Add manifest.json",
+      content: utf8ToBase64(JSON.stringify(manifest, null, 2)),
+      branch: repo.default_branch,
+    }),
+  });
+
+  // Computed from the manifest PARAMETER, not reviewStats() (which reads
+  // the module-level reviewManifest global) -- they're the same object
+  // in the real click-handler flow, but this function shouldn't depend
+  // on that coincidence to be correct.
+  const total = manifest.entries.length;
+  const touchedCount = manifest.entries.filter((e) => e._touched || e._seen).length;
+  const pct = total ? Math.round((touchedCount / total) * 100) : 0;
+  const issueBody = [
+    `**New vehicle proposal**`,
+    ``,
+    `- Repo: ${repo.html_url}`,
+    `- Vehicle slug: \`${manifest.vehicle}\``,
+    `- Vehicle type: ${manifest.vehicle_class}`,
+    `- Edition: ${manifest.edition_id}`,
+    `- Source: ${manifest.source_markers?.source_identifier}`,
+    `- ${total} candidates, ${pct}% reviewed by the submitting maintainer before submission`,
+    ``,
+    `Submitted via the Maintainer Portal's Index a New Vehicle flow. If approved, transfer \`${repo.name}\` from @${session.username} into the BlaydeManual org and add it to registry.json.`,
+  ].join("\n");
+  const issue = await githubApi("/repos/BlaydeManual/registry/issues", session.token, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      title: `New vehicle: ${manifest.vehicle} (${manifest.edition_id})`,
+      body: issueBody,
+    }),
+  });
+
+  return { repoUrl: repo.html_url, issueUrl: issue.html_url, total, pct };
 }
