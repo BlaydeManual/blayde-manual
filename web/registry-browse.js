@@ -106,7 +106,7 @@ function render() {
   const filtered = allVehicles
     .filter((v) => matchesSearch(v, q))
     .filter((v) => !classFilter || v.vehicle_class === classFilter)
-    .sort((a, b) => a.vehicle_display_name.localeCompare(b.vehicle_display_name));
+    .sort((a, b) => a.vehicle_slug.localeCompare(b.vehicle_slug));
 
   if (!filtered.length) {
     empty.style.display = "block";
@@ -114,42 +114,69 @@ function render() {
   }
   empty.style.display = "none";
 
+  // Grouped by real vehicle_class (Type), sorted by vehicle_slug within
+  // each group -- not by make/model (registry.json has no such fields,
+  // see the file header). Sorting by slug happens to cluster same-make
+  // vehicles together anyway, since a slug's own naming convention
+  // starts with the make ("suzuki-...", "yamaha-...") -- a real,
+  // useful side effect of the sort order, not a separate grouping
+  // mechanism pretending to be one. The type heading itself is only
+  // shown when more than one type is present in the filtered set --
+  // with a class filter already narrowing to one type, or a registry
+  // that's all one type, repeating that as a heading adds nothing.
+  const byClass = new Map();
   filtered.forEach((v) => {
-    const group = document.createElement("div");
-    group.className = "model-group";
+    const key = v.vehicle_class || "(type not set)";
+    if (!byClass.has(key)) byClass.set(key, []);
+    byClass.get(key).push(v);
+  });
+  const showTypeHeadings = byClass.size > 1;
 
-    const row = document.createElement("div");
-    row.className = "gen-row";
-    row.style.marginTop = "8px";
+  [...byClass.entries()].sort(([a], [b]) => a.localeCompare(b)).forEach(([className, vehicles]) => {
+    if (showTypeHeadings) {
+      const heading = document.createElement("div");
+      heading.className = "model-heading";
+      heading.style.margin = "18px 0 6px";
+      heading.textContent = className[0].toUpperCase() + className.slice(1);
+      results.appendChild(heading);
+    }
+    vehicles.forEach((v) => {
+      const group = document.createElement("div");
+      group.className = "model-group";
 
-    const header = document.createElement("div");
-    header.className = "gen-header";
-    header.innerHTML = `
-      <a class="gen-title-link" href="index.html?vehicle=${encodeURIComponent(v.vehicle_slug)}">
-        ${v.vehicle_display_name}
-      </a>
-    `;
-    row.appendChild(header);
+      const row = document.createElement("div");
+      row.className = "gen-row";
+      row.style.marginTop = "8px";
 
-    const editionsWrap = document.createElement("div");
-    editionsWrap.className = "gen-editions";
-    v.editions.forEach((e) => {
-      const editionRow = document.createElement("div");
-      editionRow.className = "edition-row";
-      const statLabel = e.total_procedures == null
-        ? `<span class="edition-pct" style="color:var(--steel);">stats unavailable</span>`
-        : `<span class="edition-pct">${pct(e)}% of ${e.total_procedures}</span>`;
-      editionRow.innerHTML = `
-        <span class="edition-name">${e.id || "(edition not set)"}</span>
-        ${e.source_url ? `<a class="edition-link" href="${e.source_url}" target="_blank" rel="noopener">${e.source_url}</a>` : `<span class="edition-link"></span>`}
-        ${statLabel}
+      const header = document.createElement("div");
+      header.className = "gen-header";
+      header.innerHTML = `
+        <a class="gen-title-link" href="index.html?vehicle=${encodeURIComponent(v.vehicle_slug)}">
+          ${v.vehicle_display_name}
+        </a>
       `;
-      editionsWrap.appendChild(editionRow);
-    });
-    row.appendChild(editionsWrap);
+      row.appendChild(header);
 
-    group.appendChild(row);
-    results.appendChild(group);
+      const editionsWrap = document.createElement("div");
+      editionsWrap.className = "gen-editions";
+      v.editions.forEach((e) => {
+        const editionRow = document.createElement("div");
+        editionRow.className = "edition-row";
+        const statLabel = e.total_procedures == null
+          ? `<span class="edition-pct" style="color:var(--steel);">stats unavailable</span>`
+          : `<span class="edition-pct">${pct(e)}% of ${e.total_procedures}</span>`;
+        editionRow.innerHTML = `
+          <span class="edition-name">${e.id || "(edition not set)"}</span>
+          ${e.source_url ? `<a class="edition-link" href="${e.source_url}" target="_blank" rel="noopener">${e.source_url}</a>` : `<span class="edition-link"></span>`}
+          ${statLabel}
+        `;
+        editionsWrap.appendChild(editionRow);
+      });
+      row.appendChild(editionsWrap);
+
+      group.appendChild(row);
+      results.appendChild(group);
+    });
   });
 }
 
