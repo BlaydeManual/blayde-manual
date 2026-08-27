@@ -1,64 +1,33 @@
-// Blayde Manual -- registry browse page. See ROADMAP.md's
-// "GitHub-invisible UX" section: a filterable list (type/make/model,
-// plus search) of registered vehicles, each edition showing its own
-// source link and its own coverage stat -- deliberately not merged
-// into one vehicle-level number, since photos don't carry over between
-// editions (a Haynes manual and an OEM manual for the same vehicle are
-// laid out completely differently, so "62% done" would only ever be
-// true of one specific document, never the vehicle as a whole).
+// Blayde Manual -- registry browse page, real data as of this pass.
+// Previously 100% mock (MOCK_REGISTRY_BROWSE, four fabricated vehicles)
+// -- confirmed live this was never wired up at all, not a regression.
 //
-// Mock data standing in for a real registry.json read -- no live
-// registry exists yet (nothing's been pushed anywhere, see LEGAL.md).
-// One entry per VEHICLE REPO (not per edition), each holding its own
-// list of editions -- a browsing visitor needs "does my vehicle exist,
-// and which of its manuals are worth grabbing," which is a per-edition
-// question, not a per-repo one.
-const MOCK_REGISTRY_BROWSE = [
-  {
-    vehicle_slug: "suzuki-sv650-1999-2002",
-    make: "Suzuki", model: "SV650", year_range: "1999-2002",
-    vehicle_class: "motorcycle",
-    passive: false,
-    editions: [
-      { id: "OEM", source_url: "https://www.manualslib.com/manual/example-suzuki-sv650-oem", total_procedures: 720, photos_covered: 98 },
-      { id: "Haynes", source_url: "https://www.manualslib.com/manual/example-suzuki-sv650-haynes", total_procedures: 252, photos_covered: 20 },
-    ],
-  },
-  {
-    vehicle_slug: "suzuki-sv650-2003-2010",
-    make: "Suzuki", model: "SV650", year_range: "2003-2010",
-    vehicle_class: "motorcycle",
-    passive: false,
-    editions: [
-      { id: "OEM", source_url: "https://www.manualslib.com/manual/example-suzuki-sv650-2003-oem", total_procedures: 840, photos_covered: 40 },
-    ],
-  },
-  {
-    vehicle_slug: "kawasaki-kx250-1998-2000",
-    make: "Kawasaki", model: "KX250", year_range: "1998-2000",
-    vehicle_class: "motorcycle",
-    // Every maintainer on this vehicle quiet past the 30-day signal --
-    // see my-vehicles.js's ACTIVE_WITHIN_DAYS. Not "broken" or
-    // "abandoned," the repo stays fully usable regardless -- just
-    // means contributors might want to step up (see ROADMAP.md).
-    passive: true,
-    editions: [
-      { id: "OEM", source_url: "https://www.manualslib.com/manual/example-kawasaki-kx250-oem", total_procedures: 320, photos_covered: 320 },
-    ],
-  },
-  {
-    vehicle_slug: "yamaha-yz250f-2003-2005",
-    make: "Yamaha", model: "YZ250F", year_range: "2003-2005",
-    vehicle_class: "motorcycle",
-    passive: false,
-    editions: [
-      { id: "OEM", source_url: "https://www.manualslib.com/manual/example-yamaha-yz250f-oem", total_procedures: 58, photos_covered: 41 },
-    ],
-  },
-];
+// One card per real vehicle_slug (a real repo), each holding its own
+// list of real editions -- registry.json already supports multiple
+// entries sharing one vehicle_slug (see org-approval.js's "add
+// edition" path), so that part of the original design is real. What's
+// dropped: grouping multiple GENERATIONS of the same make+model under
+// one heading, and filtering/sorting by make/model/year_range --
+// registry.json has no such fields today (only vehicle_slug,
+// vehicle_display_name, vehicle_class, edition_id, repo_url,
+// source_pdf_sha256, status). Reintroducing that grouping needs those
+// fields captured for real at submit time first; logged in ROADMAP.md
+// rather than faked here with slug-parsing guesswork.
+//
+// Per-edition stats are real too: total_procedures / photos_covered
+// come from fetching each vehicle's actual manifest.json and images/
+// listing (registry.js's fetchManifest/listRepoImages/
+// parsePhotoFilename, already shared with the patcher), matched by the
+// same filename convention the patcher uses to pick which photo to
+// embed -- not the manifest entries' own `status` field, which is
+// written once at indexing time and never updated afterward.
+
+const CANONICAL_REGISTRY_URL_FOR_BROWSE = "https://raw.githubusercontent.com/BlaydeManual/registry/main/registry.json";
+
+let allVehicles = []; // populated once, real data, filtered/searched client-side
 
 function classesInData() {
-  return [...new Set(MOCK_REGISTRY_BROWSE.map((v) => v.vehicle_class))].sort();
+  return [...new Set(allVehicles.map((v) => v.vehicle_class).filter(Boolean))].sort();
 }
 
 function pct(edition) {
@@ -67,16 +36,66 @@ function pct(edition) {
 
 function matchesSearch(v, q) {
   if (!q) return true;
-  const hay = `${v.make} ${v.model} ${v.year_range} ${v.vehicle_slug}`.toLowerCase();
+  const hay = `${v.vehicle_display_name} ${v.vehicle_slug}`.toLowerCase();
   return hay.includes(q.toLowerCase());
 }
 
-// Grouped by make+model for *finding*, never merged into one row --
-// each generation (year_range) keeps its own stats, its own passive
-// indicator, its own editions (see ROADMAP.md's generations-stay-
-// separate decision). A search for "SV650" surfaces both generations
-// under one heading without implying they're the same repo or
-// community.
+// Real coverage for one edition -- same "does a matching file exist in
+// images/" signal the patcher itself relies on, not anything stored in
+// the manifest. A manifest fetch failure (repo gone, network hiccup)
+// degrades to "stats unavailable" for that one edition rather than
+// breaking the whole page.
+async function computeEditionStats(repoUrl) {
+  try {
+    const { manifest, branch } = await fetchManifest(repoUrl);
+    const files = await listRepoImages(repoUrl, branch);
+    const covered = new Set();
+    files.forEach((f) => {
+      const parsed = parsePhotoFilename(f.name);
+      if (parsed) covered.add(parsed.procedureId);
+    });
+    const realEntries = (manifest.entries || []).filter(
+      (e) => e.status !== "excluded_false_positive" && (e.content_type === undefined || e.content_type === null || e.content_type === "photo")
+    );
+    const photosCovered = realEntries.filter((e) => covered.has(e.procedure_id)).length;
+    return { total_procedures: realEntries.length, photos_covered: photosCovered, source_url: manifest.source_markers?.source_identifier || null };
+  } catch (e) {
+    return { total_procedures: null, photos_covered: null, source_url: null, error: e.message };
+  }
+}
+
+async function loadRealRegistry() {
+  const registryData = await loadRegistry(CANONICAL_REGISTRY_URL_FOR_BROWSE).catch(() => ({ vehicles: [] }));
+  const approved = (registryData.vehicles || []).filter((v) => v.status === "approved");
+
+  const byVehicle = new Map();
+  approved.forEach((v) => {
+    if (!byVehicle.has(v.vehicle_slug)) {
+      byVehicle.set(v.vehicle_slug, {
+        vehicle_slug: v.vehicle_slug,
+        vehicle_display_name: v.vehicle_display_name || v.vehicle_slug,
+        vehicle_class: v.vehicle_class || null,
+        editions: [],
+      });
+    }
+    byVehicle.get(v.vehicle_slug).editions.push({ id: v.edition_id, repo_url: v.repo_url });
+  });
+
+  allVehicles = [...byVehicle.values()];
+  // Real stats fetched in parallel across every edition of every
+  // vehicle -- same pattern registry.js's own photo-fetch pool uses,
+  // fine at this scale (a handful of vehicles), worth revisiting if
+  // the registry grows into the hundreds.
+  await Promise.all(
+    allVehicles.flatMap((v) =>
+      v.editions.map(async (e) => {
+        const stats = await computeEditionStats(e.repo_url);
+        Object.assign(e, stats);
+      })
+    )
+  );
+}
+
 function render() {
   const q = document.getElementById("searchInput").value.trim();
   const classFilter = document.getElementById("classFilter").value;
@@ -84,9 +103,10 @@ function render() {
   const empty = document.getElementById("emptyState");
   results.innerHTML = "";
 
-  const filtered = MOCK_REGISTRY_BROWSE
+  const filtered = allVehicles
     .filter((v) => matchesSearch(v, q))
-    .filter((v) => !classFilter || v.vehicle_class === classFilter);
+    .filter((v) => !classFilter || v.vehicle_class === classFilter)
+    .sort((a, b) => a.vehicle_display_name.localeCompare(b.vehicle_display_name));
 
   if (!filtered.length) {
     empty.style.display = "block";
@@ -94,58 +114,48 @@ function render() {
   }
   empty.style.display = "none";
 
-  const byModel = new Map();
   filtered.forEach((v) => {
-    const key = `${v.make} ${v.model}`;
-    if (!byModel.has(key)) byModel.set(key, []);
-    byModel.get(key).push(v);
-  });
-
-  [...byModel.entries()].sort(([a], [b]) => a.localeCompare(b)).forEach(([modelName, vehicles]) => {
-    vehicles.sort((a, b) => a.year_range.localeCompare(b.year_range));
     const group = document.createElement("div");
     group.className = "model-group";
-    if (vehicles.length > 1) {
-      const heading = document.createElement("div");
-      heading.className = "model-heading";
-      heading.textContent = `${modelName} -- ${vehicles.length} generations`;
-      group.appendChild(heading);
-    }
-    vehicles.forEach((v) => {
-      const row = document.createElement("div");
-      row.className = "gen-row";
 
-      const header = document.createElement("div");
-      header.className = "gen-header";
-      header.innerHTML = `
-        <a class="gen-title-link" href="index.html?vehicle=${encodeURIComponent(v.vehicle_slug)}">
-          ${modelName} (${v.year_range})${v.passive ? `<span class="passive-badge">passive</span>` : ""}
-        </a>
+    const row = document.createElement("div");
+    row.className = "gen-row";
+    row.style.marginTop = "8px";
+
+    const header = document.createElement("div");
+    header.className = "gen-header";
+    header.innerHTML = `
+      <a class="gen-title-link" href="index.html?vehicle=${encodeURIComponent(v.vehicle_slug)}">
+        ${v.vehicle_display_name}
+      </a>
+    `;
+    row.appendChild(header);
+
+    const editionsWrap = document.createElement("div");
+    editionsWrap.className = "gen-editions";
+    v.editions.forEach((e) => {
+      const editionRow = document.createElement("div");
+      editionRow.className = "edition-row";
+      const statLabel = e.total_procedures == null
+        ? `<span class="edition-pct" style="color:var(--steel);">stats unavailable</span>`
+        : `<span class="edition-pct">${pct(e)}% of ${e.total_procedures}</span>`;
+      editionRow.innerHTML = `
+        <span class="edition-name">${e.id || "(edition not set)"}</span>
+        ${e.source_url ? `<a class="edition-link" href="${e.source_url}" target="_blank" rel="noopener">${e.source_url}</a>` : `<span class="edition-link"></span>`}
+        ${statLabel}
       `;
-      row.appendChild(header);
-
-      const editionsWrap = document.createElement("div");
-      editionsWrap.className = "gen-editions";
-      v.editions.forEach((e) => {
-        const editionRow = document.createElement("div");
-        editionRow.className = "edition-row";
-        editionRow.innerHTML = `
-          <span class="edition-name">${e.id}</span>
-          <a class="edition-link" href="${e.source_url}" target="_blank" rel="noopener">${e.source_url}</a>
-          <span class="edition-pct">${pct(e)}% of ${e.total_procedures}</span>
-        `;
-        editionsWrap.appendChild(editionRow);
-      });
-      row.appendChild(editionsWrap);
-
-      group.appendChild(row);
+      editionsWrap.appendChild(editionRow);
     });
+    row.appendChild(editionsWrap);
+
+    group.appendChild(row);
     results.appendChild(group);
   });
 }
 
 function populateClassFilter() {
   const select = document.getElementById("classFilter");
+  select.innerHTML = `<option value="">All types</option>`;
   classesInData().forEach((c) => {
     const opt = document.createElement("option");
     opt.value = c;
@@ -156,5 +166,11 @@ function populateClassFilter() {
 
 document.getElementById("searchInput").addEventListener("input", render);
 document.getElementById("classFilter").addEventListener("change", render);
-populateClassFilter();
-render();
+
+(async () => {
+  const results = document.getElementById("results");
+  results.innerHTML = `<p class="sub">Loading real registry data&hellip;</p>`;
+  await loadRealRegistry();
+  populateClassFilter();
+  render();
+})();

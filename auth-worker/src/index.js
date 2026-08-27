@@ -630,8 +630,19 @@ async function handleApproveVehicle(request, env) {
     vehicle_slug: manifest.vehicle,
     edition_id: editionId || manifest.edition_id,
     vehicle_display_name: manifest.vehicle,
+    vehicle_class: manifest.vehicle_class || null,
     repo_url: `https://github.com/${REGISTRY_OWNER}/${repoName}`,
-    source_pdf_sha256: logEntry.manifest_sha256,
+    // manifest.source_pdf_sha256, not logEntry.manifest_sha256 -- real,
+    // live bug found and fixed here: this previously stored the
+    // MANIFEST's own hash (used for notarization/tamper-detection),
+    // which is a completely different value from the actual source
+    // PDF's hash the main page's Choose File fingerprint check compares
+    // against. The two were guaranteed to never match, for any vehicle.
+    // Falls back to null for a manifest submitted before indexer-ui.js
+    // started setting this field (nothing to recover after the fact --
+    // the original PDF's real hash isn't derivable from anything else
+    // on hand at approval time).
+    source_pdf_sha256: manifest.source_pdf_sha256 || null,
     status: "approved",
   });
   await ghApi(`/repos/${REGISTRY_OWNER}/${REGISTRY_REPO}/contents/registry.json`, installationToken, {

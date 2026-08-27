@@ -245,6 +245,16 @@ async function runIndexing(resume) {
     }
 
     const manifest = result;
+    // Real, live bug found and fixed here: this field was never set at
+    // all, so registry.json's source_pdf_sha256 (written at approval
+    // time from whatever the manifest carries) ended up holding the
+    // MANIFEST's own hash instead -- confirmed live, the two never
+    // matched, so the "already registered" fingerprint check on the
+    // main page's Choose File never found a real, already-approved
+    // vehicle no matter which PDF was tried. selectedPdfHash (computed
+    // at file-selection time, same SHA-256 the fingerprint check itself
+    // uses) is the real, correct value.
+    manifest.source_pdf_sha256 = selectedPdfHash;
     const secs = ((performance.now() - t0) / 1000).toFixed(1);
     appendLog(`DONE in ${secs}s -- ${manifest.entries.length} entries across ${Object.keys(manifest.page_geometry).length} page(s)`);
     appendLog(`It's up to the community to keep going. Thank you for contributing.`);
