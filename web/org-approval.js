@@ -1,71 +1,30 @@
-// Blayde Manual -- org-level "Approve New Vehicles" review.
+// Blayde Manual -- org-level "Approve New Vehicles" review. Real as of
+// this pass: the pending queue, the three verification checks, and the
+// approve action itself all talk to the Worker's real endpoints
+// (/pending-vehicles, /approve-vehicle), which use the GitHub App's own
+// installation token to read private repos and perform the actual
+// privileged write -- never this page's own signed-in token, which only
+// ever proves a real person is asking. See ROADMAP.md's GitHub App
+// migration entry for the full reasoning, and auth-worker/src/index.js
+// for the checks themselves (kept server-side deliberately: the UI's
+// pre-check and the real approve action run the EXACT same code via
+// dry_run, so "Approve is enabled" and "Approve actually works" can
+// never disagree).
+//
+// Reject stays a mock/logged action for now, deliberately -- unlike
+// approve, a real reject would mean deleting a real GitHub repo, which
+// is a genuinely destructive, hard-to-reverse action not in scope for
+// this pass. A real "leave it private and notify the submitter" or "ask
+// the submitter to fix and resubmit" reject flow is real, future work.
+//
 // Reuses the *pattern* proven in indexer-review.js (paginated,
 // page-grouped gallery; live-cropped thumbnails from a cached rendered
 // PDF page) without sharing its module-level state (reviewManifest,
 // selectedPdfDoc, reviewPageCache, ...) -- two review sessions open on
 // different portal tabs at once must not be able to clobber each other.
-// See ROADMAP.md "Maintainer Portal" for the full reasoning.
-//
-// Read-only for everyone: this view never edits candidates (that
-// already happened in the submitter's own Stage 3 review) -- it exists
-// so any signed-in maintainer can see what's pending (useful before
-// starting to index a vehicle that's already in the queue) and so an
-// org maintainer can approve or reject the submission as a whole. Mock
-// data standing in for what a real pending-registrations API would
-// return, same convention as review-panel.js's MOCK_PRS.
-
-const MOCK_PENDING_VEHICLES = [
-  {
-    vehicle_slug: "yamaha-yz250f-2003-2005",
-    edition_id: "OEM",
-    submitted_by: "dirtbike_dana",
-    submitted_at: "2026-08-20",
-    pdf_sha256: "9f1c2a...(mock)",
-    manifest: {
-      vehicle: "yamaha-yz250f-2003-2005",
-      page_count: 6,
-      source_markers: { source_identifier: "https://www.manualslib.com/manual/000000/Yamaha-Yz250f.html" },
-      entries: [
-        { procedure_id: "p001_specifications_fig1", page: 1, section_heading: "SPECIFICATIONS", pixel_bbox: [120, 400, 900, 1100], contributed_photo_path: "images/yamaha-yz250f-2003-2005/p001_specifications_fig1/" },
-        { procedure_id: "p002_periodic-maintenance_fig1", page: 2, section_heading: "PERIODIC MAINTENANCE", pixel_bbox: [200, 300, 1000, 900], contributed_photo_path: "images/yamaha-yz250f-2003-2005/p002_periodic-maintenance_fig1/" },
-        { procedure_id: "p003_engine-removal_fig1", page: 3, section_heading: "ENGINE REMOVAL", pixel_bbox: [150, 350, 950, 1050], contributed_photo_path: "images/yamaha-yz250f-2003-2005/p003_engine-removal_fig1/" },
-      ],
-      page_geometry: {
-        "1": { composite_width_px: 1700, composite_height_px: 2200, page_width_pt: 612, page_height_pt: 792 },
-        "2": { composite_width_px: 1700, composite_height_px: 2200, page_width_pt: 612, page_height_pt: 792 },
-        "3": { composite_width_px: 1700, composite_height_px: 2200, page_width_pt: 612, page_height_pt: 792 },
-      },
-    },
-    completeness: { total: 58, touched: 41, pct: 71 },
-  },
-  // A genuinely new edition of an already-registered vehicle (see
-  // MOCK_REGISTRY in review-panel.js -- suzuki-sv650-1999-2002 already
-  // has OEM + Haynes). Exercises the "this vehicle already has a repo"
-  // path, not just the brand-new-vehicle one.
-  {
-    vehicle_slug: "suzuki-sv650-1999-2002",
-    edition_id: "Chilton",
-    submitted_by: "wrench_kate",
-    submitted_at: "2026-08-24",
-    pdf_sha256: "7c3af0...(mock)",
-    manifest: {
-      vehicle: "suzuki-sv650-1999-2002",
-      page_count: 4,
-      source_markers: { source_identifier: "https://www.chiltonlibrary.com/suzuki-sv650" },
-      entries: [
-        { procedure_id: "p001_valve-clearance_fig1", page: 1, section_heading: "VALVE CLEARANCE", pixel_bbox: [140, 380, 920, 1080], contributed_photo_path: "images/suzuki-sv650-1999-2002/chilton/p001_valve-clearance_fig1/" },
-        { procedure_id: "p002_carb-sync_fig1", page: 2, section_heading: "CARBURETOR SYNC", pixel_bbox: [180, 320, 980, 960], contributed_photo_path: "images/suzuki-sv650-1999-2002/chilton/p002_carb-sync_fig1/" },
-      ],
-      page_geometry: {
-        "1": { composite_width_px: 1700, composite_height_px: 2200, page_width_pt: 612, page_height_pt: 792 },
-        "2": { composite_width_px: 1700, composite_height_px: 2200, page_width_pt: 612, page_height_pt: 792 },
-      },
-    },
-    completeness: { total: 22, touched: 18, pct: 82 },
-  },
-];
 
 const ORG_CHUNK_SIZE = 10;
+let orgPending = []; // [{name, html_url, manifest, submitted_by, submitted_at}] from /pending-vehicles
 let orgManifest = null;
 let orgPdfDoc = null;
 let orgPageCache = {};
@@ -73,21 +32,67 @@ let orgChunkIdx = 0;
 let orgCurrentEntry = null;
 
 function initApproveTab() {
-  renderPendingList();
+  updateOrgSignInUI();
 }
 
-function renderPendingList() {
+// Separate from the page's main sign-in (classic OAuth) -- viewing and
+// approving both read private BlaydeManual repos, which needs the
+// GitHub App session specifically, same pattern as indexer-review.js's
+// submit gate.
+function updateOrgSignInUI() {
+  const signedInToApp = !!BlaydeAuth.getAppSession();
+  document.getElementById("orgAppSignInPrompt").style.display = signedInToApp ? "none" : "block";
+  document.getElementById("pendingListCard").style.display = signedInToApp ? "block" : "none";
+  if (signedInToApp) renderPendingList();
+}
+document.getElementById("orgAppSignInBtn").addEventListener("click", async () => {
+  try {
+    await BlaydeAuth.signInWithGitHubApp();
+    updateOrgSignInUI();
+  } catch (e) {
+    log_org(`Sign-in failed: ${e.message}`);
+  }
+});
+
+async function fetchPendingVehicles() {
+  const session = BlaydeAuth.getAppSession();
+  const resp = await fetch(`${BlaydeAuth.AUTH_WORKER_URL}pending-vehicles`, {
+    headers: { Authorization: `Bearer ${session.token}` },
+  });
+  const result = await resp.json().catch(() => ({}));
+  if (!resp.ok || result.error) throw new Error(result.error || `Couldn't load the pending list (${resp.status}).`);
+  return result.pending;
+}
+
+async function renderPendingList() {
   const wrap = document.getElementById("pendingList");
+  wrap.innerHTML = `<p class="sub">Loading...</p>`;
+  try {
+    orgPending = await fetchPendingVehicles();
+  } catch (e) {
+    wrap.innerHTML = `<p class="sub" style="color:#ff6b6b;">${e.message}</p>`;
+    return;
+  }
   wrap.innerHTML = "";
-  const existingSlugs = new Set((typeof MOCK_REGISTRY !== "undefined" ? MOCK_REGISTRY.vehicles : []).map((v) => v.vehicle_slug));
-  MOCK_PENDING_VEHICLES.forEach((v, idx) => {
-    const isNewEdition = existingSlugs.has(v.vehicle_slug);
+  if (!orgPending.length) {
+    wrap.innerHTML = `<p class="sub">Nothing pending right now.</p>`;
+    return;
+  }
+  // Existing editions comes from the real, public registry.json -- same
+  // read every other real page already uses, no auth needed for this part.
+  const registryData = await loadRegistry(CANONICAL_REGISTRY_URL).catch(() => ({ vehicles: [] }));
+  const existingSlugs = new Set((registryData.vehicles || []).map((v) => v.vehicle_slug));
+  orgPending.forEach((v, idx) => {
+    const isNewEdition = existingSlugs.has(v.manifest.vehicle);
+    const total = v.manifest.entries.length;
+    const touched = v.manifest.entries.filter((e) => e._touched || e._seen).length;
+    const pct = total ? Math.round((touched / total) * 100) : 0;
     const row = document.createElement("div");
     row.className = "pr-row";
     row.innerHTML = `
       <div>
-        <div class="pr-title">${v.vehicle_slug} -- ${v.edition_id}${isNewEdition ? ` <span class="sub" style="color:#ffcc66;">(new edition, vehicle exists)</span>` : ""}</div>
-        <div class="pr-meta">submitted by @${v.submitted_by} on ${v.submitted_at} &middot; ${v.manifest.page_count} pages &middot; ${v.completeness.touched}/${v.completeness.total} reviewed (${v.completeness.pct}%)</div>
+        <div class="pr-title">${v.manifest.vehicle} -- ${v.manifest.edition_id || "(edition not set)"}${isNewEdition ? ` <span class="sub" style="color:#ffcc66;">(new edition, vehicle exists)</span>` : ""}</div>
+        <div class="pr-meta">submitted by ${v.submitted_by ? `@${v.submitted_by}` : "(unknown -- see verification below)"}${v.submitted_at ? ` on ${v.submitted_at.slice(0, 10)}` : ""} &middot; ${total} candidates, ${touched}/${total} reviewed (${pct}%)</div>
       </div>
       <button data-idx="${idx}">Review</button>
     `;
@@ -98,40 +103,34 @@ function renderPendingList() {
   });
 }
 
-function openPendingVehicle(idx) {
-  // Indexed, not keyed by vehicle_slug -- now that a vehicle can have
-  // more than one edition in the queue at once, vehicle_slug alone
-  // isn't unique across pending submissions.
-  const entry = MOCK_PENDING_VEHICLES[idx];
+async function openPendingVehicle(idx) {
+  const entry = orgPending[idx];
   orgCurrentEntry = entry;
   orgManifest = entry.manifest;
   orgPdfDoc = null;
   orgPageCache = {};
   orgChunkIdx = 0;
   document.getElementById("orgReviewArea").classList.add("open");
-  document.getElementById("orgReviewTitle").textContent = `${entry.vehicle_slug} -- ${entry.edition_id}`;
+  document.getElementById("orgReviewTitle").textContent = `${entry.manifest.vehicle} -- ${entry.manifest.edition_id || "(edition not set)"}`;
+  const total = entry.manifest.entries.length;
+  const touched = entry.manifest.entries.filter((e) => e._touched || e._seen).length;
   document.getElementById("orgReviewMeta").textContent =
-    `submitted by @${entry.submitted_by} -- ${entry.completeness.touched}/${entry.completeness.total} candidates reviewed by the submitter (${entry.completeness.pct}%)`;
+    `${entry.submitted_by ? `submitted by @${entry.submitted_by}` : "submitter unknown"} -- ${touched}/${total} candidates reviewed by the submitter`;
 
   const sourceUrl = entry.manifest.source_markers?.source_identifier;
   const sourceLink = document.getElementById("orgSourceLink");
   sourceLink.href = sourceUrl || "#";
   sourceLink.textContent = sourceUrl || "(no source URL on this submission -- shouldn't happen, flag it)";
 
-  // The comparison this whole thing exists for: "this vehicle already
-  // has N documents -- does this new one actually fit, or is it a
-  // near-duplicate of one already there?" Read from the same
-  // MOCK_REGISTRY review-panel.js already treats as the source of
-  // truth for what's actually registered.
-  const existing = (typeof MOCK_REGISTRY !== "undefined" ? MOCK_REGISTRY.vehicles : [])
-    .filter((v) => v.vehicle_slug === entry.vehicle_slug);
+  const registryData = await loadRegistry(CANONICAL_REGISTRY_URL).catch(() => ({ vehicles: [] }));
+  const existing = (registryData.vehicles || []).filter((v) => v.vehicle_slug === entry.manifest.vehicle);
   const existingWrap = document.getElementById("orgExistingEditions");
   if (existing.length) {
     document.getElementById("orgExistingEditionsSummary").textContent =
-      `This vehicle already has ${existing.length} document${existing.length === 1 ? "" : "s"}. Does "${entry.edition_id}" actually fit, or is it the same as one of these?`;
+      `This vehicle already has ${existing.length} document${existing.length === 1 ? "" : "s"}. Does "${entry.manifest.edition_id}" actually fit, or is it the same as one of these?`;
     document.getElementById("orgExistingEditionsList").innerHTML = existing
-      .map((v) => `<div class="sub" style="margin:2px 0;">&middot; <b style="color:var(--text);">${v.edition_id}</b> -- ${v.repo_url}</div>`)
-      .join("");
+      .map((v) => `&middot; <b style="color:var(--text);">${v.edition_id}</b> -- ${v.repo_url}`)
+      .join("<br>");
     existingWrap.style.display = "block";
     document.getElementById("orgApproveBtn").textContent = "Approve & add edition";
   } else {
@@ -141,10 +140,40 @@ function openPendingVehicle(idx) {
 
   document.getElementById("orgGallery").innerHTML = "";
   document.getElementById("orgPdfPicker").value = "";
-  const isOrg = MOCK_MAINTAINER.isOrgMaintainer;
-  document.getElementById("orgApproveBtn").disabled = true; // stays disabled until a PDF is loaded, even for org maintainers
-  document.getElementById("orgRejectBtn").disabled = !isOrg;
-  document.getElementById("orgReadOnlyNote").style.display = isOrg ? "none" : "block";
+  document.getElementById("orgRejectBtn").disabled = false;
+  document.getElementById("orgReadOnlyNote").style.display = "none"; // real org-role check happens server-side; no reliable client-side signal worth showing here
+  renderOrgGallery();
+  runOrgChecks();
+}
+
+// Runs the EXACT same checks the real Approve action does (dry_run),
+// server-side, using the installation token -- not a lighter
+// client-side approximation. Approve stays disabled until this comes
+// back clean.
+async function runOrgChecks() {
+  const listEl = document.getElementById("orgChecksList");
+  const approveBtn = document.getElementById("orgApproveBtn");
+  approveBtn.disabled = true;
+  listEl.textContent = "Checking file contents, notarization, and manifest shape...";
+  try {
+    const session = BlaydeAuth.getAppSession();
+    const resp = await fetch(`${BlaydeAuth.AUTH_WORKER_URL}approve-vehicle`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${session.token}` },
+      body: JSON.stringify({ repo_name: orgCurrentEntry.name, dry_run: true }),
+    });
+    const result = await resp.json().catch(() => ({}));
+    if (!resp.ok || result.error) {
+      listEl.innerHTML = `<span style="color:#ff6b6b;">${result.error || `Check failed (${resp.status}).`}</span>`;
+      approveBtn.disabled = true;
+      return;
+    }
+    listEl.innerHTML = `<span style="color:#1d9e75;">All checks passed -- exact file contents, notarization hash, and manifest shape all verified independently.</span>`;
+    approveBtn.disabled = false;
+  } catch (e) {
+    listEl.innerHTML = `<span style="color:#ff6b6b;">Couldn't run checks: ${e.message}</span>`;
+    approveBtn.disabled = true;
+  }
 }
 
 document.getElementById("orgPdfPicker").addEventListener("change", async (e) => {
@@ -154,7 +183,6 @@ document.getElementById("orgPdfPicker").addEventListener("change", async (e) => 
   orgPdfDoc = await pdfjsLib.getDocument({ data: buf }).promise;
   orgChunkIdx = 0;
   renderOrgGallery();
-  if (MOCK_MAINTAINER.isOrgMaintainer) document.getElementById("orgApproveBtn").disabled = false;
 });
 
 function orgSortedEntries() {
@@ -228,32 +256,37 @@ async function refreshOrgThumbnail(imgEl, entry) {
     out.width = w; out.height = h;
     out.getContext("2d").drawImage(canvas, x0 * sx, y0 * sy, w, h, 0, 0, w, h);
     imgEl.src = out.toDataURL("image/jpeg", 0.85);
-  } catch (e) { /* leave blank -- picked PDF might not match the submission */ }
+  } catch (e) { /* leave blank -- picked PDF might not match the submission, or none picked yet */ }
 }
 
-// The approval action branches on whether the vehicle already exists
-// (see ROADMAP.md's multi-manual correction, 2026-08-25) -- the org
-// review itself doesn't change, but a new edition merges into the
-// existing repo and joins the existing maintainer pool instead of
-// creating a new repo and a new first maintainer.
-document.getElementById("orgApproveBtn").addEventListener("click", () => {
-  if (!MOCK_MAINTAINER.isOrgMaintainer) return;
-  const existing = (typeof MOCK_REGISTRY !== "undefined" ? MOCK_REGISTRY.vehicles : [])
-    .some((v) => v.vehicle_slug === orgCurrentEntry.vehicle_slug);
-  log_org(`[mock] APPROVE ${orgCurrentEntry.vehicle_slug} -- ${orgCurrentEntry.edition_id}:`);
-  if (existing) {
-    log_org(`  1. merge this edition into: ${orgCurrentEntry.vehicle_slug} (no new repo created)`);
-    log_org(`  2. POST /repos/BlaydeManual/registry/.../registry.json -- add edition_id entry, status: approved`);
-    log_org(`  3. add @${orgCurrentEntry.submitted_by} as a maintainer of the whole vehicle repo, joining the existing pool`);
-  } else {
-    log_org(`  1. create the vehicle repo, fork the scaffold`);
-    log_org(`  2. POST /repos/BlaydeManual/registry/.../registry.json -- add entry, status: approved`);
-    log_org(`  3. notify @${orgCurrentEntry.submitted_by} they're now the first maintainer`);
+document.getElementById("orgApproveBtn").addEventListener("click", async () => {
+  const btn = document.getElementById("orgApproveBtn");
+  btn.disabled = true;
+  const originalText = btn.textContent;
+  btn.textContent = "Approving...";
+  try {
+    const session = BlaydeAuth.getAppSession();
+    const resp = await fetch(`${BlaydeAuth.AUTH_WORKER_URL}approve-vehicle`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${session.token}` },
+      body: JSON.stringify({ repo_name: orgCurrentEntry.name, edition_id: orgCurrentEntry.manifest.edition_id }),
+    });
+    const result = await resp.json().catch(() => ({}));
+    if (!resp.ok || result.error) throw new Error(result.error || `Approve failed (${resp.status}).`);
+    log_org(`APPROVED ${orgCurrentEntry.manifest.vehicle} -- ${orgCurrentEntry.manifest.edition_id}: repo is now public (${result.repoUrl}), registry.json updated.`);
+    btn.textContent = "Approved";
+    renderPendingList();
+  } catch (e) {
+    log_org(`Approve failed: ${e.message}`);
+    btn.textContent = originalText;
+    btn.disabled = false;
   }
 });
+
+// Still mock -- see file-header comment for why a real reject (deleting
+// a real repo) is deliberately out of scope for this pass.
 document.getElementById("orgRejectBtn").addEventListener("click", () => {
-  if (!MOCK_MAINTAINER.isOrgMaintainer) return;
-  log_org(`[mock] REJECT ${orgCurrentEntry.vehicle_slug} -- ${orgCurrentEntry.edition_id}: notify @${orgCurrentEntry.submitted_by} with a reason`);
+  log_org(`[mock] REJECT ${orgCurrentEntry.manifest.vehicle} -- ${orgCurrentEntry.manifest.edition_id}: notify the submitter with a reason. Real version needs a real decision on what happens to the private repo itself (leave it, delete it, ask for a fix) -- not built yet.`);
 });
 
 function log_org(msg) {

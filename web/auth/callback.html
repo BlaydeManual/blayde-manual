@@ -42,8 +42,17 @@
     return;
   }
 
+  // state carries "oauth:<uuid>" or "githubapp:<uuid>" -- the only value
+  // GitHub round-trips unmodified through the redirect, so it's what
+  // tells this callback which Worker endpoint to exchange against and
+  // which authType the resulting session should be tagged with. See
+  // web/auth.js's startSignIn/signInWithGitHubApp for the other end of
+  // this.
+  const authType = state.startsWith("githubapp:") ? "githubapp" : "oauth";
+  const exchangeUrl = authType === "githubapp" ? "https://auth.blaydemanual.com/app-token" : "https://auth.blaydemanual.com/";
+
   try {
-    const exchangeResp = await fetch("https://auth.blaydemanual.com/", {
+    const exchangeResp = await fetch(exchangeUrl, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ code }),
@@ -58,7 +67,7 @@
       headers: { Authorization: `Bearer ${exchangeData.access_token}` },
     });
     const userData = await userResp.json();
-    done({ token: exchangeData.access_token, username: userData.login });
+    done({ token: exchangeData.access_token, username: userData.login, authType });
   } catch (err) {
     done({ error: "Network error during sign-in." });
   }

@@ -49,6 +49,21 @@ function saveReviewStateNow() {
   });
 }
 
+// Separate from the page's main sign-in (classic OAuth, used for
+// browsing/reviewing) -- submitting always goes through the GitHub App
+// specifically, so it needs its OWN sign-in, kept in its own session
+// slot (BlaydeAuth.getAppSession()) rather than replacing the session
+// everything else on this page depends on. Declared at top level, not
+// inside the pageModal drag-handling block below, so it's reliably
+// visible from startReview() without depending on legacy function-in-
+// block hoisting.
+function updateSubmitSignInUI() {
+  const signedInToApp = !!BlaydeAuth.getAppSession();
+  document.getElementById("submitSignInBtn").style.display = signedInToApp ? "none" : "inline-block";
+  document.getElementById("submitSignInNote").style.display = signedInToApp ? "none" : "block";
+  document.getElementById("submitBtn").style.display = signedInToApp ? "inline-block" : "none";
+}
+
 function startReview(manifest, savedChunkIdx) {
   reviewManifest = manifest;
   manifest.entries.forEach((e) => {
@@ -71,6 +86,7 @@ function startReview(manifest, savedChunkIdx) {
   document.getElementById("submitError").style.display = "none";
   document.getElementById("submitBtn").disabled = false;
   document.getElementById("submitBtn").textContent = "Looks good, submit it";
+  updateSubmitSignInUI();
   renderReviewGallery();
   saveReviewStateNow(); // persist immediately -- don't wait for a first edit
 }
@@ -518,6 +534,16 @@ function renderModalOverlays() {
   document.getElementById("pageModalClose").addEventListener("click", () => {
     document.getElementById("pageModal").classList.remove("open");
   });
+  document.getElementById("submitSignInBtn").addEventListener("click", async () => {
+    try {
+      await BlaydeAuth.signInWithGitHubApp();
+      updateSubmitSignInUI();
+    } catch (e) {
+      const errorEl = document.getElementById("submitError");
+      errorEl.textContent = `Sign-in failed: ${e.message}`;
+      errorEl.style.display = "block";
+    }
+  });
   document.getElementById("submitBtn").addEventListener("click", async () => {
     const vehicleClass = document.getElementById("vehicleClassConfirm").value;
     if (!vehicleClass) {
@@ -566,7 +592,7 @@ function renderModalOverlays() {
     submitBtn.textContent = "Submitting...";
     try {
       const result = await submitNewVehicleProposal(reviewManifest);
-      appendLog(`[submit] created ${result.repoUrl}, opened proposal ${result.issueUrl}`);
+      appendLog(`[submit] created ${result.repoUrl} (private, pending org review)`);
       // Direct report: clicking this button "doesn't seem to do
       // anything" -- true even on a successful submit before this,
       // since the only feedback was one appendLog line into #log,
@@ -574,8 +600,7 @@ function renderModalOverlays() {
       // button at the bottom of a long review gallery. Shown right
       // here instead.
       successEl.innerHTML = `Submitted -- ${result.total} candidates, ${result.pct}% reviewed. `
-        + `<a href="${result.repoUrl}" target="_blank" rel="noopener">Repo</a> &middot; `
-        + `<a href="${result.issueUrl}" target="_blank" rel="noopener">Proposal for org review</a>`;
+        + `<a href="${result.repoUrl}" target="_blank" rel="noopener">Repo</a> (private until an org approver reviews it)`;
       successEl.style.display = "block";
       submitBtn.textContent = "Submitted";
 
@@ -595,51 +620,37 @@ function renderModalOverlays() {
   });
 }
 
-// Real GitHub actions: creates the new vehicle's repo under the
-// SIGNED-IN MAINTAINER'S OWN account (their token is public_repo scope
-// only -- it can't create a repo directly under the BlaydeManual org,
-// and most maintainers aren't org members with that permission either),
-// pushes the reviewed manifest, then opens a real proposal issue on the
-// canonical BlaydeManual/registry repo for an org approver. One level
-// up from the fork -> PR -> merge shape already used for photo
-// submissions: propose -> approve -> transfer, where "transfer" (moving
-// the new repo from the maintainer's account into BlaydeManual, adding
-// its registry.json entry) is a privileged org-admin action that
-// belongs in org-approval.js's real implementation, not here -- this
-// function's job ends at opening a reviewable, real proposal.
+// GitHub-App-only, no personal-account alternative (see ROADMAP.md's
+// GitHub App migration entry): a maintainer just did real, substantial
+// work that needs to become the org's real public record, and there's no
+// meaningful "keep it personal" case for that -- unlike a photo
+// contribution, which stays a genuine choice in contribute.js. The
+// browser never touches the App's installation credential; it only ever
+// sends the maintainer's own App user-to-server token (proves a real
+// signed-in person is asking) to the Worker's /direct-submit endpoint,
+// which does the actual privileged work: creates the repo PRIVATE,
+// directly under BlaydeManual, pushes manifest.json, and notarizes it
+// (a sha256 of the manifest committed to the public, App-only-writable
+// BlaydeManual/submission-log) so org-approval can later prove the
+// manifest it's reviewing hasn't been swapped after the fact. The
+// maintainer never gets write access to the resulting repo -- that's not
+// a limitation, it's the point: nobody but a real org approval can change
+// it again before it goes live.
 async function submitNewVehicleProposal(manifest) {
-  const session = BlaydeAuth.getSession();
-  if (!session) throw new Error("Not signed in.");
-
-  const repoName = manifest.vehicle;
-  let repo;
-  try {
-    repo = await githubApi("/user/repos", session.token, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        name: repoName,
-        description: `${manifest.vehicle} service manual photos -- proposed via Blayde Manual, pending org review.`,
-        private: false,
-        auto_init: true,
-      }),
-    });
-  } catch (e) {
-    if (e.status === 422) {
-      throw new Error(`A repo named "${repoName}" already exists on your account -- if this is a resubmission, delete or rename it first, or fix the vehicle slug above.`);
-    }
-    throw e;
+  const session = BlaydeAuth.getAppSession();
+  if (!session) {
+    throw new Error(`Sign in via "Submit directly" first -- this always goes straight into BlaydeManual, so it needs the GitHub App sign-in, not the regular one.`);
   }
 
-  await githubApi(`/repos/${repo.owner.login}/${repo.name}/contents/manifest.json`, session.token, {
-    method: "PUT",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      message: "Add manifest.json",
-      content: utf8ToBase64(JSON.stringify(manifest, null, 2)),
-      branch: repo.default_branch,
-    }),
+  const resp = await fetch(`${BlaydeAuth.AUTH_WORKER_URL}direct-submit`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", Authorization: `Bearer ${session.token}` },
+    body: JSON.stringify({ vehicle_slug: manifest.vehicle, manifest }),
   });
+  const result = await resp.json().catch(() => ({}));
+  if (!resp.ok || result.error) {
+    throw new Error(result.error || `Submit failed (${resp.status}).`);
+  }
 
   // Computed from the manifest PARAMETER, not reviewStats() (which reads
   // the module-level reviewManifest global) -- they're the same object
@@ -648,26 +659,6 @@ async function submitNewVehicleProposal(manifest) {
   const total = manifest.entries.length;
   const touchedCount = manifest.entries.filter((e) => e._touched || e._seen).length;
   const pct = total ? Math.round((touchedCount / total) * 100) : 0;
-  const issueBody = [
-    `**New vehicle proposal**`,
-    ``,
-    `- Repo: ${repo.html_url}`,
-    `- Vehicle slug: \`${manifest.vehicle}\``,
-    `- Vehicle type: ${manifest.vehicle_class}`,
-    `- Edition: ${manifest.edition_id}`,
-    `- Source: ${manifest.source_markers?.source_identifier}`,
-    `- ${total} candidates, ${pct}% reviewed by the submitting maintainer before submission`,
-    ``,
-    `Submitted via the Maintainer Portal's Index a New Vehicle flow. If approved, transfer \`${repo.name}\` from @${session.username} into the BlaydeManual org and add it to registry.json.`,
-  ].join("\n");
-  const issue = await githubApi("/repos/BlaydeManual/registry/issues", session.token, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      title: `New vehicle: ${manifest.vehicle} (${manifest.edition_id})`,
-      body: issueBody,
-    }),
-  });
 
-  return { repoUrl: repo.html_url, issueUrl: issue.html_url, total, pct };
+  return { repoUrl: result.repoUrl, total, pct };
 }

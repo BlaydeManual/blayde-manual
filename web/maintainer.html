@@ -305,8 +305,12 @@
 
     <!-- ============ Approve New Vehicles (ORG -- org-approval.js) ============ -->
     <div class="tab-panel" id="tab-approve">
-      <p class="sub" style="margin:0 0 6px;">Visible to every maintainer -- useful to check before you start indexing a vehicle that's already in the queue. Approve/reject only work if you're on the org team.</p>
-      <div class="card">
+      <p class="sub" style="margin:0 0 6px;">Visible to every maintainer -- useful to check before you start indexing a vehicle that's already in the queue. Approve/reject only work if you're a real org admin (checked server-side, not just in this page).</p>
+      <div id="orgAppSignInPrompt" style="display:none; background:#000; border:1px solid var(--steel-dark); border-radius:6px; padding:14px; margin-bottom:14px;">
+        <p style="margin:0 0 10px; font-size:0.82rem; color:var(--steel);">Viewing and approving pending vehicles reads private repos under BlaydeManual, so this needs the GitHub App sign-in -- a separate one from the page's regular sign-in.</p>
+        <button id="orgAppSignInBtn">Sign in to view pending vehicles</button>
+      </div>
+      <div class="card" id="pendingListCard" style="display:none;">
         <h2 style="font-size:0.95rem; margin:0 0 4px;">Pending new vehicles</h2>
         <div id="pendingList"></div>
       </div>
@@ -322,6 +326,11 @@
           <h2 style="font-size:0.85rem; margin:0 0 6px; color:#ffcc66;">This vehicle already has a repo</h2>
           <p class="sub" id="orgExistingEditionsSummary" style="margin:0 0 8px;"></p>
           <div id="orgExistingEditionsList"></div>
+        </div>
+
+        <div class="card" id="orgChecksArea" style="background:#000; margin-bottom:14px;">
+          <h2 style="font-size:0.85rem; margin:0 0 6px;">Verification (re-checked independently, not just what this page shows)</h2>
+          <div id="orgChecksList" class="sub" style="margin:0;">Checking...</div>
         </div>
 
         <label style="display:block; font-size:0.8rem; color:var(--steel); margin-bottom:6px;">
@@ -461,7 +470,9 @@
             <span id="reviewPageLabel">1 / 1</span>
             <button id="reviewNextBtn" style="margin-top:0;">Next &rarr;</button>
           </div>
-          <button id="submitBtn">Looks good, submit it</button>
+          <p class="sub" id="submitSignInNote" style="margin:0 0 6px;">Submitting always goes straight into BlaydeManual as a private repo, pending org review -- this needs a separate sign-in from the one you're already using, since it's a different app with different permissions.</p>
+          <button id="submitSignInBtn" class="secondary">Sign in to submit</button>
+          <button id="submitBtn" style="display:none;">Looks good, submit it</button>
           <p class="sub" id="submitSuccess" style="display:none; color:#1d9e75; margin:8px 0 0;"></p>
           <p class="sub" id="submitError" style="display:none; color:#ff6b6b; margin:8px 0 0;"></p>
         </div>

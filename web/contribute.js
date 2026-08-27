@@ -54,6 +54,7 @@ const procedureId = params.get("procedure") || "p040_2-10-periodic-maintenance_f
 let signedIn = false;
 let currentUsername = null;
 let pendingAction = null; // "draft" | "submit" -- what to actually do once sign-in completes
+let pendingSubmitMode = null; // "public" | "private" -- only meaningful when pendingAction is "submit"
 let pendingMaintainRequest = null; // vehicle key -- same deferred-sign-in pattern, separate action
 let context = null;
 let selectedPhotoDataUrl = null;
@@ -235,7 +236,7 @@ document.getElementById("photoInput").addEventListener("change", async (e) => {
   const saveBtn = document.getElementById("saveDraftBtn"), submitBtn = document.getElementById("submitNowBtn");
   const consentRow = document.getElementById("consentRow");
   const ownCheck = document.getElementById("consentOwnPhoto"), licenseCheck = document.getElementById("consentLicense");
-  if (!file) { saveBtn.disabled = true; submitBtn.disabled = true; consentRow.style.display = "none"; return; }
+  if (!file) { saveBtn.disabled = true; submitBtn.disabled = true; consentRow.style.display = "none"; document.getElementById("submitModeRow").style.display = "none"; return; }
   selectedPhotoFilename = file.name;
 
   const bitmap = await createImageBitmap(file);
@@ -256,6 +257,7 @@ document.getElementById("photoInput").addEventListener("change", async (e) => {
   ownCheck.checked = false;
   licenseCheck.checked = false;
   consentRow.style.display = "block";
+  document.getElementById("submitModeRow").style.display = "block";
   updateSubmitEnabled();
   log(`${file.name}: re-encoded locally to strip EXIF metadata (GPS, camera model, timestamp) before saving -- happens now, not after this reaches a server.`);
 });
@@ -275,22 +277,50 @@ document.getElementById("consentOwnPhoto").addEventListener("change", updateSubm
 document.getElementById("consentLicense").addEventListener("change", updateSubmitEnabled);
 
 document.getElementById("saveDraftBtn").addEventListener("click", () => requestAction("draft"));
-document.getElementById("submitNowBtn").addEventListener("click", () => requestAction("submit"));
+document.getElementById("submitNowBtn").addEventListener("click", () => {
+  const mode = document.querySelector('input[name="submitMode"]:checked')?.value || "public";
+  requestAction("submit", mode);
+});
 
-function requestAction(action) {
+// Two gates, not one: every submission needs the page's normal identity
+// (classic OAuth, signedIn) regardless of mode, but Public additionally
+// needs the GitHub App session specifically -- checked and prompted for
+// separately, only when actually chosen, so Private submitters (and
+// drafts) never see a sign-in screen for an app they don't need.
+function requestAction(action, mode) {
   if (!signedIn) {
     pendingAction = action;
+    pendingSubmitMode = mode;
     document.getElementById("signInPrompt").style.display = "block";
     return;
   }
-  performAction(action);
+  if (action === "submit" && mode === "public" && !BlaydeAuth.getAppSession()) {
+    pendingAction = action;
+    pendingSubmitMode = mode;
+    document.getElementById("appSignInPrompt").style.display = "block";
+    return;
+  }
+  performAction(action, mode);
 }
 
 document.getElementById("promptSignInBtn").addEventListener("click", async () => {
   if (!(await performSignIn())) return;
   document.getElementById("signInPrompt").style.display = "none";
-  if (pendingAction) { performAction(pendingAction); pendingAction = null; }
+  // Re-run through requestAction, not straight to performAction -- a
+  // pending Public submit still needs the separate App-sign-in check
+  // this cascades into next, rather than skipping it.
+  if (pendingAction) { const a = pendingAction, m = pendingSubmitMode; pendingAction = null; pendingSubmitMode = null; requestAction(a, m); }
   if (pendingMaintainRequest) { performMaintainRequest(pendingMaintainRequest); pendingMaintainRequest = null; }
+});
+
+document.getElementById("appPromptSignInBtn").addEventListener("click", async () => {
+  try {
+    await BlaydeAuth.signInWithGitHubApp();
+    document.getElementById("appSignInPrompt").style.display = "none";
+    if (pendingAction) { const a = pendingAction, m = pendingSubmitMode; pendingAction = null; pendingSubmitMode = null; performAction(a, m); }
+  } catch (e) {
+    log(`Sign-in failed: ${e.message}`);
+  }
 });
 
 function requestToMaintain(vehicleKey) {
@@ -310,7 +340,7 @@ function performMaintainRequest(vehicleKey) {
   renderUploads();
 }
 
-async function performAction(action) {
+async function performAction(action, mode) {
   const upload = {
     id: `${procedureId}_${Date.now()}`,
     repoUrl, procedureId,
@@ -337,16 +367,27 @@ async function performAction(action) {
     consentLicenseCcBy4: true,
   };
 
-  if (action === "submit") {
-    log(`Opening a pull request on ${repoUrl}...`);
+  if (action === "submit" && mode === "public") {
+    log(`Submitting publicly on ${repoUrl} (opens the pull request immediately)...`);
     try {
-      const pr = await submitPhotoToGitHub(upload);
+      const pr = await submitPhotoPublic(upload);
       upload.status = "submitted";
-      upload.prNumber = pr.number;
-      upload.prUrl = pr.url;
-      log(`Submitted -- pull request #${pr.number} opened: ${pr.url}`);
+      upload.prUrl = pr.prUrl;
+      log(`Submitted -- pull request opened: ${pr.prUrl}`);
     } catch (err) {
       log(`Submit failed: ${err.message} -- saved as a draft instead, try Submit again from My uploads.`);
+    }
+  } else if (action === "submit") {
+    log(`Pushing privately to your own copy of ${repoUrl}...`);
+    try {
+      const forked = await submitPhotoPrivate(upload);
+      upload.status = "forked";
+      upload.forkOwner = forked.forkOwner;
+      upload.branchName = forked.branchName;
+      upload.defaultBranch = forked.defaultBranch;
+      log(`Pushed to your own fork -- nothing proposed yet. Open the pull request from My uploads whenever you're ready.`);
+    } catch (err) {
+      log(`Push failed: ${err.message} -- saved as a draft instead, try Submit again from My uploads.`);
     }
   } else {
     log(`Saved to your uploads -- not submitted yet.`);
@@ -391,7 +432,12 @@ async function waitForForkRef(forkOwner, repo, branch, token) {
   throw new Error(`Fork of ${repo} is still being created on GitHub's side -- try submitting again in a minute.`);
 }
 
-async function submitPhotoToGitHub(upload) {
+// Private path: fork + commit only, stops SHORT of opening the PR --
+// per direct request, this is what makes it genuinely "operate on your
+// own": the photo lands on the contributor's own fork, under their own
+// account, and nothing is proposed to anyone until they separately choose
+// to open the PR (openPrFromFork, below), whenever they want, or never.
+async function submitPhotoPrivate(upload) {
   const session = BlaydeAuth.getSession();
   if (!session) throw new Error("Not signed in.");
   const [owner, repo] = ownerRepo(upload.repoUrl);
@@ -444,34 +490,103 @@ async function submitPhotoToGitHub(upload) {
     }
   }
 
+  return { forkOwner, branchName, defaultBranch };
+}
+
+// The deferred half of the Private path -- opens the PR from a fork+
+// branch that submitPhotoPrivate already pushed, whenever the
+// contributor actually decides to. Same PR body/title either path ends
+// up with, so review-panel.js sees no difference once a PR exists.
+async function openPrFromFork(upload) {
+  const session = BlaydeAuth.getSession();
+  if (!session) throw new Error("Not signed in.");
+  const [owner, repo] = ownerRepo(upload.repoUrl);
   const prBody = [
     `Photo for \`${upload.procedureId}\` (${upload.sectionHeading}).`,
     ``,
-    `Submitted via the Contributor Portal. Both required attestations were checked before this was allowed to submit:`,
+    `Submitted via the Contributor Portal's Private path. Both required attestations were checked before this was allowed to submit:`,
     `- This is the contributor's own photo, not sourced from elsewhere.`,
     `- Licensed CC-BY 4.0.`,
   ].join("\n");
-
   const pr = await githubApi(`/repos/${owner}/${repo}/pulls`, session.token, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
       title: `Add photo: ${upload.sectionHeading}`,
-      head: `${forkOwner}:${branchName}`,
-      base: defaultBranch,
+      head: `${upload.forkOwner}:${upload.branchName}`,
+      base: upload.defaultBranch,
       body: prBody,
     }),
   });
-
   return { number: pr.number, url: pr.html_url };
 }
 
+// Public path: no fork, no personal copy -- the Worker's own GitHub App
+// installation token creates a branch directly on the upstream repo and
+// opens the PR immediately. The browser never touches that credential;
+// it only sends the contributor's own App user-to-server token (proves a
+// real signed-in person is asking, and provides the login for
+// attribution), the same shape as indexer-review.js's submitNewVehicleProposal.
+async function submitPhotoPublic(upload) {
+  const session = BlaydeAuth.getAppSession();
+  if (!session) throw new Error(`Sign in for Public submit first.`);
+  const resp = await fetch(`${BlaydeAuth.AUTH_WORKER_URL}direct-contribute`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", Authorization: `Bearer ${session.token}` },
+    body: JSON.stringify({
+      repo_url: upload.repoUrl,
+      procedure_id: upload.procedureId,
+      section_heading: upload.sectionHeading,
+      photo_data_url: upload.photoDataUrl,
+      photo_filename: upload.photoFilename,
+    }),
+  });
+  const result = await resp.json().catch(() => ({}));
+  if (!resp.ok || result.error) throw new Error(result.error || `Submit failed (${resp.status}).`);
+  return { prUrl: result.prUrl };
+}
+
+// Submitting a saved DRAFT from My uploads defaults to Public (fastest,
+// matches the main flow's default radio choice) -- no mode selector
+// exists in this list, so this is the one place a default has to be
+// picked rather than asked. Signs in for the App inline if needed,
+// same as the main flow's separate prompt would, just without a modal
+// step since there's no larger form context to preserve here.
 async function markSubmitted(uploadId) {
   const upload = uploads.find((u) => u.id === uploadId);
-  if (!upload || upload.status === "submitted") return;
+  if (!upload || upload.status !== "draft") return;
+  if (!BlaydeAuth.getAppSession()) {
+    log(`Signing in for Public submit...`);
+    try {
+      await BlaydeAuth.signInWithGitHubApp();
+    } catch (err) {
+      log(`Sign-in failed: ${err.message}`);
+      return;
+    }
+  }
+  log(`Submitting publicly on ${upload.repoUrl} (opens the pull request immediately)...`);
+  try {
+    const pr = await submitPhotoPublic(upload);
+    upload.status = "submitted";
+    upload.prUrl = pr.prUrl;
+    saveUploads();
+    renderUploads();
+    log(`Submitted -- pull request opened: ${pr.prUrl}`);
+  } catch (err) {
+    log(`Submit failed: ${err.message}`);
+  }
+}
+
+// The deferred half of a Private submission -- pushes were already made
+// to the contributor's own fork at submit time; this is the separate,
+// explicit action that actually proposes it to reviewers, whenever the
+// contributor decides they're ready (or never, if they'd rather not).
+async function openPrForUpload(uploadId) {
+  const upload = uploads.find((u) => u.id === uploadId);
+  if (!upload || upload.status !== "forked") return;
   log(`Opening a pull request on ${upload.repoUrl}...`);
   try {
-    const pr = await submitPhotoToGitHub(upload);
+    const pr = await openPrFromFork(upload);
     upload.status = "submitted";
     upload.prNumber = pr.number;
     upload.prUrl = pr.url;
@@ -479,7 +594,7 @@ async function markSubmitted(uploadId) {
     renderUploads();
     log(`Submitted -- pull request #${pr.number} opened: ${pr.url}`);
   } catch (err) {
-    log(`Submit failed: ${err.message}`);
+    log(`Opening the pull request failed: ${err.message}`);
   }
 }
 
@@ -563,7 +678,8 @@ function renderUploads() {
           <div class="upload-actions">
             <button class="secondary" data-view="${u.id}">View</button>
             ${u.status === "draft" ? `<button data-submit="${u.id}">Submit</button>` : ""}
-            ${u.status !== "draft" ? (
+            ${u.status === "forked" ? `<button data-openpr="${u.id}">Open pull request</button>` : ""}
+            ${u.status !== "draft" && u.status !== "forked" ? (
               hasRequestedRemoval(u.id)
                 ? `<span class="sub" style="margin:0 0 0 6px; color:var(--mint);">Removal requested</span>`
                 : `<button class="secondary" data-remove="${u.id}">Request removal</button>`
@@ -595,6 +711,9 @@ function renderUploads() {
   });
   list.querySelectorAll("[data-submit]").forEach((btn) => {
     btn.addEventListener("click", () => markSubmitted(btn.dataset.submit));
+  });
+  list.querySelectorAll("[data-openpr]").forEach((btn) => {
+    btn.addEventListener("click", () => openPrForUpload(btn.dataset.openpr));
   });
 }
 
