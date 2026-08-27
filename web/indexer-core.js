@@ -56,10 +56,17 @@ function openIndexerDb() {
   });
 }
 
-async function saveReviewState(jobId, manifest) {
+// reviewChunkIdx travels with the manifest -- direct report: resuming
+// always landed back on chunk 1, forcing a maintainer deep into a large
+// document to click through dozens of "Next" pages just to get back
+// where they were, which also re-triggers a real, potentially-slow page
+// render for every chunk passed through along the way. Saving where
+// they actually were means a resume is a real resume, not just a
+// re-download of the same starting point.
+async function saveReviewState(jobId, manifest, reviewChunkIdx = 0) {
   const db = await openIndexerDb();
   const tx = db.transaction("reviewState", "readwrite");
-  tx.objectStore("reviewState").put({ jobId, manifest, updatedAt: Date.now() });
+  tx.objectStore("reviewState").put({ jobId, manifest, reviewChunkIdx, updatedAt: Date.now() });
   await new Promise((resolve, reject) => { tx.oncomplete = resolve; tx.onerror = () => reject(tx.error); });
   db.close();
 }
@@ -73,7 +80,7 @@ async function loadReviewState(jobId) {
     req.onerror = () => reject(req.error);
   });
   db.close();
-  return result ? result.manifest : null;
+  return result ? { manifest: result.manifest, reviewChunkIdx: result.reviewChunkIdx || 0 } : null;
 }
 
 async function clearReviewState(jobId) {
