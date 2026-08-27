@@ -15,7 +15,7 @@ const GITHUB_CLIENT_ID = "Ov23lijpNHggDgWfwxWa";
 // directly" / the Public contribute path, where the App's own
 // installation credential (never this token) does the actual write, so
 // the submitter never retains write access to what they just submitted.
-const GITHUB_APP_CLIENT_ID = "REPLACE_WITH_REAL_GITHUB_APP_CLIENT_ID";
+const GITHUB_APP_CLIENT_ID = "Iv23liGTA0ruM1Phtz8k";
 const REDIRECT_URI = "https://blaydemanual.com/auth/callback.html";
 const AUTH_WORKER_URL = "https://auth.blaydemanual.com/";
 // Two SEPARATE storage keys, not one shared slot with an authType field --

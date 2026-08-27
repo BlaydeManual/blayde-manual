@@ -24,6 +24,13 @@ const ALLOWED_ORIGIN = "https://blaydemanual.com";
 const REGISTRY_OWNER = "BlaydeManual";
 const REGISTRY_REPO = "registry";
 const SUBMISSION_LOG_REPO = "submission-log";
+// GitHub's REST API rejects any request with no User-Agent header --
+// 403, not a helpful error naming the real cause -- confirmed live: a
+// verified-good token, that authenticates fine everywhere else, still
+// failed every real-user check on this Worker specifically until this
+// was added. Cloudflare's fetch() doesn't set one automatically the way
+// curl/most HTTP clients do.
+const GITHUB_USER_AGENT = "blayde-manual-auth-worker";
 
 export default {
   async fetch(request, env) {
@@ -89,7 +96,7 @@ async function requireRealUser(request) {
   const userToken = auth.replace(/^Bearer\s+/i, "");
   if (!userToken) throw new Error("Not signed in.");
   const resp = await fetch("https://api.github.com/user", {
-    headers: { Authorization: `Bearer ${userToken}`, Accept: "application/vnd.github+json" },
+    headers: { Authorization: `Bearer ${userToken}`, Accept: "application/vnd.github+json", "User-Agent": GITHUB_USER_AGENT },
   });
   if (!resp.ok) throw new Error("Could not verify signed-in user.");
   const user = await resp.json();
@@ -140,13 +147,13 @@ function base64url(bytes) {
 async function getInstallationToken(env) {
   const jwt = await makeAppJwt(env);
   const instResp = await fetch(`https://api.github.com/orgs/${REGISTRY_OWNER}/installation`, {
-    headers: { Authorization: `Bearer ${jwt}`, Accept: "application/vnd.github+json" },
+    headers: { Authorization: `Bearer ${jwt}`, Accept: "application/vnd.github+json", "User-Agent": GITHUB_USER_AGENT },
   });
   if (!instResp.ok) throw new Error(`Could not find the App's installation on ${REGISTRY_OWNER} (${instResp.status}).`);
   const installation = await instResp.json();
   const tokenResp = await fetch(`https://api.github.com/app/installations/${installation.id}/access_tokens`, {
     method: "POST",
-    headers: { Authorization: `Bearer ${jwt}`, Accept: "application/vnd.github+json" },
+    headers: { Authorization: `Bearer ${jwt}`, Accept: "application/vnd.github+json", "User-Agent": GITHUB_USER_AGENT },
   });
   if (!tokenResp.ok) throw new Error(`Could not create an installation access token (${tokenResp.status}).`);
   const tokenData = await tokenResp.json();
@@ -159,6 +166,7 @@ async function ghApi(path, installationToken, options = {}) {
     headers: {
       Authorization: `Bearer ${installationToken}`,
       Accept: "application/vnd.github+json",
+      "User-Agent": GITHUB_USER_AGENT,
       ...(options.headers || {}),
     },
   });
