@@ -198,6 +198,63 @@ before this existed -- those need a second maintainer added first,
 same as any new one, before branch protection can be turned on for
 them without immediately freezing their existing review flow.
 
+## Real merge-time validation for photo contributions
+
+`review-panel.js`'s Accept no longer merges a PR directly with the
+maintainer's own token. It calls `POST /accept-photo-pr`, which
+independently re-verifies the caller's real permission (same pattern
+as `/manage-collaborator`), then re-checks the PR's *current* state
+with the installation token, then merges:
+
+1. **Negative file allowlist.** The PR's diff must be exactly one
+   `added` file under `images/` matching the real contributed-photo
+   naming convention. Anything else -- most seriously a modified
+   `.github/workflows/*.yml` riding along with the photo, which merged
+   into an org-owned repo means real code execution in this org's CI --
+   is a hard block.
+2. **Content re-validated at the current commit, not a cached one.**
+   The same magic-byte/dimension check `/direct-contribute` already
+   does, plus a new scan for embedded metadata (JPEG APP1/APP13, PNG
+   eXIf/tEXt/zTXt/iTXt, WEBP EXIF/XMP chunks) -- presence-only, not
+   full parsing. This exists specifically for the Private (fork-based)
+   path: a contributor can bypass the site entirely and push straight
+   to their own fork, skipping `contribute.js`'s canvas re-encode --
+   the actual thing that strips EXIF/GPS/camera metadata. A hash of
+   "sanitized" content can't catch that case: the Worker never sees
+   Private-path bytes at submission time, so there's nothing
+   trustworthy to hash against. Scanning the real bytes right before
+   merge is the one check that works regardless of how the file
+   arrived.
+3. **Merge pinned to the SHA just checked**, closing the gap a fork
+   owner otherwise has for as long as their branch stays open: nothing
+   previously stopped them swapping the photo's content, or the file
+   set, between when a maintainer looked and when they clicked Accept.
+
+Both are hard blocks, matching the vehicle-approval checks above, not
+a warning a human can click past. Verified via a synthetic Node test
+against the real handler: a clean single-photo PR merges; an extra
+file, an EXIF-carrying photo, and an under-permissioned caller are
+each rejected with a specific, real error.
+
+**The gap this does NOT close, stated plainly:** these checks only run
+when Accept is clicked through this site. Someone with real push
+access can still merge the same PR natively -- github.com's own merge
+button, or `git`/the API directly -- and none of the checks above ever
+run, since they're application logic, not something GitHub itself
+enforces. Branch protection's `required_approving_review_count: 2`
+still applies either way (that part IS GitHub-native), so a lone bad
+actor can't merge alone -- but two real reviewers merging natively
+would skip the file-allowlist and metadata scan entirely. The fix that
+would actually close this is a required CI status check (a GitHub
+Actions workflow running the same two checks on every PR, wired into
+branch protection as a required check) -- GitHub-enforced the same way
+the review-count requirement is, regardless of which UI initiates the
+merge. Not built yet; tracked in ROADMAP.md alongside a separate,
+complementary idea (a periodic job auto-closing stale/malformed open
+PRs) -- that one cleans up what's left sitting open, it doesn't stop a
+bad merge from completing, so it's not a substitute for the required
+check.
+
 ## What's never collected or stored
 
 No analytics, no tracking, no server-side logs of what anyone patches
@@ -297,6 +354,13 @@ controls as proven in production, not just in a mocked test.
   is its own form of protection until approval).
 - CI validates contributed photos; it does not yet validate a
   `manifest.json` change on its own (a moved bbox, an edited status).
+- **Photo-PR file-allowlist and metadata scan only run through this
+  site's own Accept button** -- a native GitHub merge (github.com's own
+  button, or `git`/the API directly) by someone with real push access
+  skips both, since neither is GitHub-native enforcement the way branch
+  protection's review-count requirement is. See "Real merge-time
+  validation for photo contributions" above for the required-CI-check
+  fix that would close this for real; not built yet.
 - No CLA/DCO exists yet for outside *code* contributions to the
   tooling repo -- this is a hard gate: no such contribution is
   accepted until one does.
