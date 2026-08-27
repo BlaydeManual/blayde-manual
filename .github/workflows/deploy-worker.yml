@@ -1,0 +1,28 @@
+name: Deploy auth-worker
+
+# Auto-deploys the Cloudflare Worker on every push to main that touches
+# auth-worker/ -- replaces the manual "paste the file into Cloudflare's
+# dashboard" process this project relied on through its whole GitHub App
+# migration. Scoped to the auth-worker path so unrelated changes
+# elsewhere in the repo (web/, docs, ROADMAP.md) never trigger a
+# redeploy of code that didn't change.
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - "auth-worker/**"
+  workflow_dispatch: {} # manual re-run from the Actions tab, e.g. after a secret rotation
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - name: Deploy to Cloudflare Workers
+        uses: cloudflare/wrangler-action@v3
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          workingDirectory: auth-worker

@@ -339,6 +339,20 @@ async function handleDirectContribute(request, env) {
   if (!/^[a-z0-9][a-z0-9_-]{0,120}$/i.test(procedureId)) {
     return json({ error: "procedure_id has an unexpected shape -- refusing rather than risk writing outside images/." }, 400);
   }
+
+  // Real content validation, not just a data-URL shape check -- catches
+  // accidental garbage (corrupt uploads, near-empty files, absurd
+  // dimensions) before it ever lands in a repo, the same way vehicle
+  // approval independently re-verifies rather than trusting the
+  // client's claim. Checked before touching GitHub at all: no point
+  // creating a real branch on the upstream repo for a file that's
+  // about to be rejected anyway.
+  const dataUrlMatch = photoDataUrl.match(/^data:image\/(?:jpeg|png|webp);base64,(.+)$/);
+  if (!dataUrlMatch) return json({ error: "photo_data_url isn't a recognized image data URL." }, 400);
+  const content = dataUrlMatch[1];
+  const photoValidation = validatePhoto(base64ToBytes(content));
+  if (!photoValidation.valid) return json({ error: `Rejected: ${photoValidation.error}` }, 400);
+
   await requireRegisteredRepo(repoUrl);
 
   const [owner, repo] = new URL(repoUrl).pathname.replace(/^\//, "").split("/");
@@ -363,9 +377,6 @@ async function handleDirectContribute(request, env) {
   });
 
   const ext = (photoFilename?.match(/\.(jpe?g|png|webp)$/i)?.[0] || ".jpg").toLowerCase();
-  const dataUrlMatch = photoDataUrl.match(/^data:image\/(?:jpeg|png|webp);base64,(.+)$/);
-  if (!dataUrlMatch) return json({ error: "photo_data_url isn't a recognized image data URL." }, 400);
-  const content = dataUrlMatch[1];
   let path = `images/${procedureId}__by_${login}${ext}`;
   for (let altN = 2; ; altN++) {
     try {
@@ -582,6 +593,36 @@ async function handleApproveVehicle(request, env) {
     });
   } catch (e) { /* approval itself already succeeded; a maintainer can always be added manually via My Vehicles */ }
 
+  // Real dual-approval on photo contributions, enforced by GitHub itself
+  // (branch protection), not app logic -- a maintainer with real push
+  // access can always merge directly via git/GitHub, bypassing anything
+  // review-panel.js alone would check, so app-level "requires 2 reviews"
+  // would be exactly as bypassable as no check at all. This is the only
+  // version that can't be. enforce_admins stays false, matching the
+  // same deliberate org-wide escape-hatch decision already made for the
+  // main tooling repos. Real operational consequence, not hidden: a
+  // vehicle with only ONE real maintainer (every vehicle, right after
+  // this exact approval, since the auto-grant above just created its
+  // first) cannot merge ANY photo PR until a second real maintainer is
+  // added -- by design, since one person approving their own photo
+  // isn't dual anything. Best-effort like the grant above; failure here
+  // doesn't undo the approval, but is worth actually checking, not just
+  // assuming succeeded.
+  let branchProtectionApplied = false;
+  try {
+    await ghApi(`/repos/${REGISTRY_OWNER}/${repoName}/branches/${repoInfo.default_branch}/protection`, installationToken, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        required_status_checks: null,
+        enforce_admins: false,
+        required_pull_request_reviews: { required_approving_review_count: 2 },
+        restrictions: null,
+      }),
+    });
+    branchProtectionApplied = true;
+  } catch (e) { /* approval itself already succeeded; surfaced in the response either way, not silently swallowed */ }
+
   const registryFile = await ghApi(`/repos/${REGISTRY_OWNER}/${REGISTRY_REPO}/contents/registry.json`, installationToken);
   const registryData = JSON.parse(base64ToUtf8(registryFile.content));
   registryData.vehicles = registryData.vehicles || [];
@@ -603,7 +644,7 @@ async function handleApproveVehicle(request, env) {
     }),
   });
 
-  return json({ approved: true, repoUrl: `https://github.com/${REGISTRY_OWNER}/${repoName}` });
+  return json({ approved: true, repoUrl: `https://github.com/${REGISTRY_OWNER}/${repoName}`, branchProtectionApplied });
 }
 
 // Lets a real vehicle maintainer manage their own repo's collaborators
@@ -674,6 +715,117 @@ function base64ToUtf8(b64) {
   const bytes = new Uint8Array(bin.length);
   for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
   return new TextDecoder().decode(bytes);
+}
+
+function base64ToBytes(b64) {
+  const bin = atob(b64.replace(/\n/g, ""));
+  const bytes = new Uint8Array(bin.length);
+  for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+  return bytes;
+}
+
+// ---- real, dependency-free image validation for /direct-contribute --
+// magic bytes + real header-parsed dimensions, no full pixel decode
+// needed. Verified against real generated JPEG/PNG/WEBP fixtures
+// (flat-color and photo-like-noise, to confirm compression-size
+// variance doesn't cause false rejections) before shipping. ----
+const PHOTO_MIN_DIMENSION = 200; // below this, not a real "photo of the machine"
+const PHOTO_MAX_DIMENSION = 8000; // above this, almost certainly not a real camera photo
+const PHOTO_MAX_BYTES = 20 * 1024 * 1024; // generous, but bounds storage abuse
+// Deliberately no minimum byte size -- confirmed live against a real,
+// validly-encoded 800x600 WEBP that compressed to under 1KB: byte size
+// varies too much by content/format to be a reliable "too small" signal
+// on its own. Dimension checking below is the real floor.
+
+function detectImageFormat(bytes) {
+  if (bytes.length >= 8 && bytes[0] === 0x89 && bytes[1] === 0x50 && bytes[2] === 0x4e && bytes[3] === 0x47) return "png";
+  if (bytes.length >= 3 && bytes[0] === 0xff && bytes[1] === 0xd8 && bytes[2] === 0xff) return "jpeg";
+  if (bytes.length >= 12 && bytes[0] === 0x52 && bytes[1] === 0x49 && bytes[2] === 0x46 && bytes[3] === 0x46
+      && bytes[8] === 0x57 && bytes[9] === 0x45 && bytes[10] === 0x42 && bytes[11] === 0x50) return "webp";
+  return null;
+}
+
+function readUint32BE(bytes, offset) {
+  return (bytes[offset] << 24 | bytes[offset + 1] << 16 | bytes[offset + 2] << 8 | bytes[offset + 3]) >>> 0;
+}
+function readUint16BE(bytes, offset) {
+  return (bytes[offset] << 8) | bytes[offset + 1];
+}
+function readUint16LE(bytes, offset) {
+  return bytes[offset] | (bytes[offset + 1] << 8);
+}
+
+// PNG: fixed-offset IHDR chunk -- signature(8) + length(4) + "IHDR"(4) + width(4) + height(4).
+function pngDimensions(bytes) {
+  if (bytes.length < 24) return null;
+  return { width: readUint32BE(bytes, 16), height: readUint32BE(bytes, 20) };
+}
+
+// JPEG: scan markers for a Start-Of-Frame segment (0xC0-0xCF, excluding
+// 0xC4 DHT / 0xC8 JPG / 0xCC DAC, which aren't real SOF markers).
+function jpegDimensions(bytes) {
+  let offset = 2; // skip the initial FFD8
+  while (offset + 9 < bytes.length) {
+    if (bytes[offset] !== 0xff) { offset++; continue; }
+    const marker = bytes[offset + 1];
+    if (marker === 0xd8 || marker === 0x01 || (marker >= 0xd0 && marker <= 0xd7)) { offset += 2; continue; }
+    if (marker === 0xd9) break; // EOI, no SOF found
+    const segmentLength = readUint16BE(bytes, offset + 2);
+    const isSof = marker >= 0xc0 && marker <= 0xcf && marker !== 0xc4 && marker !== 0xc8 && marker !== 0xcc;
+    if (isSof) return { height: readUint16BE(bytes, offset + 5), width: readUint16BE(bytes, offset + 7) };
+    offset += 2 + segmentLength;
+  }
+  return null;
+}
+
+// WEBP: three sub-formats inside the RIFF container, each encodes
+// dimensions differently.
+function webpDimensions(bytes) {
+  const fourcc = String.fromCharCode(bytes[12], bytes[13], bytes[14], bytes[15]);
+  if (fourcc === "VP8X") {
+    // 24-bit width-1 / height-1, little-endian, at a fixed offset within the chunk.
+    return {
+      width: (bytes[24] | (bytes[25] << 8) | (bytes[26] << 16)) + 1,
+      height: (bytes[27] | (bytes[28] << 8) | (bytes[29] << 16)) + 1,
+    };
+  }
+  if (fourcc === "VP8 ") {
+    // Lossy: 3-byte frame tag, 3-byte start code (9d 01 2a), then two
+    // 16-bit little-endian fields -- lower 14 bits are the dimension.
+    if (bytes[23] !== 0x9d || bytes[24] !== 0x01 || bytes[25] !== 0x2a) return null;
+    return { width: readUint16LE(bytes, 26) & 0x3fff, height: readUint16LE(bytes, 28) & 0x3fff };
+  }
+  if (fourcc === "VP8L") {
+    // Lossless: 1-byte signature (0x2F), then a 32-bit little-endian field
+    // packing 14-bit width-1 and 14-bit height-1.
+    if (bytes[20] !== 0x2f) return null;
+    const b0 = bytes[21], b1 = bytes[22], b2 = bytes[23], b3 = bytes[24];
+    return { width: (((b1 & 0x3f) << 8) | b0) + 1, height: (((b3 & 0x0f) << 10) | (b2 << 2) | (b1 >> 6)) + 1 };
+  }
+  return null;
+}
+
+// Returns { valid: true, format, width, height } or { valid: false, error }.
+function validatePhoto(bytes) {
+  if (bytes.length > PHOTO_MAX_BYTES) return { valid: false, error: `file is ${(bytes.length / 1024 / 1024).toFixed(1)}MB -- larger than allowed` };
+
+  const format = detectImageFormat(bytes);
+  if (!format) return { valid: false, error: "not a real JPEG, PNG, or WEBP file (magic bytes don't match)" };
+
+  let dims;
+  try {
+    dims = format === "png" ? pngDimensions(bytes) : format === "jpeg" ? jpegDimensions(bytes) : webpDimensions(bytes);
+  } catch (e) {
+    return { valid: false, error: `couldn't read ${format} dimensions: ${e.message}` };
+  }
+  if (!dims || !dims.width || !dims.height) return { valid: false, error: `couldn't determine ${format} image dimensions -- file may be corrupt` };
+  if (dims.width < PHOTO_MIN_DIMENSION || dims.height < PHOTO_MIN_DIMENSION) {
+    return { valid: false, error: `image is only ${dims.width}x${dims.height} -- too small to be a useful photo` };
+  }
+  if (dims.width > PHOTO_MAX_DIMENSION || dims.height > PHOTO_MAX_DIMENSION) {
+    return { valid: false, error: `image is ${dims.width}x${dims.height} -- larger than allowed` };
+  }
+  return { valid: true, format, width: dims.width, height: dims.height };
 }
 
 async function parseJson(request) {

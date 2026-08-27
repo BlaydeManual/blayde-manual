@@ -285,8 +285,15 @@ document.getElementById("orgApproveBtn").addEventListener("click", async () => {
     // instead of leaving the just-approved gallery sitting on screen.
     document.getElementById("orgReviewArea").style.display = "none";
     const summaryCard = document.getElementById("orgApproveSummaryCard");
+    // branchProtectionApplied surfaced explicitly, not assumed -- this
+    // repo requires a second real maintainer before ANY photo PR can
+    // merge (dual-approval, enforced by GitHub itself), so a maintainer
+    // needs to know right away if that's not actually active yet.
+    const dualApprovalNote = result.branchProtectionApplied
+      ? `Dual-approval is active on this repo -- it needs a second real maintainer before any photo PR can merge.`
+      : `<span style="color:#ffcc66;">Could not confirm dual-approval branch protection was applied -- check this repo's branch protection settings directly.</span>`;
     document.getElementById("orgApproveSummaryText").innerHTML = `${orgCurrentEntry.manifest.vehicle} -- ${orgCurrentEntry.manifest.edition_id}. `
-      + `<a href="${result.repoUrl}" target="_blank" rel="noopener">Repo</a> is now public.`;
+      + `<a href="${result.repoUrl}" target="_blank" rel="noopener">Repo</a> is now public. ${dualApprovalNote}`;
     summaryCard.style.display = "block";
     renderPendingList();
   } catch (e) {

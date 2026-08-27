@@ -145,12 +145,12 @@ Checked directly, not assumed:
   to test this live against** (`registry.json` is still empty); blocked
   on Tier 4's 4.7 creating the first one. See Tier 5 below.
 
-**Follow-up, not blocking**: the Worker was updated via a manual paste
-into the dashboard editor, not `wrangler deploy` -- fine for getting
-unblocked now, but means the NEXT code change to this file needs the
-same manual step again unless `wrangler deploy` (or a git-connected
-Cloudflare Workers Build) gets set up properly. Worth doing before this
-becomes a recurring manual chore.
+**Closed, 2026-08-27**: the Worker now deploys itself. `.github/workflows/deploy-worker.yml`
+runs `wrangler deploy` on every push to `main` touching `auth-worker/` --
+the manual dashboard-paste process this note used to warn about is no
+longer the normal path (see `auth-worker/README.md`). Needs a one-time
+`CLOUDFLARE_API_TOKEN`/`CLOUDFLARE_ACCOUNT_ID` GitHub Actions secret
+setup before the first auto-deploy can run.
 
 **Where this stands, 2026-08-27 (later same day):** a real vehicle
 (`suzuki-sv650-1999`, hypnolope's real 415-page indexing job) went
