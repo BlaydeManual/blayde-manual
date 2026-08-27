@@ -6,6 +6,20 @@ the checklist for actually proving each control does that, against the
 real, live infrastructure -- run through before merging, and again
 after each deploy step, not written once and forgotten.
 
+**Real bug found and fixed during this live pass, not caught by any
+synthetic test**: every GitHub API call the Worker makes was missing a
+`User-Agent` header, which GitHub's API rejects outright (403) --
+confirmed against GitHub's own docs, not guessed. This silently broke
+every single authenticated flow (`requireRealUser`, installation-token
+creation, and everything routed through the shared `ghApi` helper --
+which is all four privileged endpoints). Caught only because a live
+token, verified working directly against GitHub, still failed through
+this Worker specifically -- exactly the scenario this whole document
+exists to catch, and exactly why "the mocked test suite passes" was
+never treated as equivalent to "this actually works." Fixed; **needs
+one more manual redeploy** (same dashboard-paste process as before)
+before any Tier 2+ test below can produce a real result.
+
 ## What's already been verified, and how
 
 Two different kinds of verification happened before this document
@@ -21,41 +35,57 @@ existed, and neither substitutes for the other:
   running in production right now* behaves as expected -- which,
   critically, is **not yet this PR's code** (see below).
 
-## Ground truth as of this pass (checked live, 2026-08-26)
+## Ground truth as of this pass (checked live, 2026-08-26, updated twice same day)
 
-Checked directly, not assumed:
+Checked directly, not assumed -- three passes so far:
 
-- **The deployed Worker is still the OLD code.** `POST /app-token`,
-  `POST /direct-submit`, and `GET /pending-vehicles` all responded with
-  the OLD single-handler's exact error shapes (`"missing code"` for a
-  POST without a `code` field, `"method not allowed"` for a GET) --
-  none of this PR's new routing or endpoints are live. Merging this PR
-  alone does **not** deploy it; a separate `wrangler deploy` is
-  required (see auth-worker/README.md).
-- **No GitHub App is registered yet.** `gh api orgs/BlaydeManual/installations`
-  shows exactly one installation: Cloudflare's own Pages/Workers
-  deploy integration. The App this PR's code expects doesn't exist.
-- **`BlaydeManual/submission-log` doesn't exist yet** (`404` on a
-  direct check).
-- **`BlaydeManual` has exactly one member** (`TheBlayde`, role
-  `admin`). There is currently no second real account to test
-  "authenticated non-member" or "member-but-not-admin" against with a
-  genuinely different permission level in the same org.
+- **The Worker's new code is now live and confirmed working**, deployed
+  via a manual paste into the Cloudflare dashboard's code editor (not
+  yet `wrangler deploy` -- see the follow-up note at the bottom of this
+  section). Re-ran the Tier 1 anonymous checks below and all four
+  privileged endpoints now correctly return `{"error":"Not signed in."}`
+  instead of the old handler's error shapes. Also confirmed the auth
+  check runs BEFORE any other validation (e.g. a `vehicle_slug:
+  "registry"` reserved-name attempt with no auth still just says "Not
+  signed in.," not "collides with a reserved repo name" -- no internal
+  validation rules leak to an anonymous caller).
+- **The GitHub App (`blayde-manual-direct`) is registered and
+  installed** on BlaydeManual (`gh api orgs/BlaydeManual/installations`
+  shows it alongside Cloudflare's own integration). Its Client ID is in
+  `web/auth.js`.
+- **`BlaydeManual/submission-log` exists** (public, as intended).
+- **`hypnolope` still has a PENDING invitation**, not yet accepted
+  (`gh api orgs/BlaydeManual/members/hypnolope` still 404s as of this
+  check). Needs accepting from that account before Tier 2/3 below can
+  run for real.
+- **`BlaydeManual` still has exactly one ACTIVE member** (`TheBlayde`,
+  role `admin`) until that invitation is accepted.
 - **registry.json is live and real, currently empty** (`{"vehicles":
   []}`) -- no vehicles registered yet at all.
 - **The deployed site's `auth.js` doesn't have `signInWithGitHubApp`
-  either** -- the Pages deploy hasn't picked up this branch.
+  yet** -- the Pages deploy hasn't picked up this branch. Needed before
+  any real browser-based sign-in test (Tier 2.1/2.2) can run, even once
+  hypnolope accepts.
 
-**What this means:** almost everything below cannot be executed for
-real until (1) this PR is merged AND deployed to Pages, (2) the Worker
-is redeployed via `wrangler deploy` with the new secrets provisioned,
-and (3) the GitHub App is actually registered and installed. Each item
-below says explicitly whether it was checked live already, checked
-synthetically only, or can't be checked at all until deploy.
+**Follow-up, not blocking**: the Worker was updated via a manual paste
+into the dashboard editor, not `wrangler deploy` -- fine for getting
+unblocked now, but means the NEXT code change to this file needs the
+same manual step again unless `wrangler deploy` (or a git-connected
+Cloudflare Workers Build) gets set up properly. Worth doing before this
+becomes a recurring manual chore.
+
+**What's still blocking a full pass:** (1) this PR needs merging and
+the site needs to actually deploy to Pages (for `signInWithGitHubApp`
+to exist client-side), (2) hypnolope needs to accept the pending
+invitation. Everything else required for Tier 1 is now done and
+confirmed. Each item below states explicitly whether it's checked live,
+checked only synthetically, or still pending one of these two things.
 
 ## Already checked live, today, against real infrastructure
 
-These don't depend on this PR's new code and were verified directly:
+Cross-cutting checks that don't fit neatly into one tier row, verified
+directly (Tier 1's own table below has the endpoint-by-endpoint detail,
+now that the new code is confirmed deployed):
 
 | Check | Result |
 |---|---|
@@ -65,6 +95,7 @@ These don't depend on this PR's new code and were verified directly:
 | Anonymous read of `registry.json` works (by design -- it's meant to be public) | PASS |
 | A nonexistent repo path returns a real 404, not a 200 with fake data (control test) | PASS |
 | `blayde-manual`, `registry`, `vehicle-scaffold` are genuinely public repos today | Confirmed |
+| Auth check runs before ANY other validation (reserved-name check, shape checks) on every privileged endpoint | PASS -- an anonymous reserved-name attempt still just gets "Not signed in.," no internal rule leaks pre-auth |
 
 ## The testing plan, by identity tier
 
@@ -85,18 +116,24 @@ Worker is redeployed and the GitHub App exists.
 | # | Call | Expected | Status |
 |---|---|---|---|
 | 1.1 | `POST /` with a garbage `code` | `400`, clean error, no leak | **Live, PASS** |
-| 1.2 | `POST /app-token` with a garbage `code` | `400`, clean error | Pending (endpoint not deployed) |
-| 1.3 | `POST /direct-submit` with no `Authorization` header | `400`/`500`, `"Not signed in."` | Synthetic (implied by `requireRealUser`'s missing-token branch, not separately isolated) -- **re-run live after deploy** |
-| 1.4 | `POST /direct-contribute` with no `Authorization` header | Same as 1.3 | Pending |
-| 1.5 | `GET /pending-vehicles` with no `Authorization` header | Same as 1.3 | Pending |
-| 1.6 | `POST /approve-vehicle` with no `Authorization` header | Same as 1.3 | Pending |
-| 1.7 | `Authorization: Bearer garbage-not-a-real-token` on any of the above | Rejected at `requireRealUser`'s `GET /user` check (GitHub itself 401s) | Pending |
-| 1.8 | Once a direct-submit repo exists: `GET https://api.github.com/repos/BlaydeManual/<slug>` with no token | `404` (private repos aren't visible to anonymous requests -- this is GitHub's own ACL, not our code, but worth confirming it actually holds) | Pending (no direct-submit repo exists yet) |
+| 1.2 | `POST /app-token` with a garbage `code` | `400`, clean error | **Live, PASS** -- routes correctly, real GitHub error surfaced (`"The code passed is incorrect or expired."`) |
+| 1.3 | `POST /direct-submit` with no `Authorization` header | `500`, `{"error":"Not signed in."}` | **Live, PASS** |
+| 1.4 | `POST /direct-contribute` with no `Authorization` header | Same as 1.3 | **Live, PASS** |
+| 1.5 | `GET /pending-vehicles` with no `Authorization` header | Same as 1.3 | **Live, PASS** |
+| 1.6 | `POST /approve-vehicle` with no `Authorization` header | Same as 1.3 | **Live, PASS** |
+| 1.6b | `POST /direct-submit` with no auth AND `vehicle_slug: "registry"` (a reserved name) | Still just `"Not signed in."` -- auth check must run before any other validation, so no internal rule ever leaks to an unauthenticated caller | **Live, PASS** |
+| 1.7 | `Authorization: Bearer garbage-not-a-real-token` on any of the above | Rejected at `requireRealUser`'s `GET /user` check (GitHub itself 401s) | **Live, PASS** -- `{"error":"Could not verify signed-in user."}` |
+| 1.8 | Once a direct-submit repo exists: `GET https://api.github.com/repos/BlaydeManual/<slug>` with no token | `404` (private repos aren't visible to anonymous requests -- this is GitHub's own ACL, not our code, but worth confirming it actually holds) | Pending (no direct-submit repo exists yet -- needs a real Tier 2 submission first) |
 | 1.9 | OPTIONS preflight from an arbitrary origin | CORS doesn't reflect it | **Live, PASS** |
 
 ### Tier 2: Authenticated, real GitHub account, NOT a BlaydeManual member
 
-**Needs a second real GitHub account** -- a personal secondary account, or ask a teammate/friend to run these with their own login. `TheBlayde` (the only account available in this environment) is already an org admin and can't represent this tier.
+**Backlogged -- the window to test this with hypnolope's account is gone.** hypnolope accepted the pending org invitation before this tier could be run against it (confirmed live: `role: member, state: active` as of this check), so it can no longer represent "authenticated, not yet a member." Needs a **third** real GitHub account, used once and specifically NOT invited to the org, to actually cover the membership-gate rows (2.4, 2.8). Not blocking the rest of this plan:
+- **2.6, the critical repo-scope fix, is unaffected by membership** -- `requireRegisteredRepo` doesn't check who's asking, only what `repo_url` is, so this still needs live verification but can run as part of Tier 3 with hypnolope's account just as validly as it could have run here.
+- **2.1, 2.2, 2.3, 2.5, 2.7, 2.9** are also unaffected by membership and can run under Tier 3 instead.
+- **2.4 and 2.8 specifically** (proving a non-member gets rejected from the queue/approval) are what's genuinely lost until a third account exists -- logged here as backlog, not silently dropped.
+
+`TheBlayde` (admin) still can't stand in for any of this tier either way.
 
 | # | Call | Expected | Status |
 |---|---|---|---|
@@ -137,15 +174,16 @@ Available now via `TheBlayde` for the parts that don't need a real pending submi
 
 ## Sequencing (do these in order, not all at once)
 
-1. Merge this PR (code only -- confirmed above this does NOT deploy anything by itself).
-2. Deploy the site (Cloudflare Pages picks up the branch automatically per existing setup, or trigger manually) -- re-run the Tier 1 anonymous checks against the new Worker routes to confirm the deploy actually happened (repeat the "ground truth" check at the top of this doc; the error shapes should change to match the NEW code, e.g. `/direct-submit` with no auth should now say `"Not signed in."` instead of `"missing code"`).
-3. Register the GitHub App, install on BlaydeManual (all repos), provision all four Wrangler secrets, create `BlaydeManual/submission-log`, `wrangler deploy` the Worker.
-4. Re-run Tier 1 in full (all anonymous checks against the real, new endpoints).
-5. Run Tier 2 with a real second account -- **stop and fix before continuing if 2.4 or 2.6 don't behave as expected**, since those are exactly the two fixes from the security audit.
-6. Run Tier 3 with a real member-role account.
-7. Run Tier 4 items 4.1-4.6 (everything except the real approve) using one throwaway real direct-submit repo created via 2.3.
+1. ~~Register the GitHub App, install on BlaydeManual (all repos), provision the four secrets, create `BlaydeManual/submission-log`~~ -- **done**.
+2. ~~Deploy the Worker's new code~~ -- **done** (via manual dashboard paste; see the follow-up note above about setting up `wrangler deploy` properly before the next change).
+3. ~~Re-run Tier 1 in full~~ -- **done, all PASS** (see the Tier 1 table above).
+4. ~~Have hypnolope accept the org invitation~~ -- **done** (`role: member, state: active`, confirmed live). This closed the window to run true Tier 2 (non-member) tests against that account -- **backlogged**, see Tier 2's note; needs a third, never-invited account later, not blocking.
+5. Merge this PR and confirm the site deploys to Pages -- check `https://blaydemanual.com/auth.js` contains `signInWithGitHubApp` afterward as the deploy signal.
+6. Run Tier 3 in full with hypnolope's account (now a real member). This also creates the real direct-submit repo Tier 4 needs. **Stop and fix before continuing if 2.6/repo-scope validation doesn't behave as expected** (run as part of this tier now) -- that's the critical fix from the security audit.
+7. Run Tier 4 items 4.1-4.6 (everything except the real approve) using the repo created in step 6.
 8. Only once 4.1-4.6 all pass cleanly: run 4.7 (the real approval) and 4.8, on a real, intentionally-throwaway test vehicle -- not a real manual -- since this is the one step in the whole plan that makes a real repo public and writes to the real registry.
-9. Clean up: remove the test account from the org if one was added just for this, and decide whether to keep or delete the throwaway approved test-vehicle repo/registry entry.
+9. Clean up: decide whether to keep or delete the throwaway approved test-vehicle repo/registry entry.
+10. **Backlog item**: run a real Tier 2 pass with a third, never-invited GitHub account, specifically for rows 2.4 and 2.8 (the membership-gate rejections) -- the only two checks in this whole plan that genuinely require someone who has never had any standing in the org.
 
 ## What this plan does NOT cover
 
