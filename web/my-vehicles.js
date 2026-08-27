@@ -98,11 +98,18 @@ async function renderVehicleTeams() {
 // list only ever contains people who already accepted, so a roster
 // built from that alone would make someone just invited look like the
 // invite silently did nothing.
+//
+// affiliation=direct is required, not the default -- confirmed live:
+// without it, GitHub's default (affiliation=all) also returns every
+// org member who merely has the org's default repository permission
+// (read-only for this org), not just people with a real, explicit
+// grant on THIS repo. Every BlaydeManual member would otherwise show
+// up on every vehicle's roster as a phantom "read" maintainer.
 async function fetchRoster(repoUrl) {
   const { owner, repo } = ownerRepoFromUrl(repoUrl);
   const token = BlaydeAuth.getSession().token;
   const [collabResp, inviteResp] = await Promise.all([
-    fetch(`https://api.github.com/repos/${owner}/${repo}/collaborators?per_page=100`, { headers: ghHeaders(token) }),
+    fetch(`https://api.github.com/repos/${owner}/${repo}/collaborators?affiliation=direct&per_page=100`, { headers: ghHeaders(token) }),
     fetch(`https://api.github.com/repos/${owner}/${repo}/invitations?per_page=100`, { headers: ghHeaders(token) }),
   ]);
   const collaborators = collabResp.ok ? await collabResp.json() : [];
