@@ -31,21 +31,28 @@ const MOCK_MAINTAINER = {
 // without a second round-trip.
 let maintainedRepos = [];
 
-// Real repo discovery -- GET /user/repos with affiliation=collaborator
-// covers both ways someone can legitimately have write access to a
-// vehicle repo: being a BlaydeManual org member with an explicit
-// collaborator grant, or being an outside collaborator who was invited
-// without ever joining the org at all. Filtered to push-or-better (pull
+// Real repo discovery -- GET /user/repos with
+// affiliation=collaborator,organization_member covers every real way
+// someone can have write access to a vehicle repo: an outside
+// collaborator invited without ever joining the org (`collaborator`),
+// AND a real org member/owner whose access comes from their org role
+// rather than an explicit per-repo invite (`organization_member`) --
+// confirmed live this second case is real and NOT covered by
+// `collaborator` alone: an org owner with full admin access on every
+// BlaydeManual repo returned zero results under `affiliation=
+// collaborator` by itself. Filtered to push-or-better below (pull
 // alone can't merge a PR or manage collaborators, so it doesn't make
-// someone a maintainer here) and cross-checked against the real,
-// public registry -- the same repo-scope guard review-panel.js already
-// applies, since "GitHub says I can push here" and "this is actually a
-// registered Blayde Manual vehicle repo" are two different questions.
+// someone a maintainer here -- this is what keeps a plain member with
+// only the org's default read permission from showing up here) and
+// cross-checked against the real, public registry -- the same
+// repo-scope guard review-panel.js already applies, since "GitHub says
+// I can push here" and "this is actually a registered Blayde Manual
+// vehicle repo" are two different questions.
 async function discoverMaintainedRepos() {
   const session = BlaydeAuth.getSession();
   if (!session) return [];
   try {
-    const resp = await fetch("https://api.github.com/user/repos?affiliation=collaborator&per_page=100", {
+    const resp = await fetch("https://api.github.com/user/repos?affiliation=collaborator,organization_member&per_page=100", {
       headers: { Authorization: `Bearer ${session.token}`, Accept: "application/vnd.github+json" },
     });
     if (!resp.ok) return [];
