@@ -5,6 +5,64 @@
 // public reads (raw.githubusercontent.com + the GitHub contents API --
 // same as the Python side, no account tied to anything).
 
+// Shared by every viewer that renders an original PDF page for local
+// comparison (contribute.js, review-panel.js, org-approval.js,
+// issue-requests.js, indexer-review.js) -- a real bug caught live:
+// picking an already-patched Blayde Manual output instead of the
+// original scan silently rendered the wrong page, since patcher.js
+// always inserts exactly one cover page at position 0, shifting every
+// subsequent page by +1. Must match patcher.js's own EMBED_NAME.
+// Detected via pdf.js's own getAttachments() -- deterministic (the
+// file either carries this exact attachment or it doesn't), no OCR
+// guesswork, no network round-trip.
+const PATCHED_STATE_ATTACHMENT = "blayde_manual_state.json";
+
+// pdfDoc is a pdf.js PDFDocumentProxy (from pdfjsLib.getDocument().promise).
+// Returns the page number to actually fetch, plus whether a correction
+// was applied, so every caller can log it consistently.
+async function resolvePageForLocalPdf(pdfDoc, page) {
+  let isPatchedOutput = false;
+  try {
+    const attachments = await pdfDoc.getAttachments();
+    isPatchedOutput = !!(attachments && attachments[PATCHED_STATE_ATTACHMENT]);
+  } catch (e) { /* no attachments at all -- treat as an original scan */ }
+  return { targetPage: page + (isPatchedOutput ? 1 : 0), isPatchedOutput };
+}
+
+// A human-readable label built from real, structured data (page
+// number, section heading) -- never the raw internal procedure_id
+// (e.g. "p003_proc1_fig1"), which nobody outside the codebase needs to
+// see. Parses the id's own procN/figN convention when present (real
+// for every current submission) for the more specific "Procedure N --
+// FIG N" form; falls back to the section heading alone for older/
+// differently-shaped ids rather than showing the raw string either way.
+function formatProcedureLabel(procedureId, page, sectionHeading) {
+  const match = /^p\d+_proc(\d+)_fig(\d+)$/.exec(procedureId || "");
+  if (match) return `PG. ${page} - Procedure ${match[1]} - FIG ${match[2]}`;
+  return `PG. ${page} - ${sectionHeading || procedureId}`;
+}
+
+// A distinct, hard-to-miss confirmation for a real milestone (a
+// completed submission, an accepted photo, an approved vehicle) --
+// separate from a page's own plain scrolling log, which a real
+// completion shouldn't have to compete with. Shared across
+// contribute.js, review-panel.js, and org-approval.js, all of which
+// need the same "this real thing just happened" moment; each page
+// must have a `#toast` element with the matching CSS (see
+// contribute.html/maintainer.html) for this to have anywhere to
+// render into. Restarting the animation on a re-trigger, rather than
+// letting an in-progress one keep playing, means a second completion
+// shortly after the first still gets its own visible pop instead of
+// silently reusing the tail end of the first one.
+function showToast(message) {
+  const el = document.getElementById("toast");
+  if (!el) return;
+  el.innerHTML = `<span class="toast-icon">&#9989;</span><span>${message}</span>`;
+  el.classList.remove("show");
+  void el.offsetWidth; // force reflow so removing+re-adding the class actually restarts the animation
+  el.classList.add("show");
+}
+
 // Custom confirm/prompt -- native confirm()/alert()/prompt() have a
 // real, user-triggerable failure mode: after several appear in a short
 // time, Chromium offers a "Prevent this page from creating additional

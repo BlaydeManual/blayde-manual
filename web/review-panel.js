@@ -126,7 +126,15 @@ async function loadOpenPhotoPRs(repoUrl) {
       if (!entry || !geo) return null; // photo doesn't match a known procedure -- shouldn't happen if checker.py ran, skip defensively
       if (!pr.head?.repo) return null; // contributor's fork was deleted after opening the PR -- can't fetch the photo
       return {
-        number: pr.number, title: pr.title, author: pr.user?.login || contributor || "unknown",
+        // contributor (parsed from the photo's own filename convention)
+        // takes priority over pr.user?.login -- real bug, caught live:
+        // for a Public (direct-contribute) submission, the GitHub App's
+        // installation token is what actually opens the PR, so GitHub's
+        // own "opened by" field is always the App's bot identity, never
+        // the real person. contributor is reliable for BOTH submission
+        // paths (fork-based Private PRs use the same filename
+        // convention), so it's the one real signal here, not a fallback.
+        number: pr.number, title: pr.title, author: contributor || pr.user?.login || "unknown",
         repo_url: repoUrl, edition_id: manifest.edition_id || "(edition not set)",
         procedure_id: procedureId, page: entry.page, section_heading: entry.section_heading,
         photo_raw_url: `https://raw.githubusercontent.com/${pr.head.repo.full_name}/${pr.head.ref}/${photoFile.filename}`,
@@ -173,8 +181,8 @@ async function renderPRList(approvedRepos) {
         row.className = "pr-row";
         row.innerHTML = `
           <div>
-            <div class="pr-title">PG. ${pr.page} &mdash; ${pr.title}</div>
-            <div class="pr-meta">@${pr.author} &middot; ${pr.procedure_id} &middot; Request #${pr.number}</div>
+            <div class="pr-title">${formatProcedureLabel(pr.procedure_id, pr.page, pr.section_heading)}</div>
+            <div class="pr-meta">@${pr.author} &middot; Request #${pr.number}</div>
           </div>
           <button data-pr="${pr.number}">Review</button>
         `;
@@ -198,9 +206,9 @@ async function openPR(number) {
   submittedPhotoImg = null;
   document.getElementById("prLog").textContent = "";
   document.getElementById("reviewArea").classList.add("open");
-  document.getElementById("reviewTitle").textContent = `PG. ${currentPR.page} -- Request #${currentPR.number} -- ${currentPR.title}`;
-  document.getElementById("reviewMeta").textContent =
-    `${currentPR.section_heading} (${currentPR.procedure_id}) -- submitted by @${currentPR.author}`;
+  document.getElementById("reviewTitle").textContent =
+    `${formatProcedureLabel(currentPR.procedure_id, currentPR.page, currentPR.section_heading)} - Request #${currentPR.number}`;
+  document.getElementById("reviewMeta").textContent = `Submitted by @${currentPR.author}`;
   document.getElementById("compareWrap").style.display = "none";
   document.getElementById("acceptBtn").disabled = true;
   document.getElementById("rejectBtn").disabled = false;
@@ -242,7 +250,13 @@ document.getElementById("pdfPicker").addEventListener("change", async (e) => {
 });
 
 async function renderPage() {
-  const page = await pdfDoc.getPage(currentPR.page);
+  // Shared with every other viewer that does this same local-context
+  // render -- see registry.js's resolvePageForLocalPdf for why.
+  const { targetPage, isPatchedOutput } = await resolvePageForLocalPdf(pdfDoc, currentPR.page);
+  if (isPatchedOutput) {
+    log("This looks like an already-patched Blayde Manual, not the original scan -- adjusting for its extra cover page.");
+  }
+  const page = await pdfDoc.getPage(targetPage);
   const viewport = page.getViewport({ scale: renderScale });
   const canvas = document.getElementById("pageCanvas");
   canvas.width = Math.round(viewport.width);
@@ -355,12 +369,23 @@ document.getElementById("acceptBtn").addEventListener("click", async () => {
   document.getElementById("acceptBtn").disabled = true;
   document.getElementById("rejectBtn").disabled = true;
   try {
-    log(`merging request #${currentPR.number}...`);
-    await githubApi(`/repos/${owner}/${repo}/pulls/${currentPR.number}/merge`, session.token, {
-      method: "PUT",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ commit_title: `Merge #${currentPR.number}: ${currentPR.title}` }),
+    log(`checking and merging request #${currentPR.number}...`);
+    // Routed through the Worker, not merged directly with this
+    // maintainer's own token -- it independently re-verifies real
+    // permission, re-checks the PR changes exactly one real contributed
+    // photo (nothing else riding along), re-validates and scans that
+    // photo's actual current bytes for embedded metadata, and only then
+    // merges (pinned to the exact commit it just checked). None of that
+    // is something this page's own UI can guarantee on its own, since a
+    // maintainer's browser has no way to stop a fork owner from having
+    // changed the branch's content in ways this page never re-fetched.
+    const acceptResp = await fetch(`${BlaydeAuth.AUTH_WORKER_URL}accept-photo-pr`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${session.token}` },
+      body: JSON.stringify({ repo_url: currentPR.repo_url, pr_number: currentPR.number, commit_title: `Merge #${currentPR.number}: ${currentPR.title}` }),
     });
+    const acceptResult = await acceptResp.json().catch(() => ({}));
+    if (!acceptResp.ok || acceptResult.error) throw new Error(acceptResult.error || `Accept failed (${acceptResp.status}).`);
     log(`merged.`);
 
     const finalBbox = canvasToBbox(box);
@@ -396,6 +421,11 @@ document.getElementById("acceptBtn").addEventListener("click", async () => {
       });
     }
     log(`request #${currentPR.number} accepted.`);
+    // Closes the viewer and gives a real, hard-to-miss confirmation --
+    // direct request, matching org-approval.js's Approve, which already
+    // does this same close-out on its own success path.
+    document.getElementById("reviewArea").classList.remove("open");
+    showToast("Accepted! Photo merged into the manual.");
     initReviewTab();
   } catch (e) {
     log(`accept failed: ${e.message}`);

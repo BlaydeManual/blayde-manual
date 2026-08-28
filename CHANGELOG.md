@@ -18,6 +18,51 @@ and corrections in both directions -- see
 
 ## [Unreleased]
 
+- **Review-flow hardening and a real merge-time trust gate for photo
+  PRs (PR #34, not yet merged).**
+  - Page-offset bug (picking an already-patched manual instead of the
+    original scan silently renders the wrong page) fixed everywhere it
+    applied: `contribute.js`, `review-panel.js`, `org-approval.js`,
+    `issue-requests.js`, via one shared helper in `registry.js`.
+  - PR attribution bug: Public (direct-contribute) submissions showed
+    the GitHub App's bot identity as the requester instead of the real
+    contributor. Fixed by preferring the filename-parsed contributor
+    over GitHub's own "opened by" field.
+  - Double-submit guard added to `contribute.js`'s Submit/Save actions
+    (a real duplicate-PR bug, caught live) -- `review-panel.js`'s
+    Accept/Reject and `org-approval.js`'s Approve already had the same
+    guard.
+  - New Worker endpoint `POST /accept-photo-pr`: independently
+    re-verifies the caller's permission, then re-checks the PR's
+    current state (exactly one photo, no other files, real image
+    validation, metadata scan) before merging, pinned to the exact
+    commit checked. Closes a real TOCTOU gap (a fork owner could swap
+    a photo's content between review and merge) and a bypass gap (a
+    contributor pushing straight to their fork skips
+    `contribute.js`'s sanitizing re-encode entirely).
+  - `BlaydeManual/vehicle-scaffold` (a real, previously-unwired GitHub
+    template repo) is now applied to every vehicle repo at approval
+    time, and its `checker.py` job is a required GitHub branch-
+    protection status check -- closes the remaining gap the Worker
+    endpoint alone couldn't: a native `git`/github.com merge bypassing
+    application logic entirely. Verified live against a real vehicle
+    repo, including that a normal merge attempt against a failing
+    check is genuinely rejected by GitHub, no override.
+  - **Real gap found and fixed, live, after the above was already
+    built**: contribute.js's canvas re-encode was assumed to produce
+    zero-metadata output; it didn't. Chrome injects a real ICC color
+    profile into JPEG output that the original code never accounted
+    for, which meant a real photo submitted through the site's own
+    sanctioned upload flow would have failed the very checks meant to
+    validate it. Fixed with a real client-side JPEG marker-stripping
+    step, verified against the real `checker.py`; a matching blind spot
+    in the Worker's own metadata scanner (same APP2/ICC segment) fixed
+    alongside it.
+  - `SECURITY.md` rewritten in step with each of the above as they
+    landed; caught and corrected once for going stale (described the
+    required-CI-check as unbuilt one commit after it was actually
+    built and verified).
+
 - **GitHub App migration, security audit, and org hardening (PR #21, not yet merged).**
   - Two logins: existing classic OAuth App (`public_repo`), plus a new
     GitHub App for "submit directly" and contribute's Public path.

@@ -198,6 +198,103 @@ before this existed -- those need a second maintainer added first,
 same as any new one, before branch protection can be turned on for
 them without immediately freezing their existing review flow.
 
+## Real merge-time validation for photo contributions
+
+`review-panel.js`'s Accept no longer merges a PR directly with the
+maintainer's own token. It calls `POST /accept-photo-pr`, which
+independently re-verifies the caller's real permission (same pattern
+as `/manage-collaborator`), then re-checks the PR's *current* state
+with the installation token, then merges:
+
+1. **Negative file allowlist.** The PR's diff must be exactly one
+   `added` file under `images/` matching the real contributed-photo
+   naming convention. Anything else -- most seriously a modified
+   `.github/workflows/*.yml` riding along with the photo, which merged
+   into an org-owned repo means real code execution in this org's CI --
+   is a hard block.
+2. **Content re-validated at the current commit, not a cached one.**
+   The same magic-byte/dimension check `/direct-contribute` already
+   does, plus a new scan for embedded metadata (JPEG APP1/APP13, PNG
+   eXIf/tEXt/zTXt/iTXt, WEBP EXIF/XMP chunks) -- presence-only, not
+   full parsing. This exists specifically for the Private (fork-based)
+   path: a contributor can bypass the site entirely and push straight
+   to their own fork, skipping `contribute.js`'s canvas re-encode --
+   the actual thing that strips EXIF/GPS/camera metadata. A hash of
+   "sanitized" content can't catch that case: the Worker never sees
+   Private-path bytes at submission time, so there's nothing
+   trustworthy to hash against. Scanning the real bytes right before
+   merge is the one check that works regardless of how the file
+   arrived.
+3. **Merge pinned to the SHA just checked**, closing the gap a fork
+   owner otherwise has for as long as their branch stays open: nothing
+   previously stopped them swapping the photo's content, or the file
+   set, between when a maintainer looked and when they clicked Accept.
+
+Both are hard blocks, matching the vehicle-approval checks above, not
+a warning a human can click past. Verified via a synthetic Node test
+against the real handler: a clean single-photo PR merges; an extra
+file, an EXIF-carrying photo, and an under-permissioned caller are
+each rejected with a specific, real error.
+
+**The gap this alone would NOT have closed, and how it's actually closed now:**
+these checks only run when Accept is clicked through this site. Someone
+with real push access could still merge the same PR natively --
+github.com's own merge button, or `git`/the API directly -- skipping
+application logic entirely, since it isn't something GitHub itself
+enforces on its own. Closed for real by wiring the equivalent checks
+into `BlaydeManual/vehicle-scaffold` (a real, live GitHub template repo,
+copied into every vehicle repo at approval time -- see "vehicle-scaffold:
+the same checks, enforced by GitHub itself" below) and making that
+workflow's job a **required status check** in branch protection,
+alongside the existing `required_approving_review_count: 2`. A required
+check is GitHub's own enforcement, applied no matter which UI initiates
+the merge -- verified live: a normal merge attempt against a failing
+check is genuinely rejected ("the base branch policy prohibits the
+merge"), no override, nothing bypassed.
+
+## vehicle-scaffold: the same checks, enforced by GitHub itself
+
+`BlaydeManual/vehicle-scaffold` is a real GitHub template repo
+(`is_template: true`). `handleApproveVehicle` copies its real file tree
+into a vehicle repo right after that repo flips public -- deliberately
+AFTER approval, never at submit time, since the file-allowlist check
+above requires a pre-approval repo to be EXACTLY `{README.md,
+manifest.json}`; applying the scaffold earlier would fail every future
+submission against its own future self. It reads the live template
+directly rather than duplicating its contents in this Worker, so
+editing the scaffold later never requires touching this code or any
+already-created vehicle repo.
+
+The scaffold's `checker.py`, run by a workflow on every PR touching
+`images/`, now hard-fails on:
+- **Any non-pixel data**, not just EXIF GPS. `img.getexif()` alone
+  isn't enough -- confirmed empirically that it returns an empty dict
+  for a real JPEG carrying an ICC profile or a comment marker, both
+  real, inspectable data it simply doesn't look at. Checks `img.info`
+  broadly instead (the real surface PIL exposes for all of it), against
+  an allowlist of the exact JFIF fields confirmed present on any
+  freshly re-saved, already-clean image -- not guessed.
+- **More than one file changing**, or any file outside `images/` --
+  the same negative-allowlist rule `/accept-photo-pr` enforces,
+  independently, in the one other place a merge can actually happen.
+
+Branch protection's `required_status_checks` names that workflow's real
+job (`checker`) as required. This is the fix that closes the native-
+merge gap above for real, not just through this site's own Accept
+button -- and it comes with the same honest caveat as the review-count
+requirement it sits beside: `enforce_admins` stays `false` (see "Known
+gaps" below), so an org admin can still force a merge straight past it.
+Confirmed live, not theoretical -- caught during verification when a
+`gh pr merge --admin` call did exactly that, force-merging a test photo
+with embedded EXIF straight into `main`; reverted via a follow-up PR,
+not a direct push, once caught.
+
+Still tracked in ROADMAP.md, as a separate, complementary idea, not a
+substitute for the above: a periodic job auto-closing stale/malformed
+open PRs that nobody ever acts on -- that one cleans up what's left
+sitting open, it doesn't stop a bad merge from completing, which is
+what the required check now does.
+
 ## What's never collected or stored
 
 No analytics, no tracking, no server-side logs of what anyone patches
@@ -205,6 +302,27 @@ or contributes beyond the notarization log entries described above
 (a hash and a login, not photo content). EXIF metadata (GPS, camera
 model, timestamp) is stripped from every contributed photo
 client-side, before it's ever saved, not just checked afterward.
+
+**Real gap found and closed, 2026-08-28**: direct question ("are we
+stripping everything down to pixels?") led to actually checking rather
+than trusting a comment that claimed canvas re-encoding "never carries
+the source file's metadata forward." True for the original file's own
+EXIF/GPS -- false for what the browser adds back: Chrome injects a real
+~470-byte ICC color profile into every JPEG `canvas.toDataURL()`
+produces (a JPEG APP2 segment), confirmed by decoding real output and
+finding it. That meant every photo submitted through this site's own
+real upload flow would have been hard-rejected by the very checks meant
+to validate a legitimate submission -- not a bypass, the sanctioned path
+itself failing its own standard. PNG output was separately confirmed
+already clean (`IHDR`/`IDAT`/`IEND` only). Fixed with a real client-side
+strip (`stripJpegAuxSegments` in `contribute.js`, JPEG only) applied
+right after re-encoding, verified by decoding the real output and
+running it through the real `checker.py`. A second, related gap found
+in the same pass: `auth-worker`'s own `jpegHasMetadata` (the
+`/accept-photo-pr` merge-time scan) only ever checked APP1/APP13 --
+same ICC blind spot, independently. Now flags any APPn except APP0,
+matching `checker.py`'s allowlist and the new client-side strip
+exactly, instead of three places quietly disagreeing on the same rule.
 
 ## Maintaining a vehicle repo is a separate designation from org membership
 
@@ -295,8 +413,21 @@ controls as proven in production, not just in a mocked test.
   vehicle repo is generated -- each one needs it configured as its own
   step today (a direct-submit repo additionally starts private, which
   is its own form of protection until approval).
+- **Closed, 2026-08-27**: photo-PR file-allowlist and metadata scan
+  previously only ran through this site's own Accept button, skippable
+  by a native GitHub merge. Closed via `vehicle-scaffold`'s required
+  `checker` status check -- see "vehicle-scaffold: the same checks,
+  enforced by GitHub itself" above. `enforce_admins: false` still means
+  an org admin can force past it, same escape hatch as the
+  review-count requirement immediately below; confirmed live, not
+  theoretical (see that section for what happened and how it was
+  caught and reverted).
 - CI validates contributed photos; it does not yet validate a
   `manifest.json` change on its own (a moved bbox, an edited status).
+  (`validate_manifest.py`/`validate-manifest.yml` exist in
+  `vehicle-scaffold` and get copied into every vehicle repo the same
+  way `checker.py` does, but aren't yet wired into `required_status_checks`
+  the way `checker` is -- not done in this pass.)
 - No CLA/DCO exists yet for outside *code* contributions to the
   tooling repo -- this is a hard gate: no such contribution is
   accepted until one does.

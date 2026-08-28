@@ -96,6 +96,16 @@ let currentUsername = null;
 let pendingAction = null; // "draft" | "submit" -- what to actually do once sign-in completes
 let pendingSubmitMode = null; // "public" | "private" -- only meaningful when pendingAction is "submit"
 let pendingMaintainRequest = null; // vehicle key -- same deferred-sign-in pattern, separate action
+// Real bug, caught live: two identical pull requests opened for the
+// same photo from one click, because nothing stopped a second click
+// (or a second call through the deferred-sign-in path) from starting
+// a second real submission while the first was still in flight.
+// review-panel.js's Accept/Reject and org-approval.js's Approve
+// already guard this by disabling their own button immediately; this
+// is the same guard, just keyed by uploadId since multiple upload rows
+// can legitimately submit independently of each other.
+let actionInFlight = false;
+const submittingIds = new Set();
 let context = null;
 let selectedPhotoDataUrl = null;
 let selectedPhotoFilename = null;
@@ -170,6 +180,10 @@ function log(msg) {
   el.textContent += msg + "\n";
   el.scrollTop = el.scrollHeight;
 }
+
+// showToast() now lives in registry.js -- shared with review-panel.js
+// and org-approval.js, which need the exact same "this real milestone
+// just happened" confirmation, not just this page.
 
 // ---- context lookup: try the real manifest first (works once a repo
 // actually exists), fall back to the mock context, so browsing never
@@ -261,6 +275,63 @@ document.getElementById("landingSignInBtn").addEventListener("click", async () =
 
 renderUploads();
 
+// Real bug, caught live while auditing whether this actually meets the
+// "zero data, only pixels" standard checker.py/accept-photo-pr now
+// enforce: it does NOT, for JPEG specifically. The comment this
+// replaces claimed canvas.toDataURL() "never carries the source file's
+// metadata forward" -- true for the ORIGINAL file's EXIF/GPS (confirmed
+// gone), false for what the browser itself adds back: Chrome injects a
+// real ~470-byte APP2 ICC color profile into every JPEG canvas.toDataURL()
+// produces, confirmed by decoding real output and finding it. That means
+// every photo submitted through this real site's real upload flow would
+// have been hard-rejected by the very checks meant to validate a
+// legitimate submission -- not a contributor's mistake, not a bypass,
+// the sanctioned path itself failing its own standard. PNG output was
+// separately confirmed clean (IHDR/IDAT/IEND only, no ancillary chunks)
+// -- this only affects the JPEG path.
+function stripJpegAuxSegments(bytes) {
+  const keep = [bytes.subarray(0, 2)]; // SOI
+  let offset = 2;
+  while (offset + 4 <= bytes.length && bytes[offset] === 0xff) {
+    const marker = bytes[offset + 1];
+    if (marker === 0xd9) { keep.push(bytes.subarray(offset, offset + 2)); offset += 2; break; }
+    // Start-of-scan: everything from here on is entropy-coded image data,
+    // not a marker stream -- 0xFF bytes inside it are always followed by
+    // 0x00 stuffing or a restart marker, never a real segment to parse.
+    // Copy the rest verbatim rather than risk corrupting it.
+    if (marker === 0xda) { keep.push(bytes.subarray(offset)); offset = bytes.length; break; }
+    const segmentLength = (bytes[offset + 2] << 8) | bytes[offset + 3];
+    // Drop every APPn segment except APP0 (JFIF -- harmless container
+    // bookkeeping, matches checker.py's own allowlist) and any comment
+    // marker. This is where APP1 (Exif/XMP), APP2 (ICC profile -- the
+    // real, confirmed offender), and APP13 (Photoshop/IPTC) all live.
+    const isDroppableAppn = marker >= 0xe1 && marker <= 0xef;
+    const isComment = marker === 0xfe;
+    if (!(isDroppableAppn || isComment)) {
+      keep.push(bytes.subarray(offset, offset + 2 + segmentLength));
+    }
+    offset += 2 + segmentLength;
+  }
+  if (offset < bytes.length) keep.push(bytes.subarray(offset)); // malformed-input safety net
+  const out = new Uint8Array(keep.reduce((n, a) => n + a.length, 0));
+  let pos = 0;
+  for (const chunk of keep) { out.set(chunk, pos); pos += chunk.length; }
+  return out;
+}
+
+function dataUrlToBytes(dataUrl) {
+  const binary = atob(dataUrl.split(",")[1]);
+  const bytes = new Uint8Array(binary.length);
+  for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+  return bytes;
+}
+
+function bytesToDataUrl(bytes, mimeType) {
+  let binary = "";
+  for (let i = 0; i < bytes.length; i++) binary += String.fromCharCode(bytes[i]);
+  return `data:${mimeType};base64,${btoa(binary)}`;
+}
+
 // ---- photo picker ----
 // EXIF (GPS location, camera/phone model, timestamp) is stripped here,
 // before the photo is stored anywhere -- even a draft that never gets
@@ -268,10 +339,7 @@ renderUploads();
 // photo is already committed to a branch; it can catch a leak, it can't
 // undo one, since the data's already technically public by then. The
 // load-bearing check has to be client-side, before the first save --
-// see ROADMAP.md's finding on this exact point. Re-encoding through a
-// canvas is the standard technique: canvas.toDataURL() never carries the
-// source file's metadata forward, so there's no EXIF field to parse or
-// allowlist -- the whole block is simply never in the output.
+// see ROADMAP.md's finding on this exact point.
 document.getElementById("photoInput").addEventListener("change", async (e) => {
   const file = e.target.files[0];
   const saveBtn = document.getElementById("saveDraftBtn"), submitBtn = document.getElementById("submitNowBtn");
@@ -286,7 +354,14 @@ document.getElementById("photoInput").addEventListener("change", async (e) => {
   canvas.height = bitmap.height;
   canvas.getContext("2d").drawImage(bitmap, 0, 0);
   const outputType = file.type === "image/png" ? "image/png" : "image/jpeg";
-  selectedPhotoDataUrl = canvas.toDataURL(outputType, 0.92);
+  let outDataUrl = canvas.toDataURL(outputType, 0.92);
+  // JPEG only -- confirmed live that canvas.toDataURL() injects a real
+  // ICC color profile into JPEG output (PNG output was separately
+  // confirmed already clean). See stripJpegAuxSegments' own comment.
+  if (outputType === "image/jpeg") {
+    outDataUrl = bytesToDataUrl(stripJpegAuxSegments(dataUrlToBytes(outDataUrl)), outputType);
+  }
+  selectedPhotoDataUrl = outDataUrl;
 
   const thumb = document.getElementById("previewThumb");
   thumb.src = selectedPhotoDataUrl;
@@ -329,6 +404,7 @@ document.getElementById("submitNowBtn").addEventListener("click", () => {
 // separately, only when actually chosen, so Private submitters (and
 // drafts) never see a sign-in screen for an app they don't need.
 function requestAction(action, mode) {
+  if (actionInFlight) return;
   if (!signedIn) {
     pendingAction = action;
     pendingSubmitMode = mode;
@@ -382,6 +458,18 @@ function performMaintainRequest(vehicleKey) {
 }
 
 async function performAction(action, mode) {
+  actionInFlight = true;
+  document.getElementById("saveDraftBtn").disabled = true;
+  document.getElementById("submitNowBtn").disabled = true;
+  try {
+    await performActionInner(action, mode);
+  } finally {
+    actionInFlight = false;
+    updateSubmitEnabled();
+  }
+}
+
+async function performActionInner(action, mode) {
   const upload = {
     id: `${procedureId}_${Date.now()}`,
     repoUrl, procedureId,
@@ -596,25 +684,44 @@ async function submitPhotoPublic(upload) {
 async function markSubmitted(uploadId) {
   const upload = uploads.find((u) => u.id === uploadId);
   if (!upload || upload.status !== "draft") return;
-  if (!BlaydeAuth.getAppSession()) {
-    log(`Signing in for Public submit...`);
-    try {
-      await BlaydeAuth.signInWithGitHubApp();
-    } catch (err) {
-      log(`Sign-in failed: ${err.message}`);
-      return;
-    }
-  }
-  log(`Submitting publicly on ${upload.repoUrl} (opens the pull request immediately)...`);
+  // Real bug, caught live: two identical PRs opened for the same photo
+  // from what should have been one click. See submittingIds' own
+  // comment above for why this is keyed by id.
+  if (submittingIds.has(uploadId)) return;
+  submittingIds.add(uploadId);
+  document.querySelectorAll(`[data-submit="${uploadId}"]`).forEach((btn) => { btn.disabled = true; });
   try {
-    const pr = await submitPhotoPublic(upload);
-    upload.status = "submitted";
-    upload.prUrl = pr.prUrl;
-    saveUploads();
-    renderUploads();
-    log(`Submitted -- pull request opened: ${pr.prUrl}`);
-  } catch (err) {
-    log(`Submit failed: ${err.message}`);
+    if (!BlaydeAuth.getAppSession()) {
+      log(`Signing in for Public submit...`);
+      try {
+        await BlaydeAuth.signInWithGitHubApp();
+      } catch (err) {
+        log(`Sign-in failed: ${err.message}`);
+        return;
+      }
+    }
+    log(`Submitting publicly on ${upload.repoUrl} (opens the pull request immediately)...`);
+    try {
+      const pr = await submitPhotoPublic(upload);
+      upload.status = "submitted";
+      upload.prUrl = pr.prUrl;
+      saveUploads();
+      renderUploads();
+      log(`Submitted -- pull request opened: ${pr.prUrl}`);
+      // A completed submission is a real milestone -- a scrolling log
+      // line among dozens of others doesn't read as one. Also collapses
+      // the compare viewer if it's still open for this exact upload;
+      // it's done its job once the submission is in.
+      showToast("Submitted! Your photo is now a real pull request.");
+      if (compareUpload?.id === uploadId) {
+        document.getElementById("compareArea").style.display = "none";
+      }
+    } catch (err) {
+      log(`Submit failed: ${err.message}`);
+    }
+  } finally {
+    submittingIds.delete(uploadId);
+    document.querySelectorAll(`[data-submit="${uploadId}"]`).forEach((btn) => { btn.disabled = false; });
   }
 }
 
@@ -784,19 +891,6 @@ function openCompare(uploadId) {
   document.getElementById("compareArea").scrollIntoView({ behavior: "smooth", block: "nearest" });
 }
 
-// Must match patcher.js's own EMBED_NAME -- the one real, structural
-// signal that a locally-picked PDF is a Blayde Manual OUTPUT, not the
-// original scan. Real bug, caught live: patcher.js always inserts
-// exactly one cover page at position 0, so `compareUpload.page` (a
-// page number computed against the ORIGINAL PDF) is off by one on any
-// patched file -- picking a patched copy here silently rendered the
-// wrong page (e.g. the table of contents instead of the real target)
-// with no indication anything was wrong. Detected via pdf.js's own
-// getAttachments(), not OCR or a registry round-trip -- deterministic
-// (the file either carries this exact attachment or it doesn't) and
-// needs no network call, unlike either alternative considered.
-const PATCHED_STATE_ATTACHMENT = "blayde_manual_state.json";
-
 document.getElementById("comparePdfPicker").addEventListener("change", async (e) => {
   const file = e.target.files[0];
   if (!file || !compareUpload || !compareUpload.pixelBbox) {
@@ -805,12 +899,12 @@ document.getElementById("comparePdfPicker").addEventListener("change", async (e)
   }
   const buf = await file.arrayBuffer();
   const pdfDoc = await pdfjsLib.getDocument({ data: buf }).promise;
-  const attachments = await pdfDoc.getAttachments();
-  const isPatchedOutput = !!(attachments && attachments[PATCHED_STATE_ATTACHMENT]);
+  // Shared with every other viewer that does this same local-context
+  // render -- see registry.js's resolvePageForLocalPdf for why.
+  const { targetPage, isPatchedOutput } = await resolvePageForLocalPdf(pdfDoc, compareUpload.page);
   if (isPatchedOutput) {
     log("This looks like an already-patched Blayde Manual, not the original scan -- adjusting for its extra cover page.");
   }
-  const targetPage = compareUpload.page + (isPatchedOutput ? 1 : 0);
   const page = await pdfDoc.getPage(targetPage);
   const scale = 2.5;
   const viewport = page.getViewport({ scale });

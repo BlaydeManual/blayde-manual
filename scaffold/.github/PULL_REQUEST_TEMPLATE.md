@@ -2,7 +2,7 @@
 
 `procedure_id`: <!-- e.g. p038_tappet-clearance_fig1 -->
 
-<!-- One procedure per PR. If this PR touches more than one procedure_id,
+<!-- One photo per PR. If this PR touches more than one file,
      please split it -- small PRs get reviewed and merged much faster. -->
 
 ## Checklist
