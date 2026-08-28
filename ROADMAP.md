@@ -1399,12 +1399,32 @@ they scale to any photo:
 ```
 
 A maintainer places these once per procedure (looking at the original
-photo), and `patch_pdf.py` draws them on top of whatever photo is currently
-approved -- same PyMuPDF vector-drawing path already used for the cover
-page, so the plumbing to *render* this already exists. What's missing is
-the authoring UI: a click-to-place-arrow/circle tool against the reference
-crop, most naturally as a companion mode to the review gallery
-(`generate_review.py` / `review_server.py`).
+photo), and `patcher.js` draws them on top of whatever photo is currently
+approved -- same pdf-lib vector-drawing path already used for the cover
+page and the QR/credit-tab overlays, so the plumbing to *render* this
+already exists. What's missing is the authoring UI: a click-to-place
+tool against the reference crop, most naturally as a companion mode to
+the review gallery (`review-panel.js` / `org-approval.js`).
+
+**Authoring UI, designed 2026-08-27 (not built yet):** happens during
+the review/submission screen, against whichever photo a reviewer is
+looking at. Four steps:
+1. Click an "Illustrate" button (name TBD).
+2. Type the label's text -- usually a number (matching the OEM manual's
+   own numbered-callout convention), but sometimes a short word instead
+   (e.g. "grease," for a lubrication point that isn't numbered in the
+   source at all). Click Next.
+3. Tap where the label itself should sit on the photo.
+4. Tap where the arrow should point to (the actual part/bolt/point being
+   called out). The arrow is drawn from the label's position (step 3) to
+   this point, so only two taps are needed, not four.
+
+Maps directly onto the `callouts` JSON shape above: step 2's text becomes
+`label`, step 3's tap becomes a `circle_label`'s `center` (or a plain
+label's anchor point, if circles turn out not to be needed for every
+case), step 4's tap becomes an `arrow`'s `to` (with `from` implied as the
+label's own position, rather than a separate fifth tap). Multiple
+callouts per photo just repeat the four steps.
 
 Why vector data instead of copying the original annotation pixels:
 recreating the *functional position* of a pointer is a much cleaner
