@@ -303,6 +303,27 @@ or contributes beyond the notarization log entries described above
 model, timestamp) is stripped from every contributed photo
 client-side, before it's ever saved, not just checked afterward.
 
+**Real gap found and closed, 2026-08-28**: direct question ("are we
+stripping everything down to pixels?") led to actually checking rather
+than trusting a comment that claimed canvas re-encoding "never carries
+the source file's metadata forward." True for the original file's own
+EXIF/GPS -- false for what the browser adds back: Chrome injects a real
+~470-byte ICC color profile into every JPEG `canvas.toDataURL()`
+produces (a JPEG APP2 segment), confirmed by decoding real output and
+finding it. That meant every photo submitted through this site's own
+real upload flow would have been hard-rejected by the very checks meant
+to validate a legitimate submission -- not a bypass, the sanctioned path
+itself failing its own standard. PNG output was separately confirmed
+already clean (`IHDR`/`IDAT`/`IEND` only). Fixed with a real client-side
+strip (`stripJpegAuxSegments` in `contribute.js`, JPEG only) applied
+right after re-encoding, verified by decoding the real output and
+running it through the real `checker.py`. A second, related gap found
+in the same pass: `auth-worker`'s own `jpegHasMetadata` (the
+`/accept-photo-pr` merge-time scan) only ever checked APP1/APP13 --
+same ICC blind spot, independently. Now flags any APPn except APP0,
+matching `checker.py`'s allowlist and the new client-side strip
+exactly, instead of three places quietly disagreeing on the same rule.
+
 ## Maintaining a vehicle repo is a separate designation from org membership
 
 BlaydeManual **org membership** (member/admin) governs two things only:

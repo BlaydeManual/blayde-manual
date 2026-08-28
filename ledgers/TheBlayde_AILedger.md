@@ -617,3 +617,58 @@ brand is red, promoting an undecided utility color to headline
 weight). That density of correction on one deliverable, more than
 almost anything else in this project's history, is worth sitting with
 plainly rather than folding into the general pattern above.
+
+## Review-flow hardening and the merge-time trust gate (PR #34)
+
+**Mostly Claude-executed once directed, with the pattern's sharpest
+instance yet on the question that mattered most.** The bulk of this
+stretch -- page-offset fixes across five files, the attribution bug, the
+double-submit guard, the new `/accept-photo-pr` Worker endpoint, wiring
+up the previously-unused `vehicle-scaffold` template as a required CI
+check -- was Claude finding and fixing real bugs largely on its own
+initiative once the user's live testing surfaced symptoms (duplicate PR
+requests, the wrong photo showing during review). The design calls that
+shaped the endpoint's actual behavior were the user's: "hard block, we
+don't want people to know where cars live" settled the metadata
+severity question outright; "we don't have a mechanism to choose alt
+files" caught that Claude's first version of the file-count rule
+assumed a legitimate use case (multiple photos sharing one PR) that the
+real site's own upload UI can never produce.
+
+**The standout moment, worth recording precisely because of what it
+reveals about trusting Claude's own prior claims:** after all of the
+above was built and shipped, the user asked directly, "are we stripping
+everything down to pixels?" Claude's own code contained a comment
+asserting canvas re-encoding "never carries the source file's metadata
+forward" -- stated as settled fact, never actually verified. It was
+wrong: Chrome injects a real ICC color profile into JPEG output, which
+meant every photo submitted through the site's own real, sanctioned
+upload flow would have failed the very checks Claude had just spent the
+session building to validate it. Claude had built a real security
+system on top of an unverified assumption sitting a few files away, and
+it took a direct question, not Claude's own review of its own recent
+work, to surface that. Verified for real once asked, and fixed -- but
+the sequence itself (ship the enforcement, then get asked whether the
+thing being enforced against was even reachable) is the more honest
+record than "found and fixed a bug" would suggest on its own.
+
+**One execution mistake, Claude's own, worth naming plainly rather than
+smoothing over:** while live-verifying that the new required check
+actually blocks a merge, Claude ran `gh pr merge --admin` before trying
+a normal merge attempt -- the wrong flag, which bypassed the protection
+entirely and force-merged a bad test photo into a real repo's `main`.
+Caught immediately, disclosed immediately, and fixed via a follow-up PR
+rather than a direct push, per the user's standing instruction after
+the fact ("this is why I want you to do PRs and have me approve") --
+which is itself a real, adopted correction to how Claude handles
+cleanup of its own mistakes going forward, not just this one repo.
+
+**A second, smaller instance of the same "verify, don't assume" lesson,
+caught by the user asking Claude to check its own recent work:** asked
+directly whether a status summary "matched what we did," a re-check
+found `SECURITY.md` had gone stale -- it described the required-CI-check
+fix as not-yet-built one commit after Claude had actually built and
+verified it, because Claude updated the doc once and never circled back
+after the next piece of real work landed. Not a design disagreement,
+just Claude's own bookkeeping lagging its own execution -- fixed once
+asked to look.
