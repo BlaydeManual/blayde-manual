@@ -252,7 +252,7 @@ Remaining/ongoing items from the first pass:
   spoofing vector (tricking a user into pointing at a fake registry);
   worth confirming that holds once the advanced/override field is
   actually exposed to real users.
-- Supply-chain: **corrected 2026-08-26, closed 2026-08-27** -- both
+- Supply-chain: **corrected and closed same day, 2026-08-26** -- both
   `@cantoo/pdf-lib` (`web/index.html`) and `tesseract.js`
   (`web/maintainer.html`) were checked directly against the live HTML
   and are pinned to an exact version (`2.9.1`; `5.1.1`, not the
