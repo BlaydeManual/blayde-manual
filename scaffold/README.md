@@ -42,8 +42,9 @@ convention, photo requirements, and how review works.
   where each figure belongs. No copyrighted content from the original
   manual, ever -- see [LEGAL.md](https://github.com/BlaydeManual/blayde-manual/blob/main/LEGAL.md)
   in the main tooling repo for why.
-- `images/<procedure_id>/` -- community-contributed photos, each licensed
-  CC-BY 4.0 by its contributor.
+- `images/<procedure_id>__by_<username>.ext` -- community-contributed
+  photos, each licensed CC-BY 4.0 by its contributor. Flat files, no
+  per-procedure subfolders -- the filename carries everything.
 
 This repo will never contain the original manual's own scanned pages,
 photos, or text, in any branch or commit history.

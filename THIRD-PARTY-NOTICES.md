@@ -7,8 +7,8 @@ how each one is loaded.
 | Library | License | Loaded as | Source |
 |---|---|---|---|
 | [pdf.js](https://github.com/mozilla/pdfjs-dist) | Apache-2.0 | CDN (cdnjs), pinned version + Subresource Integrity hash | Mozilla |
-| [@cantoo/pdf-lib](https://github.com/cantoo-scribe/pdf-lib) | MIT | CDN (unpkg), pinned version | Cantoo, a maintained fork of [Hopding/pdf-lib](https://github.com/Hopding/pdf-lib) |
-| [Tesseract.js](https://github.com/naptha/tesseract.js) | Apache-2.0 | CDN (unpkg) | naptha |
+| [@cantoo/pdf-lib](https://github.com/cantoo-scribe/pdf-lib) | MIT | CDN (unpkg), pinned version + Subresource Integrity hash | Cantoo, a maintained fork of [Hopding/pdf-lib](https://github.com/Hopding/pdf-lib) |
+| [Tesseract.js](https://github.com/naptha/tesseract.js) | Apache-2.0 | CDN (unpkg), pinned version + Subresource Integrity hash | naptha |
 | [qrcode-generator](https://github.com/kazuhikoarase/qrcode-generator) | MIT | Vendored at `web/qrcode.js`, unmodified except for a header comment | Kazuhiko Arase |
 
 Each MIT-licensed dependency's copyright notice is preserved: `web/qrcode.js`

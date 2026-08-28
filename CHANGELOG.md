@@ -19,7 +19,7 @@ and corrections in both directions -- see
 ## [Unreleased]
 
 - **Review-flow hardening and a real merge-time trust gate for photo
-  PRs (PR #34, not yet merged).**
+  PRs (PR #34, merged).**
   - Page-offset bug (picking an already-patched manual instead of the
     original scan silently renders the wrong page) fixed everywhere it
     applied: `contribute.js`, `review-panel.js`, `org-approval.js`,
@@ -63,7 +63,7 @@ and corrections in both directions -- see
     required-CI-check as unbuilt one commit after it was actually
     built and verified).
 
-- **GitHub App migration, security audit, and org hardening (PR #21, not yet merged).**
+- **GitHub App migration, security audit, and org hardening (PR #21, merged).**
   - Two logins: existing classic OAuth App (`public_repo`), plus a new
     GitHub App for "submit directly" and contribute's Public path.
     `POST /direct-submit` creates a new vehicle repo private, under
