@@ -849,7 +849,7 @@ function renderUploads() {
   });
 
   list.querySelectorAll("[data-view]").forEach((btn) => {
-    btn.addEventListener("click", () => openCompare(btn.dataset.view));
+    btn.addEventListener("click", () => openCompare(btn.dataset.view, btn));
   });
   list.querySelectorAll("[data-maintain]").forEach((btn) => {
     btn.addEventListener("click", () => requestToMaintain(btn.dataset.maintain));
@@ -878,17 +878,27 @@ function renderUploads() {
 let compareUpload = null;
 let lastRenderedPageCanvas = null; // cache -- avoids re-rendering when toggling crop <-> whole page
 
-function openCompare(uploadId) {
+function openCompare(uploadId, triggerBtn) {
   compareUpload = uploads.find((u) => u.id === uploadId);
   if (!compareUpload) return;
   lastRenderedPageCanvas = null;
-  document.getElementById("compareArea").style.display = "block";
+  const compareArea = document.getElementById("compareArea");
+  // The panel is one shared DOM node (its own file picker, canvas cache,
+  // etc. -- one instance is enough since only one upload is ever being
+  // viewed at a time), reparented next to whichever row triggered it
+  // instead of staying wherever it last was in markup order. Fixes it
+  // always appearing after every vehicle group and "request to
+  // maintain" row, at the bottom of the whole list, no matter which
+  // upload -- possibly the very first one -- was actually clicked.
+  const row = triggerBtn ? triggerBtn.closest(".upload-row") : null;
+  if (row) row.insertAdjacentElement("afterend", compareArea);
+  compareArea.style.display = "block";
   document.getElementById("compareTitle").textContent = compareUpload.sectionHeading;
   document.getElementById("compareGrid").style.display = "none";
   document.getElementById("compareToggleRow").style.display = "none";
   document.getElementById("wholePageArea").style.display = "none";
   document.getElementById("comparePhoto").src = compareUpload.photoDataUrl;
-  document.getElementById("compareArea").scrollIntoView({ behavior: "smooth", block: "nearest" });
+  compareArea.scrollIntoView({ behavior: "smooth", block: "nearest" });
 }
 
 document.getElementById("comparePdfPicker").addEventListener("change", async (e) => {
