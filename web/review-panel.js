@@ -343,11 +343,17 @@ wrap.addEventListener("mousemove", (e) => {
     const w = o.x1 - o.x0, h = o.y1 - o.y0;
     box = { x0: o.x0 + dx, y0: o.y0 + dy, x1: o.x0 + dx + w, y1: o.y0 + dy + h };
   } else {
+    // Anchored on the box's own center, not the opposite corner: the
+    // dragged edge moves with the mouse and the opposite edge mirrors
+    // it, so the box grows/shrinks around a fixed point instead of
+    // sliding sideways every time its ratio changes. Direct feedback:
+    // corner-anchored resize made the box visibly drift off the part
+    // it was pointing at while adjusting it to fit the photo's shape.
     box = { ...o };
-    if (dragState.corner.includes("w")) box.x0 = o.x0 + dx;
-    if (dragState.corner.includes("e")) box.x1 = o.x1 + dx;
-    if (dragState.corner.includes("n")) box.y0 = o.y0 + dy;
-    if (dragState.corner.includes("s")) box.y1 = o.y1 + dy;
+    if (dragState.corner.includes("w")) { box.x0 = o.x0 + dx; box.x1 = o.x1 - dx; }
+    if (dragState.corner.includes("e")) { box.x1 = o.x1 + dx; box.x0 = o.x0 - dx; }
+    if (dragState.corner.includes("n")) { box.y0 = o.y0 + dy; box.y1 = o.y1 - dy; }
+    if (dragState.corner.includes("s")) { box.y1 = o.y1 + dy; box.y0 = o.y0 - dy; }
   }
   if (box.x1 - box.x0 > 10 && box.y1 - box.y0 > 10) paintBox();
 });
@@ -451,7 +457,12 @@ document.getElementById("rejectBtn").addEventListener("click", async () => {
       method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ state: "closed" }),
     });
     log(`request #${currentPR.number} closed.`);
-    document.getElementById("resetBoxBtn").disabled = true;
+    // Same close-out as Accept's success path -- without this the card
+    // was left sitting on screen with its buttons disabled and a stale
+    // log, even once the request list above it had already refreshed
+    // to "No open photo requests."
+    document.getElementById("reviewArea").classList.remove("open");
+    showToast(note ? "Rejected. The contributor's been notified." : "Rejected. Request closed.");
     initReviewTab();
   } catch (e) {
     log(`reject failed: ${e.message}`);
