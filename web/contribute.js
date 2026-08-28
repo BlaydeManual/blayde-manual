@@ -349,10 +349,23 @@ document.getElementById("photoInput").addEventListener("change", async (e) => {
   selectedPhotoFilename = file.name;
 
   const bitmap = await createImageBitmap(file);
+  // Downscale to a real, checked ceiling rather than storing whatever
+  // resolution the phone happened to shoot at. patcher.js draws every
+  // photo to fill its own pixel_bbox, converted to PDF points; checked
+  // against a real manifest (suzuki-sv650-1999, 918 entries), the
+  // median bbox only needs ~820x500px for full 300dpi print quality,
+  // and even the largest (a rare full-page figure) still gets ~235dpi
+  // at this cap, easily sharp on any screen and print. A modern phone
+  // shoots well past this (12-48MP), so this alone cuts typical file
+  // size several-fold with no visible quality loss for a reference
+  // photo -- real, not hypothetical, once repos start filling with
+  // full-resolution contributions (see ROADMAP.md's repo-size math).
+  const MAX_DIMENSION_PX = 2000;
+  const scale = Math.min(1, MAX_DIMENSION_PX / Math.max(bitmap.width, bitmap.height));
   const canvas = document.createElement("canvas");
-  canvas.width = bitmap.width;
-  canvas.height = bitmap.height;
-  canvas.getContext("2d").drawImage(bitmap, 0, 0);
+  canvas.width = Math.round(bitmap.width * scale);
+  canvas.height = Math.round(bitmap.height * scale);
+  canvas.getContext("2d").drawImage(bitmap, 0, 0, canvas.width, canvas.height);
   const outputType = file.type === "image/png" ? "image/png" : "image/jpeg";
   let outDataUrl = canvas.toDataURL(outputType, 0.92);
   // JPEG only -- confirmed live that canvas.toDataURL() injects a real

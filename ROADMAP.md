@@ -1,5 +1,27 @@
 # Roadmap / open design problems
 
+## Repo-size math behind the photo downscale cap (reference, not open)
+
+**Closed 2026-08-28**, logged here as the reasoning behind a real number
+in the code, not an open question. Raised directly: at an assumed 5MB
+per contributed photo (realistic for a modern phone's full-resolution
+JPEG, since nothing was downscaling them), `suzuki-sv650-1999`'s 918
+photo slots fully filled would run about 4.5GB -- right against
+GitHub's own "under 5GB strongly recommended" per-repo guidance, from
+one motorcycle manual, before counting replaced-photo history that git
+never reclaims or any `__altN` alternate-angle uptake.
+
+Checked against the real manifest before picking a fix: bbox sizes
+(converted from pixel_bbox through the same scale math patcher.js
+already uses) have a median of ~196x121pt, needing only ~820x500px for
+full 300dpi print quality; the largest (a rare full-page figure,
+612x792pt) needs ~2550x3300px at 300dpi. `contribute.js`'s photo-picker
+now caps the long edge at 2000px before its existing metadata-strip
+step -- comfortable headroom over the median case, and still ~235dpi at
+the largest, easily sharp for a reference photo viewed on screen or
+printed. Cuts typical raw phone-camera resolution (12-48MP) several-fold
+with no visible quality loss for this use case.
+
 Things we've deliberately scoped out of the current build, with our best
 thinking on each so a future contributor isn't starting from zero. If you
 have a better idea than what's written here, that's the point -- open an
