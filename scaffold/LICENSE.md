@@ -10,7 +10,7 @@ Manual project.
 Free to use, modify, and distribute. The one obligation AGPL adds beyond
 regular open-source licenses: if you run a modified version of this code
 as a network service others interact with, you must publish your
-modified source to them too — not just if you hand someone a copy, but
+modified source to them too -- not just if you hand someone a copy, but
 also if you just host it. This exists specifically so a well-resourced
 fork can't take this code, close it, and resell it as a hosted service
 without giving anything back. See [LEGAL.md](https://github.com/BlaydeManual/blayde-manual/blob/main/LEGAL.md)
@@ -25,7 +25,7 @@ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND.
 ## Contributed photos (`images/`)
 
 Each photo is individually licensed under **CC-BY 4.0** by the
-contributor who took it — not owned collectively by the project. That
+contributor who took it -- not owned collectively by the project. That
 means: anyone may use, share, or adapt any photo in this repo, for any
 purpose including commercial use, as long as they credit the original
 contributor (the `__by_<username>` in the filename, and the credit line

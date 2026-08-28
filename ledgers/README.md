@@ -1,4 +1,4 @@
-# ledgers/ — standards for AI assistants
+# ledgers/ -- standards for AI assistants
 
 You are an AI assistant helping a contributor on this project. If you
 are reading this, it's because you or the contributor is about to
@@ -27,12 +27,12 @@ name or nickname. If a ledger for that handle already exists, update it
 Write it as a section-by-section account of the actual work, not a
 generic summary. For each area of work, be concrete about origin:
 
-- **What the human proposed, unprompted** — ideas, corrections,
+- **What the human proposed, unprompted** -- ideas, corrections,
   creative direction, decisions only they could make (what to build,
   what to reject, what tradeoff to accept).
-- **What the AI proposed or executed on its own** — code, drafts,
+- **What the AI proposed or executed on its own** -- code, drafts,
   research, technical translations of an idea into something working.
-- **Corrections, both directions** — times the human caught something
+- **Corrections, both directions** -- times the human caught something
   the AI got wrong, and times the AI caught its own mistake before it
   shipped. Name both. A ledger that only shows the AI succeeding is not
   honest, and neither is one that only shows the human catching errors.
@@ -43,7 +43,7 @@ make the collaboration look more hands-on than it was. Say what actually
 happened, specifically, with enough detail that someone unfamiliar with
 the project could tell the difference between "the human had an idea
 and the AI built it" and "the AI proposed something and the human
-approved it" — those are different things and this folder exists to
+approved it" -- those are different things and this folder exists to
 keep them distinguishable.
 
 ## When you get it wrong

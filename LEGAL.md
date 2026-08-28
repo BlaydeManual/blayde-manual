@@ -30,7 +30,7 @@ shared source.
 - **OCR'd heading/section text.** Nothing from the manual's own words
   is collected or stored anywhere. `procedure_id` and `section_heading`
   are purely positional markers (`p155_proc2_fig1`, "Page 155,
-  procedure 2") — a page number and a counter, generated fresh from
+  procedure 2") -- a page number and a counter, generated fresh from
   content that only ever exists in the user's own browser.
 - **Vehicle-specific spec numbers** (torque values, clearances, fluid
   capacities): keep the public manifest to "there's a spec box here for
@@ -53,7 +53,7 @@ Instagram). Built into `contribute.js` as two required checkboxes, not
 buried in `CONTRIBUTING.md` or left as an unenforced PR-template line.
 
 The photo itself is stripped to pixels only before it ever leaves the
-browser — no EXIF, no GPS, no camera metadata, no ICC color profile —
+browser -- no EXIF, no GPS, no camera metadata, no ICC color profile --
 and re-checked server-side before merge, independent of the client-side
 strip. This isn't just a privacy nicety: unredacted location data on a
 photo of someone's specific, identifiable vehicle is a real safety
@@ -88,7 +88,7 @@ A wrong torque spec or procedure can hurt someone. Minimum bar:
 - Contact: `legal@blaydemanual.com`.
 - **TODO once the domain is live:** register that address as the
   official DMCA agent with the U.S. Copyright Office
-  (dmca.copyright.gov/osp, ~$6, renews every 3 years) — a published
+  (dmca.copyright.gov/osp, ~$6, renews every 3 years) -- a published
   address alone doesn't grant safe-harbor protection on its own.
 - GitHub also runs its own independent DMCA process for repos.
 - Keep a fast path to strip a specific contested file/commit range
@@ -100,10 +100,10 @@ Public at `github.com/BlaydeManual/blayde-manual` as of 2026-08-25.
 
 **Still open:**
 - Register the DMCA agent (see above).
-- CLA/DCO for outside *code* contributions — hard gate, blocks
+- CLA/DCO for outside *code* contributions -- hard gate, blocks
   accepting any code PR until it exists. Not yet needed with a single
   author.
 - Org-level Ruleset so branch protection auto-applies to every new
-  vehicle repo generated from `vehicle-scaffold` — needs `admin:org`
+  vehicle repo generated from `vehicle-scaffold` -- needs `admin:org`
   scope not currently granted. Branch protection/CODEOWNERS on the
   three org repos themselves is already configured.
