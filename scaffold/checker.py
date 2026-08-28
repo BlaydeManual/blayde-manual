@@ -17,7 +17,7 @@ import json
 import sys
 from pathlib import Path
 
-from PIL import Image, ExifTags
+from PIL import Image
 import numpy as np
 
 MIN_WIDTH = 1200
@@ -63,17 +63,29 @@ def check_image(path, expected_id=None, manifest_ids=None):
     if w < MIN_WIDTH or h < MIN_HEIGHT:
         results["hard_fails"].append(f"resolution too low ({w}x{h}, need >= {MIN_WIDTH}x{MIN_HEIGHT})")
 
-    exif = img.getexif()
-    if exif and len(exif) > 0:
-        tags_present = [ExifTags.TAGS.get(k, k) for k in exif.keys()]
-        gps_present = any("GPS" in str(t) for t in tags_present) or 34853 in exif
-        results["info"]["exif_tag_count"] = len(exif)
-        if gps_present:
-            results["hard_fails"].append("EXIF GPS data present -- strip location before upload")
-        else:
-            results["warnings"].append(
-                f"EXIF metadata present ({len(exif)} tags) -- stripping recommended for privacy"
-            )
+    # Hard fail on ANY non-pixel data, not just EXIF -- direct instruction:
+    # "zero data, only the pixels" (attribution lives outside the image
+    # file entirely -- patcher.js draws the credit tag fresh at patch
+    # time, never embeds it). img.getexif() alone isn't enough to prove
+    # that: confirmed empirically it returns an EMPTY dict for a real
+    # JPEG carrying an ICC profile or a comment marker, both real,
+    # inspectable metadata getexif() simply doesn't look at. img.info
+    # exposes all of it (ICC profiles, comments, PNG text chunks, EXIF),
+    # so that's the real surface to check, not just the EXIF-specific one.
+    # JFIF_ALLOWED is the exact set PIL itself leaves on a JPEG it just
+    # re-saved with zero auxiliary data passed in -- confirmed by
+    # actually re-saving a stripped image and inspecting its own
+    # info dict, not guessed: universal container bookkeeping (format
+    # version, pixel density unit) present on every real JPEG, not
+    # identifying information. A clean PNG has no such floor -- any
+    # info key at all is real, removable data.
+    JFIF_ALLOWED = {"jfif", "jfif_version", "jfif_unit", "jfif_density"}
+    extra_keys = [k for k in img.info.keys() if k not in JFIF_ALLOWED]
+    if extra_keys:
+        results["info"]["non_pixel_data"] = extra_keys
+        results["hard_fails"].append(
+            f"file carries non-pixel data ({', '.join(extra_keys)}) -- strip it before upload (try --fix)"
+        )
 
     gray = np.array(img.convert("L").resize((min(w, 1000), int(min(w, 1000) * h / w))))
     variance = laplacian_variance(gray)
@@ -99,7 +111,10 @@ def check_image(path, expected_id=None, manifest_ids=None):
 
 
 def strip_exif_inplace(path):
-    """Convenience: re-save without EXIF (contributor can run --fix)."""
+    """Convenience: decode to pure pixels and re-save with zero auxiliary
+    data (EXIF, ICC profile, comments, PNG text chunks) -- contributor can
+    run --fix. Already produces exactly what check_image's own allowlist
+    expects, confirmed by re-checking the result immediately after."""
     img = Image.open(path)
     data = list(img.getdata())
     clean = Image.new(img.mode, img.size)
@@ -131,9 +146,10 @@ def main():
         p = Path(img_path)
         expected_id = p.stem.split("__")[0]
         r = check_image(p, expected_id=expected_id, manifest_ids=manifest_ids)
-        if args.fix and any("EXIF" in w for w in r["warnings"]):
+        if args.fix and any("non-pixel data" in f for f in r["hard_fails"]):
             strip_exif_inplace(p)
-            r["warnings"].append("EXIF stripped by --fix")
+            r = check_image(p, expected_id=expected_id, manifest_ids=manifest_ids)
+            r["info"]["fixed"] = "non-pixel data stripped by --fix"
         all_results.append(r)
         if r["hard_fails"]:
             any_hard_fail = True

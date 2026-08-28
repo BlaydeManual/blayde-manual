@@ -13,6 +13,27 @@ jobs:
         with:
           fetch-depth: 0
 
+      # Real gap this closes: the workflow trigger above fires whenever a
+      # PR touches images/** at all, but nothing previously checked that
+      # ONLY images/** changed. A PR could ride a second, unrelated change
+      # in alongside an innocent-looking photo -- the severe case being a
+      # modified .github/workflows/*.yml, which merged into this repo
+      # means real code execution here, not just a bad photo. Runs before
+      # any Python setup, so a PR that fails this never spends CI time on
+      # a checker run it was never going to pass anyway.
+      - name: Enforce PR touches only images/
+        run: |
+          git diff --name-only origin/${{ github.base_ref }}...HEAD > all_changed_files.txt
+          OUTSIDE=$(grep -v '^images/' all_changed_files.txt || true)
+          if [ -n "$OUTSIDE" ]; then
+            echo "This PR changes files outside images/, not just a contributed photo:"
+            echo "$OUTSIDE"
+            echo ""
+            echo "Only a photo under images/ is accepted here. Please open a separate PR for anything else."
+            exit 1
+          fi
+          echo "OK -- every changed file is under images/"
+
       - uses: actions/setup-python@v5
         with:
           python-version: "3.11"
@@ -26,7 +47,7 @@ jobs:
           git diff --name-only origin/${{ github.base_ref }}...HEAD -- images/ > changed_files.txt
           cat changed_files.txt
 
-      - name: Enforce one procedure_id per PR
+      - name: Enforce exactly one photo per PR
         run: |
           python - <<'EOF'
           from pathlib import Path
@@ -36,20 +57,24 @@ jobs:
               print("No image files changed -- nothing to validate.")
               raise SystemExit(0)
 
-          def procedure_id_of(path):
-              stem = Path(path).stem
-              return stem.split("__")[0]
-
-          ids = {procedure_id_of(f) for f in files}
-          if len(ids) > 1:
-              print("This PR touches more than one procedure_id:")
-              for pid in sorted(ids):
-                  print(f"  - {pid}")
-              print("\nPlease split this into separate PRs, one procedure_id each -- "
-                    "small PRs get reviewed and merged much faster, and one bad photo "
-                    "won't block the rest.")
+          # Exactly one file, full stop -- not "one procedure_id, any number
+          # of files", which contribute.html's own upload input can never
+          # actually produce anyway (no `multiple` attribute -- confirmed,
+          # the real site only ever submits one photo per PR). There's also
+          # no real mechanism anywhere downstream (patcher.js, review-panel.js)
+          # to choose among several alt-angle photos landing in one PR, so
+          # allowing that here would only let an ambiguous state in that
+          # nothing can resolve -- see ROADMAP.md for the alt-file-selection
+          # idea this is deferred behind. auth-worker's own /accept-photo-pr
+          # gate enforces this exact same rule independently at merge time.
+          if len(files) > 1:
+              print(f"This PR touches {len(files)} photo files, not 1:")
+              for f in sorted(files):
+                  print(f"  - {f}")
+              print("\nOnly one photo per pull request is accepted -- please split this "
+                    "into separate PRs, one photo each.")
               raise SystemExit(1)
-          print(f"OK -- single procedure_id: {ids.pop()}")
+          print(f"OK -- single photo: {files[0]}")
           EOF
 
       - name: Run checker.py against changed photos

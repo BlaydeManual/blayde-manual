@@ -17,9 +17,10 @@ that scrolls off a video description in a week.
    in this repo lists every figure the original manual needs a photo for,
    each with a `procedure_id`. If you're not sure which one matches what
    you're looking at, open an issue or ask -- better to check than guess.
-2. **One procedure per pull request.** Small, independently-reviewable PRs
-   get merged fast. A PR bundling 20 photos means one bad photo blocks the
-   other 19 -- don't do that to yourself or the reviewer.
+2. **One photo per pull request.** Small, independently-reviewable PRs
+   get merged fast, and this repo has no way to choose between several
+   photos landing in one PR anyway. A PR bundling many photos means one
+   bad one blocks the rest -- don't do that to yourself or the reviewer.
 
 ## Photo requirements
 
@@ -33,8 +34,14 @@ python checker.py your_photo.jpg --manifest manifest.json
 It checks:
 - **Resolution**: at least 1200x900
 - **Focus**: not blurry (a real focus-score check, not just "looks fine to me")
-- **EXIF/GPS stripped**: your camera embeds location data by default --
-  the checker can strip it for you with `--fix`
+- **Zero non-pixel data**: your camera embeds GPS/location, camera model,
+  and timestamp by default, and some editors add color profiles or
+  comments -- none of it is allowed here (location data especially: this
+  project doesn't want anyone able to work out where a contributor's
+  vehicle actually lives). The checker can strip all of it for you with
+  `--fix`. Credit stays outside the file either way -- it's drawn onto
+  the photo fresh, by the site itself, every time someone patches their
+  own manual, never baked into what you upload.
 - **Filename matches a real `procedure_id`** from `manifest.json`
 
 It won't (and can't) check whether your photo actually shows the right
