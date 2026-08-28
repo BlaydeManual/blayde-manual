@@ -298,6 +298,15 @@ open PRs that nobody ever acts on -- that one cleans up what's left
 sitting open, it doesn't stop a bad merge from completing, which is
 what the required check now does.
 
+A second, independent net catches anything that still gets merged
+oversized: `web/registry.js`'s patcher (`MAX_PHOTO_BYTES`, 20MB) refuses
+to embed any photo it pulls from a vehicle repo above that size, checked
+against both GitHub's reported file size and the actual downloaded byte
+count, before the bytes ever reach the PDF-embedding step. `checker.py`
+already caps uploads at 15MB before merge, so a file this large sitting
+in `images/` is either a bug or a compromised repo, and this stops it
+from being processed either way.
+
 ## What's never collected or stored
 
 No analytics, no tracking, no server-side logs of what anyone patches
