@@ -3,8 +3,9 @@
 Two jobs now: trades a GitHub OAuth `code` for an access token (both
 the classic OAuth App and the GitHub App's user-to-server flow), and
 performs the small set of privileged actions (direct-submit,
-direct-contribute, pending-vehicles, approve-vehicle) using the GitHub
-App's own installation credential -- one the browser never holds. See
+direct-contribute, pending-vehicles, approve-vehicle,
+manage-collaborator, accept-photo-pr) using the GitHub App's own
+installation credential -- one the browser never holds. See
 `SECURITY.md` and `SECURITY-TESTING.md` at the repo root for how this
 fits into the rest of the architecture and how to verify it actually
 works once deployed.

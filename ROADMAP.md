@@ -252,17 +252,13 @@ Remaining/ongoing items from the first pass:
   spoofing vector (tricking a user into pointing at a fake registry);
   worth confirming that holds once the advanced/override field is
   actually exposed to real users.
-- Supply-chain: **corrected 2026-08-26** -- `@cantoo/pdf-lib` was checked
-  directly against the live `web/index.html` and is already pinned to
-  an exact version (`2.9.1`) with a verified SRI hash; this entry was
-  stale, the gap it described was already closed and just never
-  marked as such. `tesseract.js` is the real remaining gap: loaded via
-  `@5`, a floating major-version tag rather than a pinned exact
-  version, with no SRI hash. A compromised or malicious CDN release
-  under that tag would run in every visitor's browser with no version
-  pin or hash to catch it. Fix: pin the exact version (currently
-  resolves to `5.1.1`), add SRI, or self-host, matching the pattern
-  pdf-lib already uses.
+- Supply-chain: **corrected 2026-08-26, closed 2026-08-27** -- both
+  `@cantoo/pdf-lib` (`web/index.html`) and `tesseract.js`
+  (`web/maintainer.html`) were checked directly against the live HTML
+  and are pinned to an exact version (`2.9.1`; `5.1.1`, not the
+  floating `@5` tag this entry originally flagged) with a verified SRI
+  hash each. Both gaps this entry described are closed; nothing left
+  to fix here.
 - The `--live` paths in `propose_new_vehicle.py` / `approve_registry_entry.py`
   already use list-form `subprocess.run` (no shell injection surface),
   worth re-confirming once those paths actually get exercised for real.
@@ -3120,7 +3116,7 @@ Confirmed with the project owner: with a single author today, there is no real g
 Both `blayde-manual`, `registry`, and `vehicle-scaffold` now have CODEOWNERS and branch protection (1 required code-owner-approved review, admins exempt so the sole author can still push directly). Two things this did not solve:
 
 1. **Branch protection does not carry over when a new vehicle repo is generated from the `vehicle-scaffold` template.** GitHub's "generate from template" copies files, not repo settings. Every new vehicle repo needs branch protection configured as its own explicit step, or this needs an org-level Ruleset instead of per-repo branch protection -- rulesets can apply automatically to every repo matching a pattern, but creating one needs `admin:org` scope, which the current token does not have (`gh auth refresh -h github.com -s admin:org` would add it).
-2. **The `manifest.json` CI-validation job still does not exist.** `scaffold/checker.py`'s CI workflow only validates photos (`paths: images/**`). A PR touching only `manifest.json` -- a moved bbox, a changed status, an edited edition label -- gets zero automated checking today, in `vehicle-scaffold` or in any repo generated from it. This is the same gap already logged in the "Direct-to-git contribution" audit above; repeating it here because the branch-protection rollout made it concrete on a real repo instead of a hypothetical one.
+2. **The `manifest.json` CI-validation job exists but isn't required yet.** `scaffold/validate_manifest.py`/`validate-manifest.yml` (job `validate`) were added and get copied into every vehicle repo the same way `checker.py` is, but that job isn't wired into `required_status_checks` the way `checker` is -- a PR touching only `manifest.json` runs the check, but a native merge can still skip it. This is the same gap already logged in the "Direct-to-git contribution" audit above; repeating it here because the branch-protection rollout made it concrete on a real repo instead of a hypothetical one.
 
 ## OAuth App registered; expire-user-access-tokens deferred until the worker handles refresh (2026-08-25)
 

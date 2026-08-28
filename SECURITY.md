@@ -231,10 +231,13 @@ with the installation token, then merges:
    set, between when a maintainer looked and when they clicked Accept.
 
 Both are hard blocks, matching the vehicle-approval checks above, not
-a warning a human can click past. Verified via a synthetic Node test
-against the real handler: a clean single-photo PR merges; an extra
-file, an EXIF-carrying photo, and an under-permissioned caller are
-each rejected with a specific, real error.
+a warning a human can click past. Verified with a local, uncommitted
+test script that mocked `fetch` and drove this logic with a real
+RSA test key for the App-JWT signing path (not a checked-in test
+suite -- `auth-worker/` doesn't export individual handlers for one):
+a clean single-photo PR merges; an extra file, an EXIF-carrying photo,
+and an under-permissioned caller are each rejected with a specific,
+real error.
 
 **The gap this alone would NOT have closed, and how it's actually closed now:**
 these checks only run when Accept is clicked through this site. Someone

@@ -40,9 +40,9 @@ shared source.
 
 "Suzuki," "SV650," the model name, and any logos are trademarks. Naming
 the vehicle a manual documents is nominative fair use. Every repo's
-README carries: *"Blayde Manual is an independent, community-run
-project. Not affiliated with, endorsed by, or sponsored by
-[manufacturer]."*
+README (via `scaffold/README.md`, forked into every vehicle repo)
+carries: *"Not affiliated with, endorsed by, or sponsored by the
+original manufacturer."*
 
 ## Contributed photos
 
@@ -51,6 +51,14 @@ CC-BY 4.0 license grant, and a statement that the photo is the
 contributor's own (not lifted from a forum post or someone else's
 Instagram). Built into `contribute.js` as two required checkboxes, not
 buried in `CONTRIBUTING.md` or left as an unenforced PR-template line.
+
+The photo itself is stripped to pixels only before it ever leaves the
+browser -- no EXIF, no GPS, no camera metadata, no ICC color profile --
+and re-checked server-side before merge, independent of the client-side
+strip. This isn't just a privacy nicety: unredacted location data on a
+photo of someone's specific, identifiable vehicle is a real safety
+concern for the contributor, not just a metadata-hygiene one. See
+SECURITY.md for the mechanism.
 
 **License: CC-BY 4.0, not CC-BY-SA.** CC-BY-SA's copyleft would force
 anything built on top of contributed photos, including a future
