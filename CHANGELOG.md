@@ -18,6 +18,19 @@ and corrections in both directions -- see
 
 ## [Unreleased]
 
+- **Made the missing-photo QR marker's visible code opt-in, off by
+  default.** Direct feedback: at some figures' actual size, the QR
+  drawn inside `drawContributeMarker`'s box was large enough to make
+  the marker unusable rather than just visible. Added a checkbox in
+  `index.html` ("Draw scannable QR codes on still-missing photos"),
+  wired through `patchViaRegistry`, that controls whether the QR image
+  is drawn at all; unchecked by default. The box stays fully tappable
+  in any PDF viewer via its existing link annotation regardless of the
+  setting, so turning the QR off costs nothing on the device used to
+  patch. Real per-side placement (QR beside the figure instead of
+  inside it) is logged as a follow-up in FEATURE_REQUESTS.md, not
+  solved by this change.
+
 - **Review-flow hardening and a real merge-time trust gate for photo
   PRs (PR #34, not yet merged).**
   - Page-offset bug (picking an already-patched manual instead of the

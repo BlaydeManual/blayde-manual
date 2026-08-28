@@ -61,3 +61,25 @@ which matters for the picker UI (surfacing "this one's for a specific
 situation" rather than treating every alternate as interchangeable).
 Worth designing against the existing `__altN` convention rather than
 inventing a parallel system.
+
+## QR marker placed beside the figure, not inside it
+
+**What it would be:** for a still-missing procedure's contribute
+marker (`drawContributeMarker` in `patcher.js`), draw the scannable QR
+code hanging off the side of the figure's own box instead of inside
+it, so the marker never competes for space with the figure it is
+pointing at, no matter how small that figure is.
+
+**Why not built yet:** placing anything reliably outside a figure's own
+box needs real layout math this project does not have today. It has to
+find free space on the page (there may not be any on the same side
+consistently, given how differently figures are laid out from page to
+page), stay clear of the surrounding manual content, and still read as
+clearly tied to the correct figure rather than a neighboring one.
+Raised directly as feedback once the always-on, inside-the-box QR
+turned out to be large enough on some figures to make the marker
+unusable, not just visible. The immediate fix (a plain on/off toggle
+for the QR, off by default, added at generation time in `index.html`/
+`patcher.js`) ships first as a stopgap. This entry tracks the real
+follow-up: proper per-side placement, so the toggle can eventually
+default back on without the original problem.

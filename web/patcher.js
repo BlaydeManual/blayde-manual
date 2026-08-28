@@ -34,6 +34,7 @@ const pdfInput = document.getElementById("pdfInput");
 const patchBtn = document.getElementById("patchBtn");
 const contributorPrefWrap = document.getElementById("contributorPrefWrap");
 const contributorList = document.getElementById("contributorList");
+const showQrInput = document.getElementById("showQrInput");
 const progressBar = document.getElementById("progressBar");
 const progressLabel = document.getElementById("progressLabel");
 
@@ -417,7 +418,7 @@ function addLinkAnnotation(page, rect, url) {
   else page.node.set(PDFName.of("Annots"), ctx.obj([link]));
 }
 
-async function drawContributeMarker(doc, page, pageGeometry, pixelBbox, url, font) {
+async function drawContributeMarker(doc, page, pageGeometry, pixelBbox, url, font, showQr) {
   // Same pixel_bbox -> PDF-point math as drawImageAt, since this box is
   // exactly where a real photo would have been drawn.
   const { composite_width_px, composite_height_px, page_width_pt, page_height_pt } = pageGeometry;
@@ -432,27 +433,37 @@ async function drawContributeMarker(doc, page, pageGeometry, pixelBbox, url, fon
     borderColor: STEEL, borderWidth: 0.75, borderDashArray: [3, 2],
   });
 
-  // QR sits in the box's own bottom-right corner (matching the credit
-  // tab's placement convention for contributed photos), leaving the
-  // top-left free for the caption/URL text below.
+  // QR is opt-in (showQr), off by default: at the placeholder's own
+  // figure size it was routinely large enough to obscure the box
+  // rather than just mark it, per direct feedback. The box stays
+  // fully tappable in any PDF viewer via the link annotation below
+  // regardless of this setting, so turning the QR off costs nothing
+  // for anyone reading on the device they patched with. The visible
+  // QR only matters for scanning with a second device, so it's an
+  // explicit choice rather than the default. Real per-side placement
+  // (QR beside the figure instead of inside it) is tracked as a
+  // follow-up in FEATURE_REQUESTS.md; this toggle is the stopgap
+  // until that's built.
   const qrSize = Math.max(24, Math.min(72, boxW * 0.9, boxH * 0.75));
   const margin = Math.min(4, boxW * 0.05, boxH * 0.08);
-  if (boxW >= 20 && boxH >= 20) {
+  if (showQr && boxW >= 20 && boxH >= 20) {
     const qrBytes = await qrPngBytes(url, 4);
     const qrImage = await doc.embedPng(qrBytes);
     const qrX = ptX0 + boxW - qrSize - margin;
     const qrY = boxY + margin;
     page.drawImage(qrImage, { x: qrX, y: qrY, width: qrSize, height: qrSize });
   }
+  const reservedForQr = showQr ? qrSize + margin : 0;
   if (boxH >= 44 && font) {
-    page.drawText("photo needed -- scan or tap to add one", {
+    const caption = showQr ? "photo needed, scan or tap to add one" : "photo needed, tap to add one";
+    page.drawText(caption, {
       x: ptX0 + 4, y: boxY + boxH - 12, size: Math.min(7, boxW / 22), font, color: STEEL, maxWidth: boxW - 8,
     });
     // A URL has no spaces to wrap on, so drawText's maxWidth can't stop
     // it running under the QR the way word-wrap does for the caption
-    // above -- shrink the font to actually fit the available width
+    // above. Shrink the font to actually fit the available width
     // instead (same measure-then-scale approach as the credit tab).
-    const urlAreaWidth = boxW - qrSize - margin - 8;
+    const urlAreaWidth = boxW - reservedForQr - 8;
     const urlBaseSize = Math.min(6, boxW / 30);
     const urlMeasured = font.widthOfTextAtSize(url, urlBaseSize);
     const urlSize = urlMeasured > urlAreaWidth ? urlBaseSize * (urlAreaWidth / urlMeasured) : urlBaseSize;
@@ -569,7 +580,7 @@ async function buildCoverPage(doc, { vehicleDisplayName, nPatched, totalFigures,
   return page;
 }
 
-async function patchViaRegistry(doc, priorState, priorityList) {
+async function patchViaRegistry(doc, priorState, priorityList, showQr) {
   const { entry, manifest, photos } = registryResolution;
   const geometry = manifest.page_geometry || {};
   const activeEntries = (manifest.entries || []).filter(e =>
@@ -602,7 +613,7 @@ async function patchViaRegistry(doc, priorState, priorityList) {
         try {
           const page = doc.getPage(e.page - 1);
           const url = contributeUrl(entry.vehicle_slug, e.procedure_id);
-          await drawContributeMarker(doc, page, missingGeo, e.pixel_bbox, url, helvFont);
+          await drawContributeMarker(doc, page, missingGeo, e.pixel_bbox, url, helvFont, showQr);
         } catch (err) {
           appendLog(`  couldn't draw contribute marker for ${e.procedure_id}: ${err.message}`);
         }
@@ -670,7 +681,7 @@ patchBtn.addEventListener("click", async () => {
     const priorityList = getPriorityList();
     if (priorityList.length) appendLog(`Contributor priority: ${priorityList.join(" > ")} (random otherwise)`);
 
-    const result = await patchViaRegistry(doc, priorState, priorityList);
+    const result = await patchViaRegistry(doc, priorState, priorityList, showQrInput.checked);
 
     const nPatchedTotal = Object.keys(result.patchedFigures).length;
     setProgress(1, 1, "building cover page...");
