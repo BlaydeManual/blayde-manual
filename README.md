@@ -13,8 +13,8 @@ browser, including indexing a brand-new manual.
 
 Read [LEGAL.md](LEGAL.md) for the legal reasoning behind that architecture.
 Open design questions and deferred features live in [ROADMAP.md](ROADMAP.md).
-[web/docs/faq.html](web/docs/faq.html) answers the questions people actually
-ask, in plain language, no git knowledge required.
+[The FAQ](https://blaydemanual.com/docs/faq.html) answers the questions people
+actually ask, in plain language, no git knowledge required.
 
 ## How this is structured
 
