@@ -275,6 +275,63 @@ document.getElementById("landingSignInBtn").addEventListener("click", async () =
 
 renderUploads();
 
+// Real bug, caught live while auditing whether this actually meets the
+// "zero data, only pixels" standard checker.py/accept-photo-pr now
+// enforce: it does NOT, for JPEG specifically. The comment this
+// replaces claimed canvas.toDataURL() "never carries the source file's
+// metadata forward" -- true for the ORIGINAL file's EXIF/GPS (confirmed
+// gone), false for what the browser itself adds back: Chrome injects a
+// real ~470-byte APP2 ICC color profile into every JPEG canvas.toDataURL()
+// produces, confirmed by decoding real output and finding it. That means
+// every photo submitted through this real site's real upload flow would
+// have been hard-rejected by the very checks meant to validate a
+// legitimate submission -- not a contributor's mistake, not a bypass,
+// the sanctioned path itself failing its own standard. PNG output was
+// separately confirmed clean (IHDR/IDAT/IEND only, no ancillary chunks)
+// -- this only affects the JPEG path.
+function stripJpegAuxSegments(bytes) {
+  const keep = [bytes.subarray(0, 2)]; // SOI
+  let offset = 2;
+  while (offset + 4 <= bytes.length && bytes[offset] === 0xff) {
+    const marker = bytes[offset + 1];
+    if (marker === 0xd9) { keep.push(bytes.subarray(offset, offset + 2)); offset += 2; break; }
+    // Start-of-scan: everything from here on is entropy-coded image data,
+    // not a marker stream -- 0xFF bytes inside it are always followed by
+    // 0x00 stuffing or a restart marker, never a real segment to parse.
+    // Copy the rest verbatim rather than risk corrupting it.
+    if (marker === 0xda) { keep.push(bytes.subarray(offset)); offset = bytes.length; break; }
+    const segmentLength = (bytes[offset + 2] << 8) | bytes[offset + 3];
+    // Drop every APPn segment except APP0 (JFIF -- harmless container
+    // bookkeeping, matches checker.py's own allowlist) and any comment
+    // marker. This is where APP1 (Exif/XMP), APP2 (ICC profile -- the
+    // real, confirmed offender), and APP13 (Photoshop/IPTC) all live.
+    const isDroppableAppn = marker >= 0xe1 && marker <= 0xef;
+    const isComment = marker === 0xfe;
+    if (!(isDroppableAppn || isComment)) {
+      keep.push(bytes.subarray(offset, offset + 2 + segmentLength));
+    }
+    offset += 2 + segmentLength;
+  }
+  if (offset < bytes.length) keep.push(bytes.subarray(offset)); // malformed-input safety net
+  const out = new Uint8Array(keep.reduce((n, a) => n + a.length, 0));
+  let pos = 0;
+  for (const chunk of keep) { out.set(chunk, pos); pos += chunk.length; }
+  return out;
+}
+
+function dataUrlToBytes(dataUrl) {
+  const binary = atob(dataUrl.split(",")[1]);
+  const bytes = new Uint8Array(binary.length);
+  for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+  return bytes;
+}
+
+function bytesToDataUrl(bytes, mimeType) {
+  let binary = "";
+  for (let i = 0; i < bytes.length; i++) binary += String.fromCharCode(bytes[i]);
+  return `data:${mimeType};base64,${btoa(binary)}`;
+}
+
 // ---- photo picker ----
 // EXIF (GPS location, camera/phone model, timestamp) is stripped here,
 // before the photo is stored anywhere -- even a draft that never gets
@@ -282,10 +339,7 @@ renderUploads();
 // photo is already committed to a branch; it can catch a leak, it can't
 // undo one, since the data's already technically public by then. The
 // load-bearing check has to be client-side, before the first save --
-// see ROADMAP.md's finding on this exact point. Re-encoding through a
-// canvas is the standard technique: canvas.toDataURL() never carries the
-// source file's metadata forward, so there's no EXIF field to parse or
-// allowlist -- the whole block is simply never in the output.
+// see ROADMAP.md's finding on this exact point.
 document.getElementById("photoInput").addEventListener("change", async (e) => {
   const file = e.target.files[0];
   const saveBtn = document.getElementById("saveDraftBtn"), submitBtn = document.getElementById("submitNowBtn");
@@ -300,7 +354,14 @@ document.getElementById("photoInput").addEventListener("change", async (e) => {
   canvas.height = bitmap.height;
   canvas.getContext("2d").drawImage(bitmap, 0, 0);
   const outputType = file.type === "image/png" ? "image/png" : "image/jpeg";
-  selectedPhotoDataUrl = canvas.toDataURL(outputType, 0.92);
+  let outDataUrl = canvas.toDataURL(outputType, 0.92);
+  // JPEG only -- confirmed live that canvas.toDataURL() injects a real
+  // ICC color profile into JPEG output (PNG output was separately
+  // confirmed already clean). See stripJpegAuxSegments' own comment.
+  if (outputType === "image/jpeg") {
+    outDataUrl = bytesToDataUrl(stripJpegAuxSegments(dataUrlToBytes(outDataUrl)), outputType);
+  }
+  selectedPhotoDataUrl = outDataUrl;
 
   const thumb = document.getElementById("previewThumb");
   thumb.src = selectedPhotoDataUrl;

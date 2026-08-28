@@ -1028,11 +1028,21 @@ function validatePhoto(bytes) {
 // or the API. A hash of "sanitized" content can't catch that (there's
 // nothing trustworthy to hash against when the Worker never saw the
 // original bytes), so this scans the actual bytes about to be merged
-// for the real, standard metadata containers instead: JPEG's APP1
-// (Exif/XMP) and APP13 (Photoshop/IPTC) segments, PNG's eXIf/tEXt/
-// zTXt/iTXt chunks, WEBP's EXIF/XMP RIFF sub-chunks. Scans for
-// presence only, not full parsing -- knowing metadata exists is
-// enough to block; reading its actual content isn't needed for that. ----
+// for the real, standard metadata containers instead: JPEG's APPn
+// segments (APP1 Exif/XMP, APP2 ICC profile, APP13 Photoshop/IPTC,
+// etc.) and comment markers, PNG's eXIf/tEXt/zTXt/iTXt chunks, WEBP's
+// EXIF/XMP RIFF sub-chunks. Scans for presence only, not full parsing
+// -- knowing metadata exists is enough to block; reading its actual
+// content isn't needed for that.
+//
+// Originally only flagged APP1/APP13 -- real gap, caught live while
+// auditing contribute.js's own canvas re-encode against this same
+// standard: Chrome's canvas.toDataURL() injects a real ICC profile
+// into JPEG output via an APP2 segment, which this function silently
+// let through. Now flags every APPn (0xE1-0xEF) except APP0 (JFIF --
+// harmless container bookkeeping, matches checker.py's own allowlist
+// and stripJpegAuxSegments' keep-list in contribute.js), matching both
+// of those exactly instead of drifting from them. ----
 function jpegHasMetadata(bytes) {
   let offset = 2;
   while (offset + 4 <= bytes.length) {
@@ -1041,7 +1051,7 @@ function jpegHasMetadata(bytes) {
     if (marker === 0xd8 || marker === 0x01 || (marker >= 0xd0 && marker <= 0xd7)) { offset += 2; continue; }
     if (marker === 0xd9 || marker === 0xda) break; // EOI or start-of-scan -- no more markers to check
     const segmentLength = readUint16BE(bytes, offset + 2);
-    if (marker === 0xe1 || marker === 0xed) return true; // APP1 (Exif/XMP), APP13 (Photoshop/IPTC)
+    if ((marker >= 0xe1 && marker <= 0xef) || marker === 0xfe) return true; // any APPn but APP0, or a comment marker
     offset += 2 + segmentLength;
   }
   return false;
