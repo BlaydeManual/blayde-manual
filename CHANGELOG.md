@@ -18,6 +18,21 @@ and corrections in both directions -- see
 
 ## [Unreleased]
 
+- **Fix: figure detection was wrongly skipped on every page with a real
+  embedded text layer, not just pages needing OCR.** Caught live on a
+  factory manual indexed to 0 entries across 1200+ pages. Figure
+  detection is pure pixel-density analysis on the rendered page and has
+  nothing to do with whether the page also carries real embedded text;
+  it was gated behind the same check used to decide whether OCR is
+  worth running for headings, so any manual with genuine text on most
+  pages (unlike the flattened-scan test manuals this was first
+  validated against) found close to nothing. Figure detection now runs
+  on every page regardless. Heading extraction still only runs OCR on
+  pages with no reliable text layer; a text-layer page's real heading
+  text isn't read directly yet (tracked in ROADMAP.md), so it falls
+  back to whatever heading carried forward from the last page that had
+  one, same as any page with zero detected headings.
+
 - **Made the missing-photo QR marker's visible code opt-in, off by
   default.** Direct feedback: at some figures' actual size, the QR
   drawn inside `drawContributeMarker`'s box was large enough to make

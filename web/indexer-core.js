@@ -608,27 +608,41 @@ async function indexPdf(pdfDoc, vehicleSlug, {
       const pageNum = pageNumbers[idx];
       const page = await pdfDoc.getPage(pageNum);
 
-      let result;
-      if (!(await isFlattenedScanPage(page))) {
-        result = { pageNum, skipped: true };
-      } else {
-        const { canvas, imgData } = await renderPageToImageData(page, scale);
-        const viewport = page.getViewport({ scale: 1.0 });
+      // Figure detection is pure pixel-density analysis on the rendered
+      // canvas -- it has nothing to do with whether the page also
+      // happens to carry a real embedded text layer, so it always runs.
+      // Real bug, caught live on a factory manual with genuine embedded
+      // text on nearly every page (unlike the flattened-scan test
+      // manuals this was first validated against): figure detection was
+      // wrongly gated behind the SAME check used to decide whether OCR
+      // is worth running for headings, so a manual like that indexed to
+      // zero entries across 1200+ pages -- every real photo page was
+      // being treated as unprocessable, not just skipped for OCR.
+      // Heading extraction still only runs Tesseract on pages with no
+      // reliable text layer; a text-layer page's real heading text
+      // isn't read directly yet (see ROADMAP.md), so it falls back to
+      // whatever section heading carried forward from the last page
+      // that had one, same as any page with zero detected headings.
+      const { canvas, imgData } = await renderPageToImageData(page, scale);
+      const viewport = page.getViewport({ scale: 1.0 });
+      const textLayerPage = !(await isFlattenedScanPage(page));
+      let headings = [];
+      if (!textLayerPage) {
         const { data } = await worker.recognize(canvas.toDataURL("image/png"));
-        const headings = extractHeadings(data);
-        const bands = segmentFigures(imgData, canvas.width, canvas.height);
-        const figureBoxes = [];
-        for (const [bandY0, bandY1] of bands) {
-          for (const [x0, x1] of findFigureColumns(imgData, canvas.width, bandY0, bandY1)) {
-            figureBoxes.push([x0, bandY0, x1, bandY1]);
-          }
-        }
-        result = {
-          pageNum, skipped: false, headings, figureBoxes,
-          composite_width_px: canvas.width, composite_height_px: canvas.height,
-          page_width_pt: viewport.width, page_height_pt: viewport.height,
-        };
+        headings = extractHeadings(data);
       }
+      const bands = segmentFigures(imgData, canvas.width, canvas.height);
+      const figureBoxes = [];
+      for (const [bandY0, bandY1] of bands) {
+        for (const [x0, x1] of findFigureColumns(imgData, canvas.width, bandY0, bandY1)) {
+          figureBoxes.push([x0, bandY0, x1, bandY1]);
+        }
+      }
+      const result = {
+        pageNum, skipped: false, headings, figureBoxes, textLayerPage,
+        composite_width_px: canvas.width, composite_height_px: canvas.height,
+        page_width_pt: viewport.width, page_height_pt: viewport.height,
+      };
       results[idx] = result;
 
       completed++;
@@ -717,10 +731,6 @@ async function indexPdf(pdfDoc, vehicleSlug, {
   }
 
   for (const r of results) {
-    if (r.skipped) {
-      onLog?.(`page ${r.pageNum}: text-layer page, skipped (not handled yet)`);
-      continue;
-    }
     manifest.page_geometry[String(r.pageNum)] = {
       composite_width_px: r.composite_width_px,
       composite_height_px: r.composite_height_px,
@@ -739,14 +749,17 @@ async function indexPdf(pdfDoc, vehicleSlug, {
         page: r.pageNum,
         section_heading: sectionHeading,
         pixel_bbox: [x0, bandY0, x1, bandY1],
-        source_layout: "flattened_scan_ocr",
+        source_layout: r.textLayerPage ? "text_layer" : "flattened_scan_ocr",
         content_type: "photo",
         contributed_photo_path: `images/${vehicleSlug}/${procedureId}/`,
         status: "needs_contributed_photo",
       });
       nFigsThisPage++;
     }
-    onLog?.(`page ${r.pageNum}: ${r.headings.length} heading(s), ${nFigsThisPage} figure(s)`);
+    const headingNote = r.textLayerPage
+      ? "text-layer page, heading OCR not run (not built yet, see ROADMAP.md)"
+      : `${r.headings.length} heading(s)`;
+    onLog?.(`page ${r.pageNum}: ${headingNote}, ${nFigsThisPage} figure(s)`);
   }
 
   return manifest;
