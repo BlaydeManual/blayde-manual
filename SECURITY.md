@@ -236,24 +236,64 @@ against the real handler: a clean single-photo PR merges; an extra
 file, an EXIF-carrying photo, and an under-permissioned caller are
 each rejected with a specific, real error.
 
-**The gap this does NOT close, stated plainly:** these checks only run
-when Accept is clicked through this site. Someone with real push
-access can still merge the same PR natively -- github.com's own merge
-button, or `git`/the API directly -- and none of the checks above ever
-run, since they're application logic, not something GitHub itself
-enforces. Branch protection's `required_approving_review_count: 2`
-still applies either way (that part IS GitHub-native), so a lone bad
-actor can't merge alone -- but two real reviewers merging natively
-would skip the file-allowlist and metadata scan entirely. The fix that
-would actually close this is a required CI status check (a GitHub
-Actions workflow running the same two checks on every PR, wired into
-branch protection as a required check) -- GitHub-enforced the same way
-the review-count requirement is, regardless of which UI initiates the
-merge. Not built yet; tracked in ROADMAP.md alongside a separate,
-complementary idea (a periodic job auto-closing stale/malformed open
-PRs) -- that one cleans up what's left sitting open, it doesn't stop a
-bad merge from completing, so it's not a substitute for the required
-check.
+**The gap this alone would NOT have closed, and how it's actually closed now:**
+these checks only run when Accept is clicked through this site. Someone
+with real push access could still merge the same PR natively --
+github.com's own merge button, or `git`/the API directly -- skipping
+application logic entirely, since it isn't something GitHub itself
+enforces on its own. Closed for real by wiring the equivalent checks
+into `BlaydeManual/vehicle-scaffold` (a real, live GitHub template repo,
+copied into every vehicle repo at approval time -- see "vehicle-scaffold:
+the same checks, enforced by GitHub itself" below) and making that
+workflow's job a **required status check** in branch protection,
+alongside the existing `required_approving_review_count: 2`. A required
+check is GitHub's own enforcement, applied no matter which UI initiates
+the merge -- verified live: a normal merge attempt against a failing
+check is genuinely rejected ("the base branch policy prohibits the
+merge"), no override, nothing bypassed.
+
+## vehicle-scaffold: the same checks, enforced by GitHub itself
+
+`BlaydeManual/vehicle-scaffold` is a real GitHub template repo
+(`is_template: true`). `handleApproveVehicle` copies its real file tree
+into a vehicle repo right after that repo flips public -- deliberately
+AFTER approval, never at submit time, since the file-allowlist check
+above requires a pre-approval repo to be EXACTLY `{README.md,
+manifest.json}`; applying the scaffold earlier would fail every future
+submission against its own future self. It reads the live template
+directly rather than duplicating its contents in this Worker, so
+editing the scaffold later never requires touching this code or any
+already-created vehicle repo.
+
+The scaffold's `checker.py`, run by a workflow on every PR touching
+`images/`, now hard-fails on:
+- **Any non-pixel data**, not just EXIF GPS. `img.getexif()` alone
+  isn't enough -- confirmed empirically that it returns an empty dict
+  for a real JPEG carrying an ICC profile or a comment marker, both
+  real, inspectable data it simply doesn't look at. Checks `img.info`
+  broadly instead (the real surface PIL exposes for all of it), against
+  an allowlist of the exact JFIF fields confirmed present on any
+  freshly re-saved, already-clean image -- not guessed.
+- **More than one file changing**, or any file outside `images/` --
+  the same negative-allowlist rule `/accept-photo-pr` enforces,
+  independently, in the one other place a merge can actually happen.
+
+Branch protection's `required_status_checks` names that workflow's real
+job (`checker`) as required. This is the fix that closes the native-
+merge gap above for real, not just through this site's own Accept
+button -- and it comes with the same honest caveat as the review-count
+requirement it sits beside: `enforce_admins` stays `false` (see "Known
+gaps" below), so an org admin can still force a merge straight past it.
+Confirmed live, not theoretical -- caught during verification when a
+`gh pr merge --admin` call did exactly that, force-merging a test photo
+with embedded EXIF straight into `main`; reverted via a follow-up PR,
+not a direct push, once caught.
+
+Still tracked in ROADMAP.md, as a separate, complementary idea, not a
+substitute for the above: a periodic job auto-closing stale/malformed
+open PRs that nobody ever acts on -- that one cleans up what's left
+sitting open, it doesn't stop a bad merge from completing, which is
+what the required check now does.
 
 ## What's never collected or stored
 
@@ -352,15 +392,21 @@ controls as proven in production, not just in a mocked test.
   vehicle repo is generated -- each one needs it configured as its own
   step today (a direct-submit repo additionally starts private, which
   is its own form of protection until approval).
+- **Closed, 2026-08-27**: photo-PR file-allowlist and metadata scan
+  previously only ran through this site's own Accept button, skippable
+  by a native GitHub merge. Closed via `vehicle-scaffold`'s required
+  `checker` status check -- see "vehicle-scaffold: the same checks,
+  enforced by GitHub itself" above. `enforce_admins: false` still means
+  an org admin can force past it, same escape hatch as the
+  review-count requirement immediately below; confirmed live, not
+  theoretical (see that section for what happened and how it was
+  caught and reverted).
 - CI validates contributed photos; it does not yet validate a
   `manifest.json` change on its own (a moved bbox, an edited status).
-- **Photo-PR file-allowlist and metadata scan only run through this
-  site's own Accept button** -- a native GitHub merge (github.com's own
-  button, or `git`/the API directly) by someone with real push access
-  skips both, since neither is GitHub-native enforcement the way branch
-  protection's review-count requirement is. See "Real merge-time
-  validation for photo contributions" above for the required-CI-check
-  fix that would close this for real; not built yet.
+  (`validate_manifest.py`/`validate-manifest.yml` exist in
+  `vehicle-scaffold` and get copied into every vehicle repo the same
+  way `checker.py` does, but aren't yet wired into `required_status_checks`
+  the way `checker` is -- not done in this pass.)
 - No CLA/DCO exists yet for outside *code* contributions to the
   tooling repo -- this is a hard gate: no such contribution is
   accepted until one does.
