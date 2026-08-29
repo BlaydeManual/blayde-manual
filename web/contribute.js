@@ -340,6 +340,42 @@ function bytesToDataUrl(bytes, mimeType) {
 // undo one, since the data's already technically public by then. The
 // load-bearing check has to be client-side, before the first save --
 // see ROADMAP.md's finding on this exact point.
+// Sized to THIS procedure's own destination, not one flat number for
+// every photo -- most bboxes are far smaller than the rare full-page
+// figure a flat cap has to accommodate, so a flat cap wastes real space
+// on the common case. TARGET_DPI is print-quality; HEADROOM covers a
+// maintainer enlarging the box during review (center-anchored resize,
+// see review-panel.js) without ever needing the photo re-uploaded --
+// direct call: a reviewer growing a box past 2x a good-quality
+// contributor photo's original framing is realistically unlikely, so
+// this is real headroom, not a token gesture. Never exceeds the
+// previous flat cap (large boxes don't regress) and never goes below a
+// sane floor (protects against a degenerate/near-zero bbox); falls
+// back to that same flat cap whenever the destination isn't known yet
+// (repo unreachable, mock context) so an upload is never worse off
+// than before this existed. Checked against the real suzuki-sv650-1999
+// manifest before picking these numbers: projects to ~107MB for all
+// 918 photos fully populated, versus ~400-575MB for the flat cap this
+// replaces -- only the largest ~2% of entries (near-full-page figures)
+// even reach the ceiling.
+const FALLBACK_MAX_DIMENSION_PX = 2000;
+const TARGET_DPI = 200;
+const HEADROOM = 2.0;
+const MIN_DIMENSION_PX = 300;
+
+function computeTargetLongEdge(ctx) {
+  if (!ctx || !ctx.pixel_bbox || !ctx.composite_width_px || !ctx.composite_height_px || !ctx.page_width_pt || !ctx.page_height_pt) {
+    return FALLBACK_MAX_DIMENSION_PX;
+  }
+  const scaleX = ctx.composite_width_px / ctx.page_width_pt;
+  const scaleY = ctx.composite_height_px / ctx.page_height_pt;
+  const [x0, y0, x1, y1] = ctx.pixel_bbox;
+  const widthPt = (x1 - x0) / scaleX, heightPt = (y1 - y0) / scaleY;
+  const longEdgePt = Math.max(widthPt, heightPt);
+  const targetPx = (longEdgePt / 72) * TARGET_DPI * HEADROOM;
+  return Math.round(Math.min(FALLBACK_MAX_DIMENSION_PX, Math.max(MIN_DIMENSION_PX, targetPx)));
+}
+
 document.getElementById("photoInput").addEventListener("change", async (e) => {
   const file = e.target.files[0];
   const saveBtn = document.getElementById("saveDraftBtn"), submitBtn = document.getElementById("submitNowBtn");
@@ -349,18 +385,7 @@ document.getElementById("photoInput").addEventListener("change", async (e) => {
   selectedPhotoFilename = file.name;
 
   const bitmap = await createImageBitmap(file);
-  // Downscale to a real, checked ceiling rather than storing whatever
-  // resolution the phone happened to shoot at. patcher.js draws every
-  // photo to fill its own pixel_bbox, converted to PDF points; checked
-  // against a real manifest (suzuki-sv650-1999, 918 entries), the
-  // median bbox only needs ~820x500px for full 300dpi print quality,
-  // and even the largest (a rare full-page figure) still gets ~235dpi
-  // at this cap, easily sharp on any screen and print. A modern phone
-  // shoots well past this (12-48MP), so this alone cuts typical file
-  // size several-fold with no visible quality loss for a reference
-  // photo -- real, not hypothetical, once repos start filling with
-  // full-resolution contributions (see ROADMAP.md's repo-size math).
-  const MAX_DIMENSION_PX = 2000;
+  const MAX_DIMENSION_PX = computeTargetLongEdge(context);
   const scale = Math.min(1, MAX_DIMENSION_PX / Math.max(bitmap.width, bitmap.height));
   const canvas = document.createElement("canvas");
   canvas.width = Math.round(bitmap.width * scale);
