@@ -5,7 +5,7 @@ launch with any real traction.
 
 ## The core risk: copyright on the OEM manual
 
-Suzuki (or whoever holds rights to the manual text/photos/diagrams) owns:
+The original manufacturer (or whoever holds rights to the manual text/photos/diagrams) owns:
 - The scanned page images themselves
 - The instructional diagrams (hand-drawn line art, torque diagrams, etc.)
 - The written procedure text
@@ -38,7 +38,7 @@ shared source.
 
 ## Trademark (separate from copyright)
 
-"Suzuki," "SV650," the model name, and any logos are trademarks. Naming
+The manufacturer's name, the model name, and any logos are trademarks. Naming
 the vehicle a manual documents is nominative fair use. Every repo's
 README (via `scaffold/README.md`, forked into every vehicle repo)
 carries: *"Not affiliated with, endorsed by, or sponsored by the
