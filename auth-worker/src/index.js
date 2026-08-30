@@ -45,6 +45,7 @@ export default {
       if (request.method === "POST" && pathname === "/direct-submit") return await handleDirectSubmit(request, env);
       if (request.method === "POST" && pathname === "/direct-contribute") return await handleDirectContribute(request, env);
       if (request.method === "GET" && pathname === "/pending-vehicles") return await handlePendingVehicles(request, env);
+      if (request.method === "GET" && pathname === "/pr-review-status") return await handlePrReviewStatus(request, env);
       if (request.method === "POST" && pathname === "/approve-vehicle") return await handleApproveVehicle(request, env);
       if (request.method === "POST" && pathname === "/manage-collaborator") return await handleManageCollaborator(request, env);
       if (request.method === "POST" && pathname === "/accept-photo-pr") return await handleAcceptPhotoPr(request, env);
@@ -1027,6 +1028,82 @@ async function handleManageCollaborator(request, env) {
 // hard blocks too, not just a warning the human can click past.
 //
 // Deliberately merges via the App's installation token, not the
+// Real review/check state for one PR, so the Maintainer Portal can show
+// "1/2 approved" and disable Accept until it's actually mergeable,
+// instead of a maintainer discovering a missing review only when a real
+// merge attempt fails. Reads branch protection to get the true required
+// counts -- that endpoint needs admin-level access, which a maintainer's
+// own collaborator token usually doesn't have (they're granted "push",
+// not "admin", on their vehicle repo -- see the identity-chain note in
+// SECURITY.md), so this has to go through the Worker's installation
+// token like every other privileged read, not run client-side.
+async function handlePrReviewStatus(request, env) {
+  await requireRealUser(request);
+  const url = new URL(request.url);
+  const repoUrl = url.searchParams.get("repo_url");
+  const prNumber = url.searchParams.get("pr_number");
+  if (!repoUrl || !prNumber) return json({ error: "missing repo_url or pr_number" }, 400);
+  await requireRegisteredRepo(repoUrl);
+  const [owner, repo] = new URL(repoUrl).pathname.replace(/^\//, "").split("/");
+  const installationToken = await getInstallationToken(env);
+
+  const pr = await ghApi(`/repos/${owner}/${repo}/pulls/${prNumber}`, installationToken);
+  const reviews = await ghApi(`/repos/${owner}/${repo}/pulls/${prNumber}/reviews?per_page=100`, installationToken);
+
+  // Only the LATEST review per user counts, and only toward whichever
+  // state it currently is -- an old CHANGES_REQUESTED a reviewer later
+  // resolved with an APPROVED shouldn't still block, and a stale
+  // APPROVED before a later CHANGES_REQUESTED shouldn't still count.
+  // COMMENTED/DISMISSED reviews carry no weight either way, but a user's
+  // most recent real review can flip from one meaningful state to
+  // COMMENTED/DISMISSED, so track "last meaningful state" not just
+  // "last state."
+  const latestByUser = new Map();
+  for (const r of reviews) {
+    if (r.state !== "APPROVED" && r.state !== "CHANGES_REQUESTED") continue;
+    const prior = latestByUser.get(r.user.login);
+    if (!prior || new Date(r.submitted_at) >= new Date(prior.submitted_at)) latestByUser.set(r.user.login, r);
+  }
+  const approvedBy = [...latestByUser.values()].filter((r) => r.state === "APPROVED").map((r) => r.user.login);
+  const changesRequestedBy = [...latestByUser.values()].filter((r) => r.state === "CHANGES_REQUESTED").map((r) => r.user.login);
+
+  let requiredApprovals = 0;
+  let requiredCheckNames = [];
+  try {
+    const protection = await ghApi(`/repos/${owner}/${repo}/branches/${pr.base.ref}/protection`, installationToken);
+    requiredApprovals = protection.required_pull_request_reviews?.required_approving_review_count || 0;
+    requiredCheckNames = protection.required_status_checks?.contexts || [];
+  } catch (e) { /* no branch protection configured -- nothing required */ }
+
+  // Actions workflows report as check-runs, not classic commit statuses.
+  // One name can have multiple runs (a re-run) -- only the most recent
+  // matters, same "latest wins" rule as the reviews above.
+  let checks = [];
+  if (requiredCheckNames.length) {
+    const checkRuns = await ghApi(`/repos/${owner}/${repo}/commits/${pr.head.sha}/check-runs?per_page=100`, installationToken);
+    const latestRunByName = new Map();
+    for (const run of checkRuns.check_runs || []) {
+      const prior = latestRunByName.get(run.name);
+      if (!prior || new Date(run.started_at) >= new Date(prior.started_at)) latestRunByName.set(run.name, run);
+    }
+    checks = requiredCheckNames.map((name) => {
+      const run = latestRunByName.get(name);
+      return { name, status: run?.status || "missing", conclusion: run?.conclusion || null };
+    });
+  }
+  const checksPassing = checks.every((c) => c.conclusion === "success");
+
+  return json({
+    approved_count: approvedBy.length,
+    required_approvals: requiredApprovals,
+    approved_by: approvedBy,
+    changes_requested_by: changesRequestedBy,
+    checks,
+    checks_passing: checksPassing,
+    ready_to_merge: approvedBy.length >= requiredApprovals && changesRequestedBy.length === 0 && checksPassing,
+  });
+}
+
 // caller's own -- same "server independently re-verifies the caller's
 // real permission, then acts with its own trusted credential" shape as
 // handleManageCollaborator above, not a proxy that just forwards the
