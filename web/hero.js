@@ -45,7 +45,6 @@ function drawHeroConnectors() {
   const communityIn = toLocal(anchorPagePoint(`anchor-community-in-${suffix}`));
   const githubClear = toLocal(anchorPagePoint('anchor-github-clear'));
   const pyramidRect = document.getElementById('pyramid').getBoundingClientRect();
-  const pyramidRight = pyramidRect.right - overlayRect.left;
   const pyramidLeft = pyramidRect.left - overlayRect.left;
 
   svg.setAttribute('viewBox', `0 0 ${overlayRect.width} ${overlayRect.height}`);
@@ -65,7 +64,12 @@ function drawHeroConnectors() {
   // direction there -- a single curve straight from Blayde-Manual-out to
   // New-Manual-in would cut back left while still inside GitHub's
   // vertical span, slicing through the box.
-  const enhanceWayX = pyramidRight + 50;
+  // Measured from GitHub's own right edge (githubClear.x), not the
+  // pyramid component's outer edge -- the component has ~30 units of
+  // empty margin past GitHub's box, so anchoring to pyramidRight instead
+  // pushed this bulge noticeably further out than Contribute's mirrored
+  // pull-in on the left (which IS anchored to GitHub's real left edge).
+  const enhanceWayX = githubClear.x + 45;
   const enhanceBend = Math.max(90, (githubClear.y - blaydeOut.y) * 0.35);
   const enhancePath = isRow
     ? `M ${blaydeOut.x} ${blaydeOut.y} C ${blaydeOut.x + 60} ${blaydeOut.y + 10}, ${newIn.x - 70} ${newIn.y}, ${newIn.x} ${newIn.y}`
