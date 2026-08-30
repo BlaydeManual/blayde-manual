@@ -190,37 +190,24 @@
           <span>I license this photo under <a href="https://creativecommons.org/licenses/by/4.0/" target="_blank" rel="noopener" style="color:var(--mint);"><strong>CC-BY 4.0</strong></a>. Anyone may use this photo, with attribution to me.</span>
         </label>
       </div>
-      <div id="submitModeRow" style="display:none; margin:10px 0 0;">
-        <label style="display:flex; align-items:flex-start; gap:8px; font-size:0.82rem; color:var(--steel); margin:6px 0; cursor:pointer;">
-          <input type="radio" name="submitMode" value="public" id="submitModePublic" checked style="margin-top:2px;">
-          <span><strong>Public</strong> -- fastest. Opens the pull request immediately, no personal copy kept.</span>
-        </label>
-        <label style="display:flex; align-items:flex-start; gap:8px; font-size:0.82rem; color:var(--steel); margin:6px 0; cursor:pointer;">
-          <input type="radio" name="submitMode" value="private" id="submitModePrivate" style="margin-top:2px;">
-          <span><strong>Private</strong> -- pushes to your own copy first. Nothing is proposed until you click Submit in the Contributor Portal on BlaydeManual.com.</span>
-        </label>
-      </div>
       <div>
-        <button id="saveDraftBtn" disabled>Save to my uploads</button>
-        <button class="secondary" id="submitNowBtn" disabled>Submit now</button>
+        <button id="saveDraftBtn" disabled>Save for Review</button>
       </div>
-      <p class="sub" style="margin:8px 0 0;">Submitting now skips checking your framing against the original page first. You can also save it, view it side by side, then submit from your uploads.</p>
-      <div id="signInPrompt">
-        <p>Signing in links this (and anything else you contribute) to your GitHub account, so it can actually be proposed as a real photo request -- and so you can find it again later.</p>
-        <button id="promptSignInBtn">Sign in with GitHub</button>
-      </div>
-      <div id="appSignInPrompt" style="display:none; background:#000; border:1px solid var(--steel-dark); border-radius:6px; padding:14px; margin-top:12px;">
-        <p style="margin:0 0 10px; font-size:0.82rem; color:var(--steel);">The Public path submits through a separate sign-in from the one you're already using, since it's a different app with different permissions.</p>
-        <button id="appPromptSignInBtn">Sign in for Public submit</button>
-      </div>
+      <p class="sub" style="margin:8px 0 0;"><strong>Save for Review</strong> only saves this to this device, in this browser -- no account needed, nothing sent anywhere, and no one else can see it. Nothing is ever proposed publicly from this screen. Find it below afterward to view it side by side with the original page, and only once you're sure it's the right shot, Submit it for real from there.</p>
       <div id="log"></div>
     </div>
   </div>
 
   <div class="card" id="uploadsSection">
-    <h2>My uploads</h2>
-    <p class="sub" id="uploadsEmpty" style="margin:0;">Nothing yet -- photos you save or submit will show up here.</p>
+    <h2>My Reviewables</h2>
+    <p class="sub" style="margin:0 0 8px;">Everything here only ever lived on this device -- nothing about it is public yet. View it side by side with the original page, make sure it's the right shot, then Submit when you're ready (asks Public or Private at that point -- signing in only happens then, never before).</p>
+    <p class="sub" id="uploadsEmpty" style="margin:0;">Nothing yet -- photos you save for review will show up here.</p>
     <div id="uploadsList"></div>
+
+    <div id="signInPrompt">
+      <p>Signing in links this to your GitHub account, so it knows who's asking.</p>
+      <button id="promptSignInBtn">Sign in with GitHub</button>
+    </div>
 
     <div class="compare-area" id="compareArea">
       <h3 style="font-size:0.85rem; margin:0 0 4px;">Viewing: <span id="compareTitle"></span></h3>

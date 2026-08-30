@@ -122,7 +122,7 @@ function ensureBlaydeDialogStyles() {
 // this that silently broke every future confirm() on the page (see the
 // file-level comment above) -- this only ever affects confirms that
 // were explicitly opted into the same dontAskKey.
-function blaydeConfirm(message, { dontAskKey } = {}) {
+function blaydeConfirm(message, { dontAskKey, okLabel, cancelLabel } = {}) {
   if (dontAskKey && localStorage.getItem(`blayde-dontask-${dontAskKey}`)) {
     return Promise.resolve(true);
   }
@@ -135,8 +135,8 @@ function blaydeConfirm(message, { dontAskKey } = {}) {
         <p></p>
         ${dontAskKey ? `<label class="blayde-dialog-dontask"><input type="checkbox"> Don't ask me again</label>` : ""}
         <div class="blayde-dialog-actions">
-          <button class="secondary" data-action="cancel">Cancel</button>
-          <button data-action="ok">OK</button>
+          <button class="secondary" data-action="cancel">${cancelLabel || "Cancel"}</button>
+          <button data-action="ok">${okLabel || "OK"}</button>
         </div>
       </div>`;
     overlay.querySelector("p").textContent = message; // textContent, not innerHTML -- message may contain real procedure IDs/user text

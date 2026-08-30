@@ -108,9 +108,7 @@ async function resolveRepoUrl() {
 
 let signedIn = false;
 let currentUsername = null;
-let pendingAction = null; // "draft" | "submit" -- what to actually do once sign-in completes
-let pendingSubmitMode = null; // "public" | "private" -- only meaningful when pendingAction is "submit"
-let pendingMaintainRequest = null; // vehicle key -- same deferred-sign-in pattern, separate action
+let pendingMaintainRequest = null; // vehicle key -- deferred-sign-in pattern for "help maintain"
 // Real bug, caught live: two identical pull requests opened for the
 // same photo from one click, because nothing stopped a second click
 // (or a second call through the deferred-sign-in path) from starting
@@ -187,6 +185,30 @@ function requestRemoval(uploadId) {
   removalRequests.push({ uploadId, procedureId: upload?.procedureId, requestedBy: currentUsername, requestedAt: new Date().toISOString().slice(0, 10) });
   saveRemovalRequests();
   log(`[mock] requested removal of ${upload?.photoFilename || uploadId} -- the repo maintainer(s) take it out of the active images/ folder. It stops being offered to anyone from that point forward; copies already patched into someone else's manual aren't reachable (see the FAQ on why).`);
+  renderUploads();
+}
+
+// Draft-only, on purpose: once a draft is actually submitted (status
+// "submitted"/"forked"), real GitHub state exists for it (a PR, a
+// branch on the contributor's own fork) that deleting the local record
+// wouldn't touch at all -- silently deleting the local row would just
+// make an already-real submission look like it vanished. Removing a
+// draft never had that problem, since a draft has never left the
+// browser -- so it's the one status this can safely just erase outright,
+// no maintainer-facing removal request needed for something no one else
+// has ever seen.
+async function deleteDraftUpload(uploadId) {
+  const upload = uploads.find((u) => u.id === uploadId);
+  if (!upload || upload.status !== "draft") return;
+  const ok = await blaydeConfirm(`Delete this draft (${upload.sectionHeading || upload.procedureId})? This can't be undone.`);
+  if (!ok) return;
+  uploads = uploads.filter((u) => u.id !== uploadId);
+  saveUploads();
+  if (compareUpload?.id === uploadId) {
+    compareUpload = null;
+    document.getElementById("compareArea").style.display = "none";
+  }
+  log(`Deleted draft for ${upload.procedureId}.`);
   renderUploads();
 }
 
@@ -393,10 +415,10 @@ function computeTargetLongEdge(ctx) {
 
 document.getElementById("photoInput").addEventListener("change", async (e) => {
   const file = e.target.files[0];
-  const saveBtn = document.getElementById("saveDraftBtn"), submitBtn = document.getElementById("submitNowBtn");
+  const saveBtn = document.getElementById("saveDraftBtn");
   const consentRow = document.getElementById("consentRow");
   const ownCheck = document.getElementById("consentOwnPhoto"), licenseCheck = document.getElementById("consentLicense");
-  if (!file) { saveBtn.disabled = true; submitBtn.disabled = true; consentRow.style.display = "none"; document.getElementById("submitModeRow").style.display = "none"; return; }
+  if (!file) { saveBtn.disabled = true; consentRow.style.display = "none"; return; }
   selectedPhotoFilename = file.name;
 
   const bitmap = await createImageBitmap(file);
@@ -433,71 +455,42 @@ document.getElementById("photoInput").addEventListener("change", async (e) => {
   ownCheck.checked = false;
   licenseCheck.checked = false;
   consentRow.style.display = "block";
-  document.getElementById("submitModeRow").style.display = "block";
   updateSubmitEnabled();
   log(`${file.name}: re-encoded locally to strip EXIF metadata (GPS, camera model, timestamp) before saving -- happens now, not after this reaches a server.`);
 });
 
 // Real consent capture, not just a PR template checkbox nobody's forced
 // to fill in truthfully -- see ROADMAP.md's direct-to-git contribution
-// audit. Both boxes are required before either save action enables,
-// same two attestations the PR template already asks for, just actually
-// gating the action here instead of living only as decoration.
+// audit. Both boxes are required before Save enables, same two
+// attestations the PR template already asks for, just actually gating
+// the action here instead of living only as decoration.
 function updateSubmitEnabled() {
   const hasPhoto = !!selectedPhotoDataUrl;
   const consented = document.getElementById("consentOwnPhoto").checked && document.getElementById("consentLicense").checked;
   document.getElementById("saveDraftBtn").disabled = !(hasPhoto && consented);
-  document.getElementById("submitNowBtn").disabled = !(hasPhoto && consented);
 }
 document.getElementById("consentOwnPhoto").addEventListener("change", updateSubmitEnabled);
 document.getElementById("consentLicense").addEventListener("change", updateSubmitEnabled);
 
-document.getElementById("saveDraftBtn").addEventListener("click", () => requestAction("draft"));
-document.getElementById("submitNowBtn").addEventListener("click", () => {
-  const mode = document.querySelector('input[name="submitMode"]:checked')?.value || "public";
-  requestAction("submit", mode);
-});
+// No sign-in gate here at all, by design -- direct correction: saving a
+// draft is purely local (localStorage, this browser, this device), so
+// there's nothing that actually needs a GitHub identity yet. The two
+// consent checkboxes above (ownership, CC-BY license) are the real gate
+// on this action; a real GitHub identity only gets attached later, at
+// the moment something is actually about to become a real, public
+// submission -- see markSubmitted's own sign-in gate below, which is
+// the one place this flow ever needs an account.
+document.getElementById("saveDraftBtn").addEventListener("click", () => performAction("draft"));
 
-// Two gates, not one: every submission needs the page's normal identity
-// (classic OAuth, signedIn) regardless of mode, but Public additionally
-// needs the GitHub App session specifically -- checked and prompted for
-// separately, only when actually chosen, so Private submitters (and
-// drafts) never see a sign-in screen for an app they don't need.
-function requestAction(action, mode) {
-  if (actionInFlight) return;
-  if (!signedIn) {
-    pendingAction = action;
-    pendingSubmitMode = mode;
-    document.getElementById("signInPrompt").style.display = "block";
-    return;
-  }
-  if (action === "submit" && mode === "public" && !BlaydeAuth.getAppSession()) {
-    pendingAction = action;
-    pendingSubmitMode = mode;
-    document.getElementById("appSignInPrompt").style.display = "block";
-    return;
-  }
-  performAction(action, mode);
-}
-
+// The only remaining use of the page-level sign-in prompt: "help
+// maintain" is a separate, occasional action, not something worth
+// building its own inline sign-in flow for the way markSubmitted does
+// (see markSubmitted's own comment on why that one just signs in
+// inline instead).
 document.getElementById("promptSignInBtn").addEventListener("click", async () => {
   if (!(await performSignIn())) return;
   document.getElementById("signInPrompt").style.display = "none";
-  // Re-run through requestAction, not straight to performAction -- a
-  // pending Public submit still needs the separate App-sign-in check
-  // this cascades into next, rather than skipping it.
-  if (pendingAction) { const a = pendingAction, m = pendingSubmitMode; pendingAction = null; pendingSubmitMode = null; requestAction(a, m); }
   if (pendingMaintainRequest) { performMaintainRequest(pendingMaintainRequest); pendingMaintainRequest = null; }
-});
-
-document.getElementById("appPromptSignInBtn").addEventListener("click", async () => {
-  try {
-    await BlaydeAuth.signInWithGitHubApp();
-    document.getElementById("appSignInPrompt").style.display = "none";
-    if (pendingAction) { const a = pendingAction, m = pendingSubmitMode; pendingAction = null; pendingSubmitMode = null; performAction(a, m); }
-  } catch (e) {
-    log(`Sign-in failed: ${e.message}`);
-  }
 });
 
 function requestToMaintain(vehicleKey) {
@@ -517,19 +510,23 @@ function performMaintainRequest(vehicleKey) {
   renderUploads();
 }
 
-async function performAction(action, mode) {
+// Only ever called with "draft" now -- direct correction: nobody
+// submits anywhere from this screen anymore, so there's no mode to
+// thread through here at all. Submitting is a separate, later decision
+// made from My Reviewables (see markSubmitted), the one place this
+// flow ever asks Public vs. Private or needs a GitHub identity.
+async function performAction(action) {
   actionInFlight = true;
   document.getElementById("saveDraftBtn").disabled = true;
-  document.getElementById("submitNowBtn").disabled = true;
   try {
-    await performActionInner(action, mode);
+    await performActionInner(action);
   } finally {
     actionInFlight = false;
     updateSubmitEnabled();
   }
 }
 
-async function performActionInner(action, mode) {
+async function performActionInner(action) {
   const upload = {
     id: `${procedureId}_${Date.now()}`,
     repoUrl, procedureId,
@@ -544,6 +541,11 @@ async function performActionInner(action, mode) {
     pageHeightPt: context?.page_height_pt || null,
     photoDataUrl: selectedPhotoDataUrl,
     photoFilename: selectedPhotoFilename,
+    // Not the real signed-in identity -- nobody's necessarily signed in
+    // yet at this point, by design. Whichever real GitHub session is
+    // live at actual submit time (markSubmitted) is what ends up
+    // attributed to the real commit/PR; this field is purely
+    // informational display, never read by either submit path.
     author: currentUsername,
     status: "draft",
     // Real attestation, captured at the moment of action, not assumed
@@ -556,32 +558,7 @@ async function performActionInner(action, mode) {
     consentLicenseCcBy4: true,
   };
 
-  if (action === "submit" && mode === "public") {
-    log(`Submitting publicly on ${repoUrl} (opens the pull request immediately)...`);
-    try {
-      const pr = await submitPhotoPublic(upload);
-      upload.status = "submitted";
-      upload.prUrl = pr.prUrl;
-      log(`Submitted -- pull request opened: ${pr.prUrl}`);
-    } catch (err) {
-      log(`Submit failed: ${err.message} -- saved as a draft instead, try Submit again from My uploads.`);
-    }
-  } else if (action === "submit") {
-    log(`Pushing privately to your own copy of ${repoUrl}...`);
-    try {
-      const forked = await submitPhotoPrivate(upload);
-      upload.status = "forked";
-      upload.forkOwner = forked.forkOwner;
-      upload.branchName = forked.branchName;
-      upload.defaultBranch = forked.defaultBranch;
-      log(`Pushed to your own fork -- nothing proposed yet. Open the pull request from My uploads whenever you're ready.`);
-    } catch (err) {
-      log(`Push failed: ${err.message} -- saved as a draft instead, try Submit again from My uploads.`);
-    }
-  } else {
-    log(`Saved to your uploads -- not submitted yet.`);
-  }
-
+  log(`Saved for review -- nothing submitted yet.`);
   uploads.push(upload);
   saveUploads();
   renderUploads();
@@ -743,12 +720,14 @@ async function submitPhotoPublic(upload) {
   return { prUrl: result.prUrl };
 }
 
-// Submitting a saved DRAFT from My uploads defaults to Public (fastest,
-// matches the main flow's default radio choice) -- no mode selector
-// exists in this list, so this is the one place a default has to be
-// picked rather than asked. Signs in for the App inline if needed,
-// same as the main flow's separate prompt would, just without a modal
-// step since there's no larger form context to preserve here.
+// A saved draft carries no memory of which radio was checked when it
+// was saved -- Public/Private is only ever read at the moment of an
+// actual submit, never at save time (see performActionInner's "draft"
+// branch, which never even looks at `mode`). So submitting a draft from
+// this list has to ask again, right here, rather than silently
+// defaulting to one -- direct correction, live: a submit is the one
+// moment something stops being private, and that deserves a real,
+// conscious choice each time, not a default picked once and forgotten.
 async function markSubmitted(uploadId) {
   const upload = uploads.find((u) => u.id === uploadId);
   if (!upload || upload.status !== "draft") return;
@@ -756,36 +735,72 @@ async function markSubmitted(uploadId) {
   // from what should have been one click. See submittingIds' own
   // comment above for why this is keyed by id.
   if (submittingIds.has(uploadId)) return;
+
+  // The one and only sign-in gate in this whole flow -- saving a draft
+  // never needs an account, so this is the first moment identity
+  // actually matters. Inline, not the deferred prompt-div pattern
+  // "help maintain" uses below (requestToMaintain) -- this function is
+  // itself already a click handler, so a popup opened here still counts
+  // as user-gesture-triggered, same as the inline App sign-in a few
+  // lines down for the Public path. No reason to make someone click
+  // twice (once to reveal a prompt, again to actually sign in) when
+  // once already works.
+  if (!signedIn) {
+    log(`Signing in to submit...`);
+    if (!(await performSignIn())) return;
+  }
+
+  const goPublic = await blaydeConfirm(
+    `Submit "${upload.sectionHeading || upload.procedureId}" as Public (opens a real pull request immediately, no personal copy kept) or Private (pushes to your own fork first -- nothing is proposed until you open the pull request yourself, whenever you're ready)?`,
+    { okLabel: "Public", cancelLabel: "Private" }
+  );
   submittingIds.add(uploadId);
   document.querySelectorAll(`[data-submit="${uploadId}"]`).forEach((btn) => { btn.disabled = true; });
   try {
-    if (!BlaydeAuth.getAppSession()) {
-      log(`Signing in for Public submit...`);
+    if (goPublic) {
+      if (!BlaydeAuth.getAppSession()) {
+        log(`Signing in for Public submit...`);
+        try {
+          await BlaydeAuth.signInWithGitHubApp();
+        } catch (err) {
+          log(`Sign-in failed: ${err.message}`);
+          return;
+        }
+      }
+      log(`Submitting publicly on ${upload.repoUrl} (opens the pull request immediately)...`);
       try {
-        await BlaydeAuth.signInWithGitHubApp();
+        const pr = await submitPhotoPublic(upload);
+        upload.status = "submitted";
+        upload.prUrl = pr.prUrl;
+        saveUploads();
+        renderUploads();
+        log(`Submitted -- pull request opened: ${pr.prUrl}`);
+        // A completed submission is a real milestone -- a scrolling log
+        // line among dozens of others doesn't read as one. Also collapses
+        // the compare viewer if it's still open for this exact upload;
+        // it's done its job once the submission is in.
+        showToast("Submitted! Your photo is now a real pull request.");
+        if (compareUpload?.id === uploadId) {
+          document.getElementById("compareArea").style.display = "none";
+        }
       } catch (err) {
-        log(`Sign-in failed: ${err.message}`);
-        return;
+        log(`Submit failed: ${err.message}`);
       }
-    }
-    log(`Submitting publicly on ${upload.repoUrl} (opens the pull request immediately)...`);
-    try {
-      const pr = await submitPhotoPublic(upload);
-      upload.status = "submitted";
-      upload.prUrl = pr.prUrl;
-      saveUploads();
-      renderUploads();
-      log(`Submitted -- pull request opened: ${pr.prUrl}`);
-      // A completed submission is a real milestone -- a scrolling log
-      // line among dozens of others doesn't read as one. Also collapses
-      // the compare viewer if it's still open for this exact upload;
-      // it's done its job once the submission is in.
-      showToast("Submitted! Your photo is now a real pull request.");
-      if (compareUpload?.id === uploadId) {
-        document.getElementById("compareArea").style.display = "none";
+    } else {
+      log(`Pushing privately to your own copy of ${upload.repoUrl}...`);
+      try {
+        const forked = await submitPhotoPrivate(upload);
+        upload.status = "forked";
+        upload.forkOwner = forked.forkOwner;
+        upload.branchName = forked.branchName;
+        upload.defaultBranch = forked.defaultBranch;
+        saveUploads();
+        renderUploads();
+        log(`Pushed to your own fork -- nothing proposed yet. Open the pull request from My Reviewables whenever you're ready.`);
+        showToast("Pushed privately. Open the pull request whenever you're ready.");
+      } catch (err) {
+        log(`Push failed: ${err.message}`);
       }
-    } catch (err) {
-      log(`Submit failed: ${err.message}`);
     }
   } finally {
     submittingIds.delete(uploadId);
@@ -832,6 +847,20 @@ function renderUploads() {
   const section = document.getElementById("uploadsSection");
   const list = document.getElementById("uploadsList");
   const empty = document.getElementById("uploadsEmpty");
+  // openCompare() below reparents the one shared #compareArea node to
+  // sit right after whichever row's View was clicked -- a descendant of
+  // `list` (inside that row's own <details> group), not a direct child
+  // of it, so a plain parentElement === list check misses it. Real bug,
+  // caught live: rebuilding `list` via innerHTML="" on any later render
+  // (saving a second draft, deleting one, anything) then deletes
+  // #compareArea along with it -- not just hides it, actually removes it
+  // from the document -- so every View click afterward silently no-ops
+  // forever (openCompare's getElementById returns null, throws before
+  // ever showing anything). Moving it back out to its original parent
+  // before the rebuild keeps it alive across renders; openCompare
+  // re-parents it again next time it's actually needed.
+  const compareAreaEl = document.getElementById("compareArea");
+  if (compareAreaEl && list.contains(compareAreaEl)) section.insertBefore(compareAreaEl, list.nextSibling);
   // Arriving via a QR code, browsing past uploads never required
   // signing in again (see the top-of-file comment) -- but arriving via
   // the landing page's sign-in gate and seeing "My uploads" appear
@@ -879,6 +908,13 @@ function renderUploads() {
       editionUploads.forEach((u) => {
         const outcome = outcomeFor(u); // null while pending -- {status, note} once a maintainer's acted on it
         const displayStatus = outcome ? outcome.status : u.status;
+        // The badge's CSS class stays the real internal status value
+        // (.draft/.forked/.submitted etc. -- see contribute.html), but
+        // "draft" reads as unfinished/lesser to a contributor, when it's
+        // really just "saved, ready whenever you are" -- the visible
+        // text says that instead, without needing to rename the
+        // internal status value everywhere it's checked elsewhere.
+        const statusLabel = { draft: "Reviewable" }[displayStatus] || displayStatus;
         const pageLabel = u.page != null ? `PG. ${u.page} &mdash; ` : "";
         const row = document.createElement("div");
         row.className = "upload-row";
@@ -886,7 +922,7 @@ function renderUploads() {
           <div class="upload-left">
             <img class="upload-thumb" src="${u.photoDataUrl}" alt="">
             <div>
-              <div class="upload-title">${pageLabel}${u.sectionHeading}<span class="upload-status ${displayStatus}">${displayStatus}</span></div>
+              <div class="upload-title">${pageLabel}${u.sectionHeading}<span class="upload-status ${displayStatus}">${statusLabel}</span></div>
               <div class="upload-meta">${u.procedureId}${u.prNumber != null ? ` &middot; ${u.prUrl ? `<a href="${u.prUrl}" target="_blank" rel="noopener" style="color:inherit;">Request #${u.prNumber}</a>` : `Request #${u.prNumber}`}` : ""}</div>
               ${outcome && outcome.note ? `<div class="upload-note">&ldquo;${outcome.note}&rdquo; &mdash; maintainer note</div>` : ""}
             </div>
@@ -894,6 +930,7 @@ function renderUploads() {
           <div class="upload-actions">
             <button class="secondary" data-view="${u.id}">View</button>
             ${u.status === "draft" ? `<button data-submit="${u.id}">Submit</button>` : ""}
+            ${u.status === "draft" ? `<button class="secondary" data-delete="${u.id}">Delete</button>` : ""}
             ${u.status === "forked" ? `<button data-openpr="${u.id}">Open pull request</button>` : ""}
             ${u.status !== "draft" && u.status !== "forked" ? (
               hasRequestedRemoval(u.id)
@@ -924,6 +961,9 @@ function renderUploads() {
   });
   list.querySelectorAll("[data-remove]").forEach((btn) => {
     btn.addEventListener("click", () => requestRemoval(btn.dataset.remove));
+  });
+  list.querySelectorAll("[data-delete]").forEach((btn) => {
+    btn.addEventListener("click", () => deleteDraftUpload(btn.dataset.delete));
   });
   list.querySelectorAll("[data-submit]").forEach((btn) => {
     btn.addEventListener("click", () => markSubmitted(btn.dataset.submit));
