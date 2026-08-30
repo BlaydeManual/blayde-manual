@@ -1067,7 +1067,7 @@ async function handleAcceptPhotoPr(request, env) {
     throw new Error(`This request changes ${files.length} files, not 1 -- only a single contributed photo is allowed. Rejecting rather than merging something broader than a photo submission.`);
   }
   const photoFile = files[0];
-  if (photoFile.status !== "added" || !/^images\/[^/]+__by_[^/]+(__alt\d+)?\.(jpe?g|png|webp)$/i.test(photoFile.filename)) {
+  if (photoFile.status !== "added" || !/^[^/]+\/images\/[^/]+__by_[^/]+(__alt\d+)?\.(jpe?g|png|webp)$/i.test(photoFile.filename)) {
     throw new Error(`"${photoFile.filename}" (${photoFile.status}) doesn't match a real contributed-photo submission -- refusing to merge.`);
   }
   if (!pr.head?.repo) throw new Error("The contributor's fork is gone -- can't fetch the photo to verify it.");
