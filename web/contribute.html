@@ -204,7 +204,7 @@
         <button id="saveDraftBtn" disabled>Save to my uploads</button>
         <button class="secondary" id="submitNowBtn" disabled>Submit now</button>
       </div>
-      <p class="sub" style="margin:8px 0 0;">Submitting now skips checking your framing against the original page first. You can also save it, view it side by side, then submit from your uploads.</p>
+      <p class="sub" style="margin:8px 0 0;"><strong>Save to my uploads</strong> only saves a draft on this device, in this browser -- nothing is sent anywhere, and no one else can see it. <strong>Submit now</strong> is what actually opens a real request, right away, using the Public/Private choice above; skips checking your framing against the original page first. You can also save it, view it side by side, then submit from your uploads whenever you're ready.</p>
       <div id="signInPrompt">
         <p>Signing in links this (and anything else you contribute) to your GitHub account, so it can actually be proposed as a real photo request -- and so you can find it again later.</p>
         <button id="promptSignInBtn">Sign in with GitHub</button>
@@ -219,6 +219,7 @@
 
   <div class="card" id="uploadsSection">
     <h2>My uploads</h2>
+    <p class="sub" style="margin:0 0 8px;">Drafts here only ever lived on this device -- nothing about them is public yet. Clicking <strong>Submit</strong> on a draft asks Public or Private again, the same choice as the main form, before anything is actually posted.</p>
     <p class="sub" id="uploadsEmpty" style="margin:0;">Nothing yet -- photos you save or submit will show up here.</p>
     <div id="uploadsList"></div>
 

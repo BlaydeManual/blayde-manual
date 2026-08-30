@@ -767,12 +767,14 @@ async function submitPhotoPublic(upload) {
   return { prUrl: result.prUrl };
 }
 
-// Submitting a saved DRAFT from My uploads defaults to Public (fastest,
-// matches the main flow's default radio choice) -- no mode selector
-// exists in this list, so this is the one place a default has to be
-// picked rather than asked. Signs in for the App inline if needed,
-// same as the main flow's separate prompt would, just without a modal
-// step since there's no larger form context to preserve here.
+// A saved draft carries no memory of which radio was checked when it
+// was saved -- Public/Private is only ever read at the moment of an
+// actual submit, never at save time (see performActionInner's "draft"
+// branch, which never even looks at `mode`). So submitting a draft from
+// this list has to ask again, right here, rather than silently
+// defaulting to one -- direct correction, live: a submit is the one
+// moment something stops being private, and that deserves a real,
+// conscious choice each time, not a default picked once and forgotten.
 async function markSubmitted(uploadId) {
   const upload = uploads.find((u) => u.id === uploadId);
   if (!upload || upload.status !== "draft") return;
@@ -780,36 +782,57 @@ async function markSubmitted(uploadId) {
   // from what should have been one click. See submittingIds' own
   // comment above for why this is keyed by id.
   if (submittingIds.has(uploadId)) return;
+  const goPublic = await blaydeConfirm(
+    `Submit "${upload.sectionHeading || upload.procedureId}" as Public (opens a real pull request immediately, no personal copy kept) or Private (pushes to your own fork first -- nothing is proposed until you open the pull request yourself, whenever you're ready)?`,
+    { okLabel: "Public", cancelLabel: "Private" }
+  );
   submittingIds.add(uploadId);
   document.querySelectorAll(`[data-submit="${uploadId}"]`).forEach((btn) => { btn.disabled = true; });
   try {
-    if (!BlaydeAuth.getAppSession()) {
-      log(`Signing in for Public submit...`);
+    if (goPublic) {
+      if (!BlaydeAuth.getAppSession()) {
+        log(`Signing in for Public submit...`);
+        try {
+          await BlaydeAuth.signInWithGitHubApp();
+        } catch (err) {
+          log(`Sign-in failed: ${err.message}`);
+          return;
+        }
+      }
+      log(`Submitting publicly on ${upload.repoUrl} (opens the pull request immediately)...`);
       try {
-        await BlaydeAuth.signInWithGitHubApp();
+        const pr = await submitPhotoPublic(upload);
+        upload.status = "submitted";
+        upload.prUrl = pr.prUrl;
+        saveUploads();
+        renderUploads();
+        log(`Submitted -- pull request opened: ${pr.prUrl}`);
+        // A completed submission is a real milestone -- a scrolling log
+        // line among dozens of others doesn't read as one. Also collapses
+        // the compare viewer if it's still open for this exact upload;
+        // it's done its job once the submission is in.
+        showToast("Submitted! Your photo is now a real pull request.");
+        if (compareUpload?.id === uploadId) {
+          document.getElementById("compareArea").style.display = "none";
+        }
       } catch (err) {
-        log(`Sign-in failed: ${err.message}`);
-        return;
+        log(`Submit failed: ${err.message}`);
       }
-    }
-    log(`Submitting publicly on ${upload.repoUrl} (opens the pull request immediately)...`);
-    try {
-      const pr = await submitPhotoPublic(upload);
-      upload.status = "submitted";
-      upload.prUrl = pr.prUrl;
-      saveUploads();
-      renderUploads();
-      log(`Submitted -- pull request opened: ${pr.prUrl}`);
-      // A completed submission is a real milestone -- a scrolling log
-      // line among dozens of others doesn't read as one. Also collapses
-      // the compare viewer if it's still open for this exact upload;
-      // it's done its job once the submission is in.
-      showToast("Submitted! Your photo is now a real pull request.");
-      if (compareUpload?.id === uploadId) {
-        document.getElementById("compareArea").style.display = "none";
+    } else {
+      log(`Pushing privately to your own copy of ${upload.repoUrl}...`);
+      try {
+        const forked = await submitPhotoPrivate(upload);
+        upload.status = "forked";
+        upload.forkOwner = forked.forkOwner;
+        upload.branchName = forked.branchName;
+        upload.defaultBranch = forked.defaultBranch;
+        saveUploads();
+        renderUploads();
+        log(`Pushed to your own fork -- nothing proposed yet. Open the pull request from My uploads whenever you're ready.`);
+        showToast("Pushed privately. Open the pull request whenever you're ready.");
+      } catch (err) {
+        log(`Push failed: ${err.message}`);
       }
-    } catch (err) {
-      log(`Submit failed: ${err.message}`);
     }
   } finally {
     submittingIds.delete(uploadId);
