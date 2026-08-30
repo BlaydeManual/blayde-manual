@@ -680,6 +680,22 @@ same generation aren't -- the two are easy to conflate from the
 outside and the FAQ should resolve that on sight, not leave it
 implicit.
 
+## Edition-subdirectory implementation: what's designed vs. what's real, and the fingerprint distinction (2026-08-29)
+
+**Status check, confirmed by reading the actual code, not assumed from the design above:** the "one repo per vehicle, editions as subdirectories" model (resolved 2026-08-25, above) is **fully designed and not yet built anywhere.** Every real code path today still assumes the old, superseded shape -- one flat `images/` folder and one `manifest.json` at repo root, with `edition_id` living only as a label in `registry.json` alongside a separate `repo_url` per edition (`web/contribute.js:62-65`'s own comment states this explicitly: "a real vehicle's manifest.json has no such field -- edition is a registry-level concept, since two editions of the same vehicle can be two separate repos"). Concretely, none of these are edition-aware yet:
+- `scaffold/checker.py` / `scaffold/validate_manifest.py` -- both assume a single manifest.json and images/ folder at repo root; zero references to "edition" beyond a docstring mention.
+- `web/contribute.js`'s upload path builder (`images/${procedureId}__by_${forkOwner}...`) -- flat, no edition segment.
+- `web/registry.js`'s `parsePhotoFilename`/`listRepoImages` -- read from the same flat root path.
+- `auth-worker/src/index.js`'s `handleDirectSubmit`/`handleApproveVehicle` -- always create/approve a whole new repo; neither has an "existing vehicle, new edition folder" branch yet, even though the governance section above already specifies that branch should exist.
+
+This is real, sequenced implementation work, not a should-already-work gap.
+
+**A second, easily-conflated concept, raised the same day and worth keeping permanently distinct from the above:** a *second fingerprint of the same edition* is not a new edition, and must not be handled by the subdirectory mechanism above.
+- **Second edition** (OEM vs. Haynes): a genuinely different document -- different pagination, different procedures, different photos. Needs its own `manifest.json` + `images/` subdirectory, per the design above.
+- **Second fingerprint, same edition**: someone's independently-scanned copy of the *exact same* OEM manual, differing from the original only in front-matter length (an extra cover sheet, a blank separator page) -- not a different document at all. The fix here is narrower and cheaper: OCR the first ~10 pages of the new PDF, and if it looks like an already-indexed vehicle's front matter, offer the submitter a match; if confirmed, a human tunes a constant page offset (+/- one page at a time) until the existing manifest's positional data lines up with the new scan, then that PDF's hash gets registered as a **second recognized fingerprint pointing at the same manifest** -- not a new manifest, not a new `images/` folder, not a fork. Same photos, same coordinates, just a second known-good hash and an offset. This only fixes front-matter-length differences; a different printing with pages genuinely added or removed mid-document still needs real re-indexing, and that boundary should stay explicit rather than silently assumed to work.
+
+Not yet designed further than this paragraph -- the mechanism above is the theorized shape, not an implementation plan. Flagging the distinction now so whoever builds the edition-subdirectory work above doesn't accidentally fold this into it: a second fingerprint should never trigger a new subdirectory.
+
 ## Mosaic zone templates per vehicle class (currently motorcycle-only)
 
 **The problem:** `mosaic.py`'s `ZONES` (5 hardcoded rectangles positioned
