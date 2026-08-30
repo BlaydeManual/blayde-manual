@@ -148,7 +148,15 @@
   /* position:relative anchor for the two connector-overlay layers below,
      which need a positioned ancestor sized to the whole diagram (not
      just .hero-flow's own box) for their inset:0 to line up correctly */
-  .hero-flow-wrap { position: relative; margin: 4px 0 20px; }
+  /* container-type (not a @media breakpoint) because `main` is capped at
+     640px regardless of viewport width -- a viewport media query has no
+     way to know that, so on a wide/landscape phone viewport it would
+     flip this to row layout even though the actual box here never gets
+     past 640px, squeezing a row-layout diagram into less room than it
+     needs and overlapping the Contribute label with its own arrowhead.
+     A container query checks this element's own rendered width instead,
+     so it can never disagree with how much room is actually here. */
+  .hero-flow-wrap { position: relative; margin: 4px 0 20px; container-type: inline-size; }
   .hero-flow {
     display: flex; align-items: center; justify-content: center;
     gap: 56px; flex-wrap: nowrap; position: relative;
@@ -181,7 +189,7 @@
   }
 
   #newCard .new-card-title-bottom { display: none; }
-  @media (max-width: 860px) {
+  @container (max-width: 860px) {
     .hero-flow { flex-direction: column; gap: 64px; }
     .hero-flow > .comp { flex-basis: auto; width: min(320px, 80vw); }
     #pyramid { flex-basis: auto; }
