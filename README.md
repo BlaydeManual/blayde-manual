@@ -45,7 +45,7 @@ step, no server required beyond serving the files.
 | `web/index.html` | Patch your own copy of a manual. Pick a PDF, it's identified locally and checked against the registry, then patched with whatever approved community photos exist. |
 | `web/registry-browse.html` | Browse every registered vehicle, see how far along each manual is. |
 | `web/contribute.html` | Contribute a photo for a specific procedure. Requires signing in with GitHub only at the point of actually submitting. |
-| `web/maintainer.html` | Everything a maintainer or org reviewer does: index a brand-new vehicle (real in-browser OCR/figure detection, no Python), review photo submissions, approve new vehicles/editions, manage a vehicle's maintainer team, raise or resolve structural issues. |
+| `web/maintainer.html` | Everything a maintainer or org reviewer does: index a brand-new vehicle (real in-browser OCR/figure detection, no Python), review photo submissions, approve new vehicles/editions, manage a vehicle's maintainer team. Its "Issue Requests" tab (structural corrections to an existing manifest) is still a mock against fabricated data, not wired to a real registry yet -- see ROADMAP.md. |
 
 To run these locally for development, serve the `web/` directory with any
 static file server, e.g. `python3 -m http.server --directory web`, and
