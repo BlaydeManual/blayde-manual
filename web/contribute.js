@@ -190,6 +190,30 @@ function requestRemoval(uploadId) {
   renderUploads();
 }
 
+// Draft-only, on purpose: once a draft is actually submitted (status
+// "submitted"/"forked"), real GitHub state exists for it (a PR, a
+// branch on the contributor's own fork) that deleting the local record
+// wouldn't touch at all -- silently deleting the local row would just
+// make an already-real submission look like it vanished. Removing a
+// draft never had that problem, since a draft has never left the
+// browser -- so it's the one status this can safely just erase outright,
+// no maintainer-facing removal request needed for something no one else
+// has ever seen.
+async function deleteDraftUpload(uploadId) {
+  const upload = uploads.find((u) => u.id === uploadId);
+  if (!upload || upload.status !== "draft") return;
+  const ok = await blaydeConfirm(`Delete this draft (${upload.sectionHeading || upload.procedureId})? This can't be undone.`);
+  if (!ok) return;
+  uploads = uploads.filter((u) => u.id !== uploadId);
+  saveUploads();
+  if (compareUpload?.id === uploadId) {
+    compareUpload = null;
+    document.getElementById("compareArea").style.display = "none";
+  }
+  log(`Deleted draft for ${upload.procedureId}.`);
+  renderUploads();
+}
+
 function log(msg) {
   const el = document.getElementById("log");
   el.textContent += msg + "\n";
@@ -832,6 +856,20 @@ function renderUploads() {
   const section = document.getElementById("uploadsSection");
   const list = document.getElementById("uploadsList");
   const empty = document.getElementById("uploadsEmpty");
+  // openCompare() below reparents the one shared #compareArea node to
+  // sit right after whichever row's View was clicked -- a descendant of
+  // `list` (inside that row's own <details> group), not a direct child
+  // of it, so a plain parentElement === list check misses it. Real bug,
+  // caught live: rebuilding `list` via innerHTML="" on any later render
+  // (saving a second draft, deleting one, anything) then deletes
+  // #compareArea along with it -- not just hides it, actually removes it
+  // from the document -- so every View click afterward silently no-ops
+  // forever (openCompare's getElementById returns null, throws before
+  // ever showing anything). Moving it back out to its original parent
+  // before the rebuild keeps it alive across renders; openCompare
+  // re-parents it again next time it's actually needed.
+  const compareAreaEl = document.getElementById("compareArea");
+  if (compareAreaEl && list.contains(compareAreaEl)) section.insertBefore(compareAreaEl, list.nextSibling);
   // Arriving via a QR code, browsing past uploads never required
   // signing in again (see the top-of-file comment) -- but arriving via
   // the landing page's sign-in gate and seeing "My uploads" appear
@@ -894,6 +932,7 @@ function renderUploads() {
           <div class="upload-actions">
             <button class="secondary" data-view="${u.id}">View</button>
             ${u.status === "draft" ? `<button data-submit="${u.id}">Submit</button>` : ""}
+            ${u.status === "draft" ? `<button class="secondary" data-delete="${u.id}">Delete</button>` : ""}
             ${u.status === "forked" ? `<button data-openpr="${u.id}">Open pull request</button>` : ""}
             ${u.status !== "draft" && u.status !== "forked" ? (
               hasRequestedRemoval(u.id)
@@ -924,6 +963,9 @@ function renderUploads() {
   });
   list.querySelectorAll("[data-remove]").forEach((btn) => {
     btn.addEventListener("click", () => requestRemoval(btn.dataset.remove));
+  });
+  list.querySelectorAll("[data-delete]").forEach((btn) => {
+    btn.addEventListener("click", () => deleteDraftUpload(btn.dataset.delete));
   });
   list.querySelectorAll("[data-submit]").forEach((btn) => {
     btn.addEventListener("click", () => markSubmitted(btn.dataset.submit));
