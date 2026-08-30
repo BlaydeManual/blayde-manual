@@ -15,6 +15,7 @@
 // entry for the full reasoning.
 
 let issueRepoUrl = null;
+let issueEditionId = null;
 let issueManifest = null;
 let issuePhotos = null; // Map filename -> Uint8Array/bytes-like
 let issuePdfDoc = null;
@@ -66,10 +67,11 @@ function currentIssueSelection() {
 
 function updateIssueSourceNote() {
   const note = document.getElementById("issueSourceNote");
-  const { repoUrl } = currentIssueSelection();
+  const { repoUrl, editionId } = currentIssueSelection();
   if (!repoUrl) { note.textContent = ""; return; }
   note.innerHTML = `Ensure you're using this exact document -- checking the repo's own source link once you open the editor.`;
   issueRepoUrl = repoUrl;
+  issueEditionId = editionId;
 }
 
 document.getElementById("issueRepoSelect").addEventListener("change", updateIssueSourceNote);
@@ -82,9 +84,9 @@ document.getElementById("issuePdfPicker").addEventListener("change", (e) => {
 // realistic mock fallback otherwise -- same convention as every other
 // tool this session, so the flow is genuinely testable before a real
 // registry exists (see LEGAL.md's standing pin).
-async function loadIssueManifestAndPhotos(repoUrl) {
+async function loadIssueManifestAndPhotos(repoUrl, editionId) {
   try {
-    return await fetchManifestAndPhotos(repoUrl);
+    return await fetchManifestAndPhotos(repoUrl, editionId);
   } catch (e) {
     return {
       manifest: {
@@ -124,9 +126,9 @@ document.getElementById("issueOpenEditorBtn").addEventListener("click", async ()
   pendingIssues = [];
   renderPendingIssues();
 
-  const { repoUrl } = currentIssueSelection();
+  const { repoUrl, editionId } = currentIssueSelection();
   issueLog(`patching against ${repoUrl}'s current approved photos...`);
-  const result = await loadIssueManifestAndPhotos(repoUrl);
+  const result = await loadIssueManifestAndPhotos(repoUrl, editionId);
   issueManifest = result.manifest;
   issuePhotos = result.photos;
   issueLog(`ready -- ${issueManifest.entries.length} tracked procedures, ${issuePhotos.size} approved photo(s)`);
@@ -363,7 +365,7 @@ function openIssueRightClickMenu(e, entry, photoFilename) {
   menu.style.display = "block";
   document.getElementById("rcProblem").addEventListener("click", () => {
     menu.style.display = "none";
-    const url = `contribute.html?repo=${encodeURIComponent(issueRepoUrl)}&procedure=${encodeURIComponent(entry.procedure_id)}`;
+    const url = `contribute.html?repo=${encodeURIComponent(issueRepoUrl)}&edition=${encodeURIComponent(issueEditionId)}&procedure=${encodeURIComponent(entry.procedure_id)}`;
     window.open(url, "_blank");
     issueLog(`opened the Contributor Portal for ${entry.procedure_id} -- a replacement photo there resolves this the normal way, no separate issue mechanism needed.`);
   });
