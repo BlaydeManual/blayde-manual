@@ -18,6 +18,34 @@ and corrections in both directions -- see
 
 ## [Unreleased]
 
+- **Implemented the edition-subdirectory model designed on 2026-08-25.**
+  A vehicle repo can now genuinely hold multiple editions (OEM, Haynes,
+  etc.) side by side, each in its own `<edition_id>/manifest.json` +
+  `<edition_id>/images/` folder with its own coordinate space, instead
+  of the flat one-manifest-per-repo layout the design had specified but
+  the code never actually implemented. Shipped in three PRs:
+  - PR #55 (Phase 1, scaffold/CI): `scaffold/images/` moved to
+    `scaffold/{{EDITION_ID}}/images/`; both CI workflows and
+    `CONTRIBUTING.md`/`README.md`/the PR template updated to match.
+  - PR #55 (Phase 2, web app): `registry.js`, `patcher.js`,
+    `contribute.js`, `registry-browse.js`, `issue-requests.js`, and
+    `review-panel.js` thread `edition_id` through every
+    manifest/photo path; `registry.json` rows are matched on
+    `(repo_url, edition_id)` together, since multiple edition-rows can
+    now share one `repo_url`.
+  - PR #56 (Phase 3, auth-worker): `handleDirectSubmit` detects an
+    already-approved vehicle and routes a new edition through a
+    disposable staging repo instead of minting a new named repo;
+    `handleApproveVehicle` copies a new edition's files into the
+    existing target repo (rather than always flipping a staging repo
+    public) and derives `edition_id` from the repo's own real
+    directory structure, never from the request body. The
+    file-allowlist check now walks the full recursive git tree so it
+    catches an unexpected file at any depth, not just two levels.
+  See ROADMAP.md's "Edition-subdirectory implementation" section for
+  the full before/after and the permanent "second edition vs. second
+  fingerprint" distinction.
+
 - **Fix: figure detection was wrongly skipped on every page with a real
   embedded text layer, not just pages needing OCR.** Caught live on a
   factory manual indexed to 0 entries across 1200+ pages. Figure

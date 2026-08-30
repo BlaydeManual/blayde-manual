@@ -68,8 +68,13 @@ to become the org's public record. `POST /direct-submit` on the Worker:
    installation token. The submitting maintainer never gets write
    access to it -- only an org approval action (below) can ever change
    it again.
-2. Pushes `manifest.json` as the repo's only real content (alongside
-   the `README.md` a fresh repo gets automatically).
+2. Pushes `<edition_id>/manifest.json` as the repo's only real content
+   (alongside the `README.md` a fresh repo gets automatically). If the
+   vehicle already has an approved repo and this is a new edition of
+   it, the repo created here is a disposable staging repo tagged with
+   the real target repo's URL rather than the vehicle's actual repo;
+   approval below then copies the edition's files into that target
+   repo and deletes the staging repo, instead of flipping it public.
 3. Commits a **notarization entry** -- `sha256(manifest.json)`, the real
    submitter's GitHub login, and a timestamp -- to a separate, public,
    installation-token-only-writable log repo (`BlaydeManual/submission-
@@ -92,10 +97,15 @@ approval uses, not a lighter client-side approximation, so "enabled"
 and "actually works" can't disagree):
 
 1. **File allowlist.** A direct-submit repo must contain EXACTLY
-   `{README.md, manifest.json}` and exactly one branch. Anything
-   else -- most dangerously a `.github/workflows/*.yml`, which would
-   execute with the org's own permissions the moment the repo goes
-   public -- is a hard, automatic block.
+   `{README.md, <edition_id>/manifest.json}` -- checked via the repo's
+   full recursive git tree, not a shallow listing, so a file nested at
+   any depth (e.g. something slipped under `<edition_id>/images/`)
+   can't go undetected -- and exactly one branch. `edition_id` itself
+   is derived from this same tree, never trusted from the request
+   body. Anything outside that exact shape -- most dangerously a
+   `.github/workflows/*.yml`, which would execute with the org's own
+   permissions the moment the repo goes public -- is a hard, automatic
+   block.
 2. **Notarization match.** The manifest's current sha256 must match
    its logged entry. A mismatch means it was edited after submitting,
    or the repo never really went through `/direct-submit` at all.
@@ -213,8 +223,8 @@ as `/manage-collaborator`), then re-checks the PR's *current* state
 with the installation token, then merges:
 
 1. **Negative file allowlist.** The PR's diff must be exactly one
-   `added` file under `images/` matching the real contributed-photo
-   naming convention. Anything else -- most seriously a modified
+   `added` file under `<edition_id>/images/` matching the real
+   contributed-photo naming convention. Anything else -- most seriously a modified
    `.github/workflows/*.yml` riding along with the photo, which merged
    into an org-owned repo means real code execution in this org's CI --
    is a hard block.
@@ -265,11 +275,13 @@ merge"), no override, nothing bypassed.
 
 `BlaydeManual/vehicle-scaffold` is a real GitHub template repo
 (`is_template: true`). `handleApproveVehicle` copies its real file tree
-into a vehicle repo right after that repo flips public -- deliberately
-AFTER approval, never at submit time, since the file-allowlist check
-above requires a pre-approval repo to be EXACTLY `{README.md,
-manifest.json}`; applying the scaffold earlier would fail every future
-submission against its own future self. It reads the live template
+into a vehicle repo right after that repo flips public (or, for a new
+edition of an already-approved vehicle, into the existing target repo)
+-- deliberately AFTER approval, never at submit time, since the
+file-allowlist check above requires a pre-approval repo to be EXACTLY
+`{README.md, <edition_id>/manifest.json}`; applying the scaffold
+earlier would fail every future submission against its own future
+self. It reads the live template
 directly rather than duplicating its contents in this Worker, so
 editing the scaffold later never requires touching this code or any
 already-created vehicle repo.
