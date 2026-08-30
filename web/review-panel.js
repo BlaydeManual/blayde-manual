@@ -265,31 +265,85 @@ function renderReviewStatusLine() {
 // with "is this PR actually mergeable right now" (the new one). Called
 // from every place either input changes, so the button's label always
 // reflects the real, current reason it's disabled, not a stale one.
+// Also drives Approve's own state (see updateApproveButtonState below) --
+// one call site updates both buttons together, so nothing can update
+// one and forget the other.
 function updateAcceptButtonState() {
   const btn = document.getElementById("acceptBtn");
-  if (!submittedPhotoImg) { btn.disabled = true; btn.textContent = "Accept & merge"; return; }
-  if (!reviewStatus) { btn.disabled = true; btn.textContent = "Checking review status..."; return; }
-  if (reviewStatus.error) { btn.disabled = true; btn.textContent = "Couldn't verify review status"; return; }
+  if (!submittedPhotoImg) { btn.disabled = true; btn.textContent = "Accept & merge"; updateApproveButtonState(); return; }
+  if (!reviewStatus) { btn.disabled = true; btn.textContent = "Checking review status..."; updateApproveButtonState(); return; }
+  if (reviewStatus.error) { btn.disabled = true; btn.textContent = "Couldn't verify review status"; updateApproveButtonState(); return; }
   if (reviewStatus.changes_requested_by.length) {
     btn.disabled = true;
     btn.textContent = `Changes requested by @${reviewStatus.changes_requested_by[0]}`;
+    updateApproveButtonState();
     return;
   }
   if (!reviewStatus.checks_passing) {
     const blocking = reviewStatus.checks.find((c) => c.conclusion !== "success");
     btn.disabled = true;
     btn.textContent = blocking ? `Waiting on "${blocking.name}" check` : "Waiting on required checks";
+    updateApproveButtonState();
     return;
   }
   if (reviewStatus.approved_count < reviewStatus.required_approvals) {
     const remaining = reviewStatus.required_approvals - reviewStatus.approved_count;
     btn.disabled = true;
     btn.textContent = `Needs ${remaining} more approval${remaining === 1 ? "" : "s"} (${reviewStatus.approved_count}/${reviewStatus.required_approvals})`;
+    updateApproveButtonState();
     return;
   }
   btn.disabled = false;
   btn.textContent = "Accept & merge";
+  updateApproveButtonState();
 }
+
+// Approve is real GitHub review submission, under the maintainer's OWN
+// token -- never the Worker's installation token, which would attribute
+// every approval to the App's bot identity and never count toward a
+// human-reviewer requirement at all. Gated the same way Accept's first
+// gate is (the submitted photo has to have actually loaded) so no one
+// can approve blind before anything's rendered; further gated on not
+// having already approved, since GitHub happily accepts a second
+// APPROVE review from the same person but it's just noise once cast.
+function updateApproveButtonState() {
+  const btn = document.getElementById("approveBtn");
+  if (!submittedPhotoImg || !reviewStatus || reviewStatus.error) {
+    btn.disabled = true;
+    btn.textContent = "Approve";
+    return;
+  }
+  const myLogin = BlaydeAuth.getSession()?.username;
+  if (myLogin && reviewStatus.approved_by.includes(myLogin)) {
+    btn.disabled = true;
+    btn.textContent = "You approved ✓";
+    return;
+  }
+  btn.disabled = false;
+  btn.textContent = "Approve";
+}
+
+document.getElementById("approveBtn").addEventListener("click", async () => {
+  const session = BlaydeAuth.getSession();
+  const [owner, repo] = ownerRepo(currentPR.repo_url);
+  const btn = document.getElementById("approveBtn");
+  btn.disabled = true;
+  btn.textContent = "Approving...";
+  try {
+    log(`approving request #${currentPR.number}...`);
+    await githubApi(`/repos/${owner}/${repo}/pulls/${currentPR.number}/reviews`, session.token, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ event: "APPROVE" }),
+    });
+    log(`approved.`);
+    showToast("Approved.");
+    await loadReviewStatus(); // refreshes the status line and both buttons' real state
+  } catch (e) {
+    log(`approve failed: ${e.message}`);
+    updateApproveButtonState();
+  }
+});
 
 // ---- opening a PR: fetch the real submitted photo, not a mock one ----
 async function openPR(number) {
