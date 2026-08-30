@@ -62,21 +62,28 @@ async function fetchPendingVehicles() {
   });
   const result = await resp.json().catch(() => ({}));
   if (!resp.ok || result.error) throw new Error(result.error || `Couldn't load the pending list (${resp.status}).`);
-  return result.pending;
+  return result;
 }
 
 async function renderPendingList() {
   const wrap = document.getElementById("pendingList");
   wrap.innerHTML = `<p class="sub">Loading...</p>`;
+  let isMember;
   try {
-    orgPending = await fetchPendingVehicles();
+    ({ pending: orgPending, is_member: isMember } = await fetchPendingVehicles());
   } catch (e) {
     wrap.innerHTML = `<p class="sub" style="color:#ff6b6b;">${e.message}</p>`;
     return;
   }
   wrap.innerHTML = "";
+  // Non-members only ever see their own submission(s) here (see the
+  // Worker's handlePendingVehicles) -- said explicitly, since otherwise
+  // a shorter list than expected reads as a bug, not a boundary.
+  if (!isMember) {
+    wrap.innerHTML = `<p class="sub">You're not a BlaydeManual member, so this only shows submissions notarized under your own account, not the full queue.</p>`;
+  }
   if (!orgPending.length) {
-    wrap.innerHTML = `<p class="sub">Nothing pending right now.</p>`;
+    wrap.innerHTML += `<p class="sub">Nothing pending right now.</p>`;
     return;
   }
   // Existing editions comes from the real, public registry.json -- same

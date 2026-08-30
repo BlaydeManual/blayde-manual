@@ -456,17 +456,21 @@ async function getOrgMembership(login, installationToken) {
 // direct-submit vehicle proposals (private, has a manifest.json) -- the
 // installation token can see these; an approver's own token generally
 // can't, since they're not a collaborator on a repo that was never
-// theirs to begin with. Gated on real org membership, not just "any
-// signed-in GitHub user" -- without this, literally anyone with a
-// GitHub account could enumerate every private BlaydeManual repo that
-// happens to contain a manifest.json, including ones never meant to be
-// part of the public review queue.
+// theirs to begin with.
+//
+// Org members see the full queue. A non-member sees ONLY entries whose
+// notarized submitter matches their own login -- narrowed, not opened
+// wide: without SOME gate here, literally anyone with a GitHub account
+// could enumerate every private BlaydeManual repo that happens to
+// contain a manifest.json, including ones never meant to be part of the
+// public review queue. But a submitter checking on their OWN submission
+// (the only reason indexer-review.js ever links a non-member here, right
+// after /direct-submit creates their repo private) isn't that same
+// exposure, so it doesn't need that same hard bar -- see SECURITY.md.
 async function handlePendingVehicles(request, env) {
   const login = await requireRealUser(request);
   const installationToken = await getInstallationToken(env);
-  if (!(await getOrgMembership(login, installationToken))) {
-    throw new Error(`@${login} isn't a member of ${REGISTRY_OWNER} -- only members can view the pending queue.`);
-  }
+  const isMember = !!(await getOrgMembership(login, installationToken));
   const repos = await ghApi(`/orgs/${REGISTRY_OWNER}/repos?type=private&per_page=100`, installationToken);
   const pending = [];
   for (const repo of repos) {
@@ -484,7 +488,8 @@ async function handlePendingVehicles(request, env) {
     } catch (e) { /* no notarization entry -- handleApproveVehicle will reject this one, still worth listing so an approver can see why */ }
     pending.push({ name: repo.name, html_url: repo.html_url, manifest, submitted_by: submittedBy, submitted_at: submittedAt });
   }
-  return json({ pending });
+  const visible = isMember ? pending : pending.filter((v) => v.submitted_by === login);
+  return json({ pending: visible, is_member: isMember });
 }
 
 // The real approval action: independently re-verifies everything (never
