@@ -53,12 +53,13 @@
      breakpoint so phone/tablet behavior is exactly as before. */
   @media (min-width: 900px) {
     main { max-width: min(1360px, 92vw); }
-    /* +1px over the base 16px so rem-sized text/spacing across the
-       whole page (not just the hero) reads a little larger on desktop
-       monitors, where 100% browser zoom otherwise renders everything
-       at the same physical size as it would on a laptop half the
-       screen's size. */
-    html { font-size: 17px; }
+    /* Scales fluidly with viewport width instead of one flat number --
+       17px still read as "barely bigger than mobile" at real desktop
+       resolutions. Grows from 18px at the 900px breakpoint up to a
+       21px ceiling around 1500px+, so a 1920px monitor doesn't keep
+       climbing forever, but genuinely reads larger than a laptop
+       instead of just slightly larger than mobile. */
+    html { font-size: clamp(18px, 1.4vw, 21px); }
   }
   .top-nav { display: flex; justify-content: flex-end; gap: 8px; margin-bottom: 14px; }
   .pill-link {
