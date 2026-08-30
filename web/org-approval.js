@@ -86,12 +86,11 @@ async function renderPendingList() {
     wrap.innerHTML += `<p class="sub">Nothing pending right now.</p>`;
     return;
   }
-  // Existing editions comes from the real, public registry.json -- same
-  // read every other real page already uses, no auth needed for this part.
-  const registryData = await loadRegistry(CANONICAL_REGISTRY_URL).catch(() => ({ vehicles: [] }));
-  const existingSlugs = new Set((registryData.vehicles || []).map((v) => v.vehicle_slug));
   orgPending.forEach((v, idx) => {
-    const isNewEdition = existingSlugs.has(v.manifest.vehicle);
+    // is_new_edition comes straight from the Worker's own notarization
+    // record (set at submit time, in handleDirectSubmit), not guessed
+    // client-side from a name match against registry.json -- a real tag
+    // set once, not a heuristic that could mismatch or miss a case.
     const total = v.manifest.entries.length;
     const touched = v.manifest.entries.filter((e) => e._touched || e._seen).length;
     const pct = total ? Math.round((touched / total) * 100) : 0;
@@ -99,7 +98,7 @@ async function renderPendingList() {
     row.className = "pr-row";
     row.innerHTML = `
       <div>
-        <div class="pr-title">${v.manifest.vehicle} -- ${v.manifest.edition_id || "(edition not set)"}${isNewEdition ? ` <span class="sub" style="color:#ffcc66;">(new edition, vehicle exists)</span>` : ""}</div>
+        <div class="pr-title">${v.vehicle_slug || v.manifest.vehicle} -- ${v.manifest.edition_id || "(edition not set)"}${v.is_new_edition ? ` <span class="sub" style="color:#ffcc66;">(new edition for existing vehicle)</span>` : ""}</div>
         <div class="pr-meta">submitted by ${v.submitted_by ? `@${v.submitted_by}` : "(unknown -- see verification below)"}${v.submitted_at ? ` on ${v.submitted_at.slice(0, 10)}` : ""} &middot; ${total} candidates, ${touched}/${total} reviewed (${pct}%)</div>
       </div>
       <button data-idx="${idx}">Review</button>

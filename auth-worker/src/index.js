@@ -245,21 +245,63 @@ function utf8ToBase64(str) {
 async function handleDirectSubmit(request, env) {
   const login = await requireRealUser(request);
   const body = await parseJson(request);
-  const { vehicle_slug: repoName, manifest } = body;
-  if (!repoName || !manifest) return json({ error: "missing vehicle_slug or manifest" }, 400);
-  if (!/^[a-z0-9][a-z0-9-]{2,90}$/.test(repoName)) {
+  const { vehicle_slug: vehicleSlug, manifest } = body;
+  if (!vehicleSlug || !manifest) return json({ error: "missing vehicle_slug or manifest" }, 400);
+  if (!/^[a-z0-9][a-z0-9-]{2,90}$/.test(vehicleSlug)) {
     return json({ error: "vehicle_slug doesn't match the expected make-model-year shape -- refusing rather than create a repo with an unexpected name." }, 400);
+  }
+  // manifest.edition_id, not a separate top-level field -- indexer-review.js
+  // already sets this on the manifest itself (editionIdConfirm's value),
+  // the same field review-panel.js/registry-browse.js now read back once
+  // approved. Required: it's the folder this submission's manifest.json
+  // and (later, post-approval) images/ actually live under.
+  const editionId = manifest.edition_id;
+  if (!editionId || !/^[a-z0-9][a-z0-9-]{1,40}$/.test(editionId)) {
+    return json({ error: "manifest.edition_id is missing or doesn't match the expected shape (e.g. 'oem', 'haynes')." }, 400);
   }
   // A repo named exactly like one of BlaydeManual's own critical repos
   // would be refused by GitHub's own "name already exists" check anyway,
   // but that's relying on a side effect, not stating the actual rule --
   // explicit here, so it stays true even if one of these were ever
   // renamed or the registry/submission-log repos moved.
-  if ([REGISTRY_REPO, SUBMISSION_LOG_REPO, "blayde-manual", "vehicle-scaffold"].includes(repoName.toLowerCase())) {
-    return json({ error: `"${repoName}" collides with a reserved repo name.` }, 400);
+  if ([REGISTRY_REPO, SUBMISSION_LOG_REPO, "blayde-manual", "vehicle-scaffold"].includes(vehicleSlug.toLowerCase())) {
+    return json({ error: `"${vehicleSlug}" collides with a reserved repo name.` }, 400);
   }
 
   const installationToken = await getInstallationToken(env);
+
+  // Does this vehicle already have an approved, public repo? If so, this
+  // is a NEW EDITION of an existing vehicle, not a new vehicle --
+  // ROADMAP.md's governance model: "no new repo gets created... the
+  // org's approval merges what the submitter indexed into the existing
+  // vehicle repo as a new edition folder." Staged the exact same way a
+  // brand-new vehicle is (private holding repo, notarized, submitter
+  // gets no write access to it) since a NEW branch on the target
+  // wouldn't actually be private -- GitHub branches on a public repo are
+  // publicly readable immediately, unmerged or not. handleApproveVehicle
+  // reads target_repo_url below to know which case it's finishing.
+  let targetRepoUrl = null;
+  try {
+    const registryResp = await fetch("https://raw.githubusercontent.com/BlaydeManual/registry/main/registry.json");
+    if (registryResp.ok) {
+      const registryData = await registryResp.json();
+      const existing = (registryData.vehicles || []).find((v) => v.vehicle_slug === vehicleSlug && v.status === "approved");
+      if (existing) {
+        if (existing.edition_id === editionId) {
+          return json({ error: `${vehicleSlug} already has an approved '${editionId}' edition -- pick a different edition_id, or this may be a duplicate submission.` }, 409);
+        }
+        targetRepoUrl = existing.repo_url;
+      }
+    }
+  } catch (e) { /* registry unreachable -- proceed as a new-vehicle submission; a real collision still surfaces at approval time via the existing repo's own state */ }
+
+  // The vehicle_slug itself for a genuinely new vehicle (existing
+  // behavior, unchanged) -- a distinguishable, disposable name when
+  // staging a new edition for an existing vehicle, since vehicleSlug is
+  // already taken by the target repo and this one gets deleted at
+  // approval anyway, never seen by anyone but the submitter and an
+  // approver.
+  const repoName = targetRepoUrl ? `${vehicleSlug}-${editionId}-pending-${crypto.randomUUID().slice(0, 8)}` : vehicleSlug;
 
   let repo;
   try {
@@ -268,18 +310,20 @@ async function handleDirectSubmit(request, env) {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         name: repoName,
-        description: `${repoName} service manual photos -- submitted by @${login}, pending org review.`,
+        description: targetRepoUrl
+          ? `Staging: new '${editionId}' edition for ${vehicleSlug} -- submitted by @${login}, pending org review.`
+          : `${vehicleSlug} service manual photos -- submitted by @${login}, pending org review.`,
         private: true,
         auto_init: true,
       }),
     });
   } catch (e) {
-    if (e.status === 422) throw new Error(`A repo named "${repoName}" already exists under ${REGISTRY_OWNER} -- if this is a resubmission, the vehicle slug needs to change, or an org approver needs to resolve the existing one first.`);
+    if (e.status === 422) throw new Error(`A repo named "${repoName}" already exists under ${REGISTRY_OWNER} -- if this is a resubmission, try again (a fresh staging name is generated each time for an existing vehicle), or an org approver needs to resolve the existing one first.`);
     throw e;
   }
 
   const manifestText = JSON.stringify(manifest, null, 2);
-  await ghApi(`/repos/${REGISTRY_OWNER}/${repo.name}/contents/manifest.json`, installationToken, {
+  await ghApi(`/repos/${REGISTRY_OWNER}/${repo.name}/contents/${editionId}/manifest.json`, installationToken, {
     method: "PUT",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ message: "Add manifest.json", content: utf8ToBase64(manifestText), branch: repo.default_branch }),
@@ -297,11 +341,19 @@ async function handleDirectSubmit(request, env) {
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
       message: `Notarize ${repo.name}`,
-      content: utf8ToBase64(JSON.stringify({ repo_url: repo.html_url, manifest_sha256: manifestHash, github_login: login, timestamp: new Date().toISOString() }, null, 2)),
+      content: utf8ToBase64(JSON.stringify({
+        repo_url: repo.html_url, manifest_sha256: manifestHash, github_login: login, timestamp: new Date().toISOString(),
+        edition_id: editionId, vehicle_slug: vehicleSlug,
+        // null for a genuinely new vehicle -- present (the EXISTING
+        // public repo this should merge into) only for a new-edition
+        // submission. This one field is what handleApproveVehicle and
+        // handlePendingVehicles both branch on.
+        target_repo_url: targetRepoUrl,
+      }, null, 2)),
     }),
   });
 
-  return json({ repoUrl: repo.html_url });
+  return json({ repoUrl: repo.html_url, isNewEdition: !!targetRepoUrl, targetRepoUrl });
 }
 
 // Real, not just app-level: the SAME repo-scope validation review-panel.js/
@@ -335,8 +387,11 @@ async function requireRegisteredRepo(repoUrl) {
 async function handleDirectContribute(request, env) {
   const login = await requireRealUser(request);
   const body = await parseJson(request);
-  const { repo_url: repoUrl, procedure_id: procedureId, section_heading: sectionHeading, photo_data_url: photoDataUrl, photo_filename: photoFilename } = body;
-  if (!repoUrl || !procedureId || !photoDataUrl) return json({ error: "missing repo_url, procedure_id, or photo_data_url" }, 400);
+  const { repo_url: repoUrl, edition_id: editionId, procedure_id: procedureId, section_heading: sectionHeading, photo_data_url: photoDataUrl, photo_filename: photoFilename } = body;
+  if (!repoUrl || !editionId || !procedureId || !photoDataUrl) return json({ error: "missing repo_url, edition_id, procedure_id, or photo_data_url" }, 400);
+  if (!/^[a-z0-9][a-z0-9-]{0,40}$/.test(editionId)) {
+    return json({ error: "edition_id has an unexpected shape -- refusing rather than risk writing outside a real edition folder." }, 400);
+  }
   if (!/^[a-z0-9][a-z0-9_-]{0,120}$/i.test(procedureId)) {
     return json({ error: "procedure_id has an unexpected shape -- refusing rather than risk writing outside images/." }, 400);
   }
@@ -378,7 +433,7 @@ async function handleDirectContribute(request, env) {
   });
 
   const ext = (photoFilename?.match(/\.(jpe?g|png|webp)$/i)?.[0] || ".jpg").toLowerCase();
-  let path = `images/${procedureId}__by_${login}${ext}`;
+  let path = `${editionId}/images/${procedureId}__by_${login}${ext}`;
   for (let altN = 2; ; altN++) {
     try {
       await ghApi(`/repos/${owner}/${repo}/contents/${path}`, installationToken, {
@@ -393,7 +448,7 @@ async function handleDirectContribute(request, env) {
       });
       break;
     } catch (e) {
-      if (e.status === 422 && altN <= 5) { path = `images/${procedureId}__by_${login}__alt${altN}${ext}`; continue; }
+      if (e.status === 422 && altN <= 5) { path = `${editionId}/images/${procedureId}__by_${login}__alt${altN}${ext}`; continue; }
       throw e;
     }
   }
@@ -474,19 +529,34 @@ async function handlePendingVehicles(request, env) {
   const repos = await ghApi(`/orgs/${REGISTRY_OWNER}/repos?type=private&per_page=100`, installationToken);
   const pending = [];
   for (const repo of repos) {
-    let manifestFile, manifest;
+    let manifest;
     try {
-      manifestFile = await ghApi(`/repos/${REGISTRY_OWNER}/${repo.name}/contents/manifest.json`, installationToken);
+      // manifest.json now lives under an edition subdirectory, not repo
+      // root -- the edition folder's name isn't known ahead of time, so
+      // find it the same way handleApproveVehicle's own file-allowlist
+      // check does: the one directory entry alongside README.md.
+      const rootContents = await ghApi(`/repos/${REGISTRY_OWNER}/${repo.name}/contents/`, installationToken);
+      const editionEntry = rootContents.find((f) => f.type === "dir");
+      if (!editionEntry) continue; // no edition folder -- not a pending vehicle/edition proposal, some other private repo
+      const manifestFile = await ghApi(`/repos/${REGISTRY_OWNER}/${repo.name}/contents/${editionEntry.name}/manifest.json`, installationToken);
       manifest = JSON.parse(base64ToUtf8(manifestFile.content));
-    } catch (e) { continue; } // no manifest.json (or unparseable) -- not a pending vehicle proposal, some other private repo
-    let submittedBy = null, submittedAt = null;
+    } catch (e) { continue; } // no manifest.json under the edition folder (or unparseable) -- not a pending proposal
+    let submittedBy = null, submittedAt = null, targetRepoUrl = null, vehicleSlug = null;
     try {
       const logFile = await ghApi(`/repos/${REGISTRY_OWNER}/${SUBMISSION_LOG_REPO}/contents/submissions/${repo.name}.json`, installationToken);
       const logEntry = JSON.parse(base64ToUtf8(logFile.content));
       submittedBy = logEntry.github_login;
       submittedAt = logEntry.timestamp;
+      // Present only for a new-edition-of-an-existing-vehicle submission
+      // (see handleDirectSubmit) -- lets the approval UI show "new
+      // edition for <vehicle>" instead of "new vehicle" for this row.
+      targetRepoUrl = logEntry.target_repo_url || null;
+      vehicleSlug = logEntry.vehicle_slug || null;
     } catch (e) { /* no notarization entry -- handleApproveVehicle will reject this one, still worth listing so an approver can see why */ }
-    pending.push({ name: repo.name, html_url: repo.html_url, manifest, submitted_by: submittedBy, submitted_at: submittedAt });
+    pending.push({
+      name: repo.name, html_url: repo.html_url, manifest, submitted_by: submittedBy, submitted_at: submittedAt,
+      is_new_edition: !!targetRepoUrl, target_repo_url: targetRepoUrl, vehicle_slug: vehicleSlug,
+    });
   }
   const visible = isMember ? pending : pending.filter((v) => v.submitted_by === login);
   return json({ pending: visible, is_member: isMember });
@@ -506,14 +576,18 @@ async function handlePendingVehicles(request, env) {
 
 const VEHICLE_SCAFFOLD_REPO = "vehicle-scaffold";
 
-// README.md and CONTRIBUTING.md carry a {{VEHICLE_DISPLAY_NAME}}
+// README.md, CONTRIBUTING.md, and the edition images/ folder's own
+// README carry a {{VEHICLE_DISPLAY_NAME}} and/or {{EDITION_ID}}
 // placeholder -- every other scaffold file is copied through byte-for-
 // byte, since re-encoding a binary file (LICENSE, checker.py) through a
-// decode/replace/re-encode round trip for two files that don't even
-// have the placeholder is real risk for zero benefit.
-const SCAFFOLD_TEMPLATE_FILES = new Set(["README.md", "CONTRIBUTING.md"]);
+// decode/replace/re-encode round trip for files that don't even have a
+// placeholder is real risk for zero benefit. The images/ README's path
+// key here is the literal, unsubstituted git-tree path (matching
+// scaffold/{{EDITION_ID}}/images/README.md on disk), not the real
+// per-repo path -- entry.path substitution happens separately, below.
+const SCAFFOLD_TEMPLATE_FILES = new Set(["README.md", "CONTRIBUTING.md", "{{EDITION_ID}}/images/README.md"]);
 
-async function applyVehicleScaffold(repoName, vehicleDisplayName, branch, installationToken) {
+async function applyVehicleScaffold(repoName, vehicleDisplayName, editionId, branch, installationToken) {
   const tree = await ghApi(`/repos/${REGISTRY_OWNER}/${VEHICLE_SCAFFOLD_REPO}/git/trees/main?recursive=1`, installationToken);
   const blobs = tree.tree.filter((entry) => entry.type === "blob");
 
@@ -526,24 +600,34 @@ async function applyVehicleScaffold(repoName, vehicleDisplayName, branch, instal
     let content = blob.content.replace(/\n/g, "");
 
     if (SCAFFOLD_TEMPLATE_FILES.has(entry.path)) {
-      const text = base64ToUtf8(content).replaceAll("{{VEHICLE_DISPLAY_NAME}}", vehicleDisplayName);
+      const text = base64ToUtf8(content)
+        .replaceAll("{{VEHICLE_DISPLAY_NAME}}", vehicleDisplayName)
+        .replaceAll("{{EDITION_ID}}", editionId);
       content = utf8ToBase64(text);
     }
+
+    // The scaffold's own tree path still carries the literal
+    // {{EDITION_ID}} placeholder (scaffold/{{EDITION_ID}}/images/...) --
+    // substituted here into the real per-repo path this edition's files
+    // actually land at (e.g. oem/images/...). Distinct from the CONTENT
+    // substitution above: a file can need one, the other, both, or
+    // neither (LICENSE needs neither; the images/ README needs both).
+    const realPath = entry.path.replaceAll("{{EDITION_ID}}", editionId);
 
     // README.md already exists (direct-submit's auto_init created a
     // placeholder one) -- needs the current file's sha to update rather
     // than create. Every other scaffold file is genuinely new in this repo.
     let existingSha;
-    if (entry.path === "README.md") {
+    if (realPath === "README.md") {
       const existing = await ghApi(`/repos/${REGISTRY_OWNER}/${repoName}/contents/README.md`, installationToken);
       existingSha = existing.sha;
     }
 
-    await ghApi(`/repos/${REGISTRY_OWNER}/${repoName}/contents/${entry.path}`, installationToken, {
+    await ghApi(`/repos/${REGISTRY_OWNER}/${repoName}/contents/${realPath}`, installationToken, {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
-        message: `Add vehicle-scaffold: ${entry.path}`,
+        message: `Add vehicle-scaffold: ${realPath}`,
         content,
         branch,
         ...(existingSha ? { sha: existingSha } : {}),
@@ -555,7 +639,10 @@ async function applyVehicleScaffold(repoName, vehicleDisplayName, branch, instal
 async function handleApproveVehicle(request, env) {
   const login = await requireRealUser(request);
   const body = await parseJson(request);
-  const { repo_name: repoName, edition_id: editionId, dry_run: dryRun } = body;
+  // edition_id is NOT read from the body -- see step 1 below, which
+  // derives it from the repo's own real folder structure instead of
+  // trusting a caller-supplied value for anything that gates approval.
+  const { repo_name: repoName, dry_run: dryRun } = body;
   if (!repoName) return json({ error: "missing repo_name" }, 400);
   // The file-allowlist check below would reject any of BlaydeManual's
   // own real repos anyway (they all have far more than two files) --
@@ -581,13 +668,22 @@ async function handleApproveVehicle(request, env) {
     throw new Error(`Rejected: "${repoName}" is already public -- it's already been approved, not a pending proposal.`);
   }
 
-  // 1. Negative file-allowlist: exactly {README.md, manifest.json}, one branch.
-  const contents = await ghApi(`/repos/${REGISTRY_OWNER}/${repoName}/contents/`, installationToken);
-  const filenames = contents.map((f) => f.name).sort();
-  const expected = ["README.md", "manifest.json"];
-  if (filenames.length !== expected.length || !filenames.every((f, i) => f === expected[i])) {
-    throw new Error(`Rejected: expected exactly {README.md, manifest.json}, found {${filenames.join(", ")}}.`);
+  // 1. Negative file-allowlist: exactly {README.md, <edition>/manifest.json},
+  // nothing else ANYWHERE in the repo -- checked via the recursive git
+  // tree, not a two-level contents-API walk, specifically so a file
+  // nested one level deeper than expected (e.g. <edition>/images/*,
+  // which no code path writes today, but a future change might)
+  // couldn't silently slip past a check that only ever looked at direct
+  // children of two known levels. editionId is discovered from the
+  // repo's own real structure here, not trusted from the request body --
+  // the body's edition_id (if a caller sends one) is never read for
+  // anything in this function.
+  const repoTree = await ghApi(`/repos/${REGISTRY_OWNER}/${repoName}/git/trees/main?recursive=1`, installationToken);
+  const blobPaths = repoTree.tree.filter((e) => e.type === "blob").map((e) => e.path).sort();
+  if (blobPaths.length !== 2 || blobPaths[0] !== "README.md" || !/^[^/]+\/manifest\.json$/.test(blobPaths[1])) {
+    throw new Error(`Rejected: expected exactly {README.md, <edition>/manifest.json}, found {${blobPaths.join(", ")}}.`);
   }
+  const editionId = blobPaths[1].split("/")[0];
   const branches = await ghApi(`/repos/${REGISTRY_OWNER}/${repoName}/branches`, installationToken);
   if (branches.length !== 1) {
     throw new Error(`Rejected: expected exactly one branch, found ${branches.length}.`);
@@ -596,7 +692,7 @@ async function handleApproveVehicle(request, env) {
   // 2. Notarization: the manifest's current hash must match what was
   // logged at submission time -- a mismatch means it was edited after
   // submitting (or never really went through /direct-submit at all).
-  const manifestFile = await ghApi(`/repos/${REGISTRY_OWNER}/${repoName}/contents/manifest.json`, installationToken);
+  const manifestFile = await ghApi(`/repos/${REGISTRY_OWNER}/${repoName}/contents/${editionId}/manifest.json`, installationToken);
   const manifestText = base64ToUtf8(manifestFile.content);
   const currentHash = await sha256Hex(manifestText);
   let logEntry;
@@ -623,7 +719,102 @@ async function handleApproveVehicle(request, env) {
 
   if (dryRun) return json({ checked: true });
 
-  // All three passed -- flip public, add the registry entry.
+  // ---- New edition of an EXISTING, already-public vehicle --
+  // ROADMAP.md's governance model: "no new repo gets created... the
+  // org's approval merges what the submitter indexed into the existing
+  // vehicle repo as a new edition folder." The staging repo above only
+  // ever existed to hold this one edition's manifest.json privately
+  // until this exact approval -- it gets deleted below, never made
+  // public itself. ----
+  if (logEntry.target_repo_url) {
+    const [targetOwner, targetRepo] = new URL(logEntry.target_repo_url).pathname.replace(/^\//, "").split("/");
+    const targetInfo = await ghApi(`/repos/${targetOwner}/${targetRepo}`, installationToken);
+
+    await ghApi(`/repos/${targetOwner}/${targetRepo}/contents/${editionId}/manifest.json`, installationToken, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        message: `Add ${editionId} edition (submitted by @${logEntry.github_login})`,
+        content: utf8ToBase64(manifestText),
+        branch: targetInfo.default_branch,
+      }),
+    });
+
+    // The one scaffold file every edition folder carries (not the whole
+    // scaffold -- the target repo already has checker.py/CONTRIBUTING.md/
+    // etc. from its own original approval, this new folder is just
+    // missing its own images/README.md so far), read fresh from
+    // vehicle-scaffold via the same tree+blob lookup applyVehicleScaffold
+    // uses for a brand-new vehicle -- not a direct contents-API fetch by
+    // path, which would mean passing the literal characters "{{" and "}}"
+    // through a URL with no encoding applied by ghApi (it interpolates
+    // paths as-is; see ghApi's own definition). The tree+blob approach
+    // sidesteps that question entirely by keying on a blob sha instead.
+    try {
+      const scaffoldTree = await ghApi(`/repos/${REGISTRY_OWNER}/${VEHICLE_SCAFFOLD_REPO}/git/trees/main?recursive=1`, installationToken);
+      const readmeEntry = scaffoldTree.tree.find((e) => e.path === "{{EDITION_ID}}/images/README.md");
+      const readmeBlob = await ghApi(`/repos/${REGISTRY_OWNER}/${VEHICLE_SCAFFOLD_REPO}/git/blobs/${readmeEntry.sha}`, installationToken);
+      const readmeText = base64ToUtf8(readmeBlob.content.replace(/\n/g, "")).replaceAll("{{EDITION_ID}}", editionId);
+      await ghApi(`/repos/${targetOwner}/${targetRepo}/contents/${editionId}/images/README.md`, installationToken, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ message: `Add ${editionId}/images/README.md`, content: utf8ToBase64(readmeText), branch: targetInfo.default_branch }),
+      });
+    } catch (e) { /* approval itself already succeeded; a missing images/README.md is cosmetic, not a functional gap */ }
+
+    // Joining the EXISTING maintainer pool with full authority -- the
+    // accepted risk ROADMAP.md names directly ("a contributor who does
+    // a solid job indexing a second edition becomes a full maintainer
+    // of the whole repo, including the original edition"). Best-effort,
+    // same reasoning as the new-vehicle grant below.
+    try {
+      await ghApi(`/repos/${targetOwner}/${targetRepo}/collaborators/${logEntry.github_login}`, installationToken, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ permission: "push" }),
+      });
+    } catch (e) { /* approval itself already succeeded; a maintainer can always be added manually via My Vehicles */ }
+
+    // vehicle_display_name/vehicle_class copied from whichever existing
+    // registry row already shares this repo_url, not trusted fresh from
+    // this submission's own manifest -- every edition of one vehicle
+    // should display identically, not drift based on whichever
+    // submitter typed what into their own indexing pass.
+    const registryFile = await ghApi(`/repos/${REGISTRY_OWNER}/${REGISTRY_REPO}/contents/registry.json`, installationToken);
+    const registryData = JSON.parse(base64ToUtf8(registryFile.content));
+    registryData.vehicles = registryData.vehicles || [];
+    const sibling = registryData.vehicles.find((v) => v.repo_url === logEntry.target_repo_url);
+    registryData.vehicles.push({
+      vehicle_slug: logEntry.vehicle_slug,
+      edition_id: editionId,
+      vehicle_display_name: sibling?.vehicle_display_name || manifest.vehicle,
+      vehicle_class: sibling?.vehicle_class || manifest.vehicle_class || null,
+      repo_url: logEntry.target_repo_url,
+      source_pdf_sha256: manifest.source_pdf_sha256 || null,
+      status: "approved",
+    });
+    await ghApi(`/repos/${REGISTRY_OWNER}/${REGISTRY_REPO}/contents/registry.json`, installationToken, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        message: `Approve ${logEntry.vehicle_slug} (${editionId}, new edition)`,
+        content: utf8ToBase64(JSON.stringify(registryData, null, 2)),
+        sha: registryFile.sha,
+      }),
+    });
+
+    // The staging repo's only job was holding this privately until now
+    // -- the permanent record lives in the target repo instead, so no
+    // new repo exists once this is done, matching the design above.
+    try {
+      await ghApi(`/repos/${REGISTRY_OWNER}/${repoName}`, installationToken, { method: "DELETE" });
+    } catch (e) { /* approval itself already succeeded; a leftover staging repo is a cleanup nit, not a correctness problem */ }
+
+    return json({ approved: true, repoUrl: logEntry.target_repo_url, isNewEdition: true });
+  }
+
+  // ---- Brand new vehicle -- existing flow below, unchanged ----
+  // All three checks passed -- flip public, add the registry entry.
   await ghApi(`/repos/${REGISTRY_OWNER}/${repoName}`, installationToken, {
     method: "PATCH",
     headers: { "Content-Type": "application/json" },
@@ -640,7 +831,7 @@ async function handleApproveVehicle(request, env) {
   // duplicated into this Worker, so editing the scaffold later never
   // requires touching this code or any already-created vehicle repo.
   try {
-    await applyVehicleScaffold(repoName, manifest.vehicle, repoInfo.default_branch, installationToken);
+    await applyVehicleScaffold(repoName, manifest.vehicle, editionId, repoInfo.default_branch, installationToken);
   } catch (e) { /* approval itself already succeeded; a maintainer can copy scaffold files in by hand if this fails */ }
 
   // Grant the original submitter real, explicit maintainer access to
@@ -726,7 +917,7 @@ async function handleApproveVehicle(request, env) {
   registryData.vehicles = registryData.vehicles || [];
   registryData.vehicles.push({
     vehicle_slug: manifest.vehicle,
-    edition_id: editionId || manifest.edition_id,
+    edition_id: editionId,
     vehicle_display_name: manifest.vehicle,
     vehicle_class: manifest.vehicle_class || null,
     repo_url: `https://github.com/${REGISTRY_OWNER}/${repoName}`,
@@ -747,7 +938,7 @@ async function handleApproveVehicle(request, env) {
     method: "PUT",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
-      message: `Approve ${manifest.vehicle} (${editionId || manifest.edition_id})`,
+      message: `Approve ${manifest.vehicle} (${editionId})`,
       content: utf8ToBase64(JSON.stringify(registryData, null, 2)),
       sha: registryFile.sha,
     }),
