@@ -124,11 +124,17 @@ checks 1-4 above pass, so a tampered or forged submission is rejected
 before anyone is ever added as a collaborator.
 
 **Viewing** the pending queue (`GET /pending-vehicles`) requires real,
-active BlaydeManual org membership, not just any signed-in GitHub
-account -- without that, a stranger with a throwaway GitHub account
-could otherwise enumerate every private repo under the org that happens
-to contain a `manifest.json`, including ones never meant to be part of
-the public review queue.
+active BlaydeManual org membership to see the FULL queue -- without
+that, a stranger with a throwaway GitHub account could otherwise
+enumerate every private repo under the org that happens to contain a
+`manifest.json`, including ones never meant to be part of the public
+review queue. A non-member instead sees only entries whose notarized
+submitter matches their own login -- narrowed, not opened wide: a
+submitter checking on the one submission they themselves just made
+(the private repo `/direct-submit` created for them, which they have no
+other way to check on since they're not a collaborator on it) isn't the
+same exposure as a stranger browsing the whole queue, so it doesn't
+need the same hard bar.
 
 **Deliberately not built:** a real REJECT action. Approving is a
 one-way, narrowly-scoped set of API calls (flip visibility, append a

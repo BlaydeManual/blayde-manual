@@ -602,8 +602,20 @@ function renderModalOverlays() {
       // reviewing this."
       document.getElementById("reviewSection").style.display = "none";
       const summaryCard = document.getElementById("submitSummaryCard");
-      document.getElementById("submitSummaryText").innerHTML = `${result.total} candidates, ${result.pct}% reviewed. `
-        + `<a href="${result.repoUrl}" target="_blank" rel="noopener">Repo</a> (private until an org approver reviews it)`;
+      // Not a link to result.repoUrl -- the repo is private by design
+      // (submitters never get write access pre-approval), so that link
+      // 404s the moment anyone actually clicks it. "Approve New
+      // Vehicles" is where this submission's real status lives, and
+      // works for a non-member submitter too: the Worker's
+      // /pending-vehicles narrows to just their own notarized
+      // submission(s) rather than the full org queue.
+      document.getElementById("submitSummaryText").innerHTML = `${result.total} candidates, ${result.pct}% reviewed and submitted -- private until an org approver reviews it. `
+        + `<a href="#" id="submitGoToApproveLink">Check its status</a>`;
+      document.getElementById("submitGoToApproveLink").addEventListener("click", (e) => {
+        e.preventDefault();
+        activateTab("approve");
+        renderPendingList();
+      });
       summaryCard.style.display = "block";
 
       // The whole point of persisting review state was to survive a
