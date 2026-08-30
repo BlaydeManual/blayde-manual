@@ -221,8 +221,17 @@ function findByFingerprint(registryData, sha256) {
 // ORIGINAL's hash. Matching by the repo_url already stored in that
 // output's own embedded state sidesteps fingerprinting entirely for
 // this case. See patcher.js's pdfInput handler for where this applies.
-function findByRepoUrl(registryData, repoUrl) {
-  return (registryData.vehicles || []).find(e => e.repo_url === repoUrl) || null;
+//
+// Matches on edition_id too, not just repo_url -- a vehicle repo can
+// hold more than one edition now (own manifest.json, own images/ folder
+// per edition), so repo_url alone no longer identifies a unique
+// registry row once a vehicle has a second edition. editionId comes
+// from the same embedded state that supplies repoUrl (patcher.js writes
+// both together), so an old file predating that field would pass
+// undefined here -- there's no real installed base of those yet to
+// carry forward compatibly.
+function findByRepoUrl(registryData, repoUrl, editionId) {
+  return (registryData.vehicles || []).find(e => e.repo_url === repoUrl && e.edition_id === editionId) || null;
 }
 
 function ownerRepo(repoUrl) {
@@ -273,19 +282,22 @@ function base64ToUtf8(b64) {
   return decodeURIComponent(escape(atob(b64)));
 }
 
-async function fetchManifest(repoUrl) {
+// editionId is required, not optional -- manifest.json lives under its
+// own edition's folder (own coordinate space, can't be shared across
+// editions), never at repo root anymore.
+async function fetchManifest(repoUrl, editionId) {
   const [owner, repo] = ownerRepo(repoUrl);
   for (const branch of ["main", "master"]) {
-    const url = `https://raw.githubusercontent.com/${owner}/${repo}/${branch}/manifest.json`;
+    const url = `https://raw.githubusercontent.com/${owner}/${repo}/${branch}/${editionId}/manifest.json`;
     const resp = await fetch(url);
     if (resp.ok) return { manifest: await resp.json(), branch };
   }
-  throw new Error(`could not fetch manifest.json from ${repoUrl} (tried main, master)`);
+  throw new Error(`could not fetch ${editionId}/manifest.json from ${repoUrl} (tried main, master)`);
 }
 
-async function listRepoImages(repoUrl, branch) {
+async function listRepoImages(repoUrl, editionId, branch) {
   const [owner, repo] = ownerRepo(repoUrl);
-  const url = `https://api.github.com/repos/${owner}/${repo}/contents/images?ref=${branch}`;
+  const url = `https://api.github.com/repos/${owner}/${repo}/contents/${editionId}/images?ref=${branch}`;
   const resp = await fetch(url, { headers: { Accept: "application/vnd.github+json" } });
   if (!resp.ok) {
     if (resp.status === 404) return []; // no images/ folder yet, nothing contributed
@@ -310,9 +322,9 @@ const MAX_PHOTO_BYTES = 20 * 1024 * 1024;
 // from the (cheap, local) embed/draw work. Sized the same way indexer's
 // pool is (capped to hardwareConcurrency), for the same reason: enough
 // to overlap latency without opening more connections than useful.
-async function fetchManifestAndPhotos(repoUrl, onProgress) {
-  const { manifest, branch } = await fetchManifest(repoUrl);
-  const files = await listRepoImages(repoUrl, branch);
+async function fetchManifestAndPhotos(repoUrl, editionId, onProgress) {
+  const { manifest, branch } = await fetchManifest(repoUrl, editionId);
+  const files = await listRepoImages(repoUrl, editionId, branch);
   const photos = new Map(); // filename -> Uint8Array
   const poolSize = Math.max(1, Math.min(8, (navigator.hardwareConcurrency || 4) - 1));
 
@@ -372,7 +384,7 @@ async function resolveEntry(entry, notFoundMessage, onProgress) {
     throw new Error(`Found '${entry.vehicle_display_name}' (${entry.edition_id}) but it's still ` +
       `${entry.status}, not approved yet.`);
   }
-  const { manifest, photos } = await fetchManifestAndPhotos(entry.repo_url, onProgress);
+  const { manifest, photos } = await fetchManifestAndPhotos(entry.repo_url, entry.edition_id, onProgress);
   return { entry, manifest, photos };
 }
 
@@ -383,10 +395,11 @@ async function resolveViaRegistry(pdfFingerprint, registryUrl, onProgress) {
 }
 
 // For a PDF that's already a Blayde Manual output (detected via its
-// embedded state attachment, which stores its own repo_url) -- see
-// findByRepoUrl's comment for why fingerprint matching can't work here.
-async function resolveViaRepoUrl(repoUrl, registryUrl, onProgress) {
+// embedded state attachment, which stores its own repo_url + edition_id)
+// -- see findByRepoUrl's comment for why fingerprint matching can't work
+// here.
+async function resolveViaRepoUrl(repoUrl, editionId, registryUrl, onProgress) {
   const registryData = await loadRegistry(registryUrl);
-  const entry = findByRepoUrl(registryData, repoUrl);
-  return resolveEntry(entry, `No registry entry for repo ${repoUrl} (from this file's own embedded state).`, onProgress);
+  const entry = findByRepoUrl(registryData, repoUrl, editionId);
+  return resolveEntry(entry, `No registry entry for repo ${repoUrl} edition '${editionId}' (from this file's own embedded state).`, onProgress);
 }

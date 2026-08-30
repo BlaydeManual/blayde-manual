@@ -229,10 +229,11 @@ pdfInput.addEventListener("change", async () => {
   // this codebase now checks for it: the embedded state attachment,
   // which already stores the exact repo_url needed to resolve directly.
   let priorRepoUrl = null;
+  let priorEditionId = null;
   try {
     const probeDoc = await PDFDocument.load(pdfBytes);
     const priorState = await readEmbeddedState(probeDoc);
-    if (priorState?.repo_url) priorRepoUrl = priorState.repo_url;
+    if (priorState?.repo_url) { priorRepoUrl = priorState.repo_url; priorEditionId = priorState.edition_id || null; }
   } catch (e) { /* not a loadable/prior Blayde Manual file -- fingerprint path handles it */ }
 
   setProgress(0, 1, "checking the registry...");
@@ -241,7 +242,7 @@ pdfInput.addEventListener("change", async () => {
     registryResolution = priorRepoUrl
       ? await (async () => {
           appendLog(`Recognized an already-patched Blayde Manual file -- resolving by its own repo (${priorRepoUrl}), not by fingerprint.`);
-          return resolveViaRepoUrl(priorRepoUrl, DEFAULT_REGISTRY_URL,
+          return resolveViaRepoUrl(priorRepoUrl, priorEditionId, DEFAULT_REGISTRY_URL,
             (i, total, name) => setProgress(i, total, `fetching ${name} (${i}/${total})`));
         })()
       : await resolveViaRegistry(pdfFingerprint, DEFAULT_REGISTRY_URL,
@@ -370,8 +371,12 @@ async function drawCreditTab(page, box, contributor, font) {
 // any already-patched PDF with the old param baked into its QRs (see
 // contribute.js's legacy fallback) -- this only changes what new
 // patches encode going forward.
-function contributeUrl(vehicleSlug, procedureId) {
-  return new URL(`contribute.html?v=${encodeURIComponent(vehicleSlug)}&procedure=${encodeURIComponent(procedureId)}`, location.href).href;
+// edition is required now, not inferred -- procedure_id is scoped to
+// its own edition (two editions of the same vehicle can both have a
+// "p003_proc1_fig1" meaning two different pages), so vehicle_slug alone
+// no longer picks a unique manifest once a vehicle has more than one.
+function contributeUrl(vehicleSlug, editionId, procedureId) {
+  return new URL(`contribute.html?v=${encodeURIComponent(vehicleSlug)}&edition=${encodeURIComponent(editionId)}&procedure=${encodeURIComponent(procedureId)}`, location.href).href;
 }
 
 // qrcode.js (vendored) only emits a GIF data URL -- pdf-lib embeds PNG/
@@ -612,7 +617,7 @@ async function patchViaRegistry(doc, priorState, priorityList, showQr) {
       if (missingGeo && e.pixel_bbox) {
         try {
           const page = doc.getPage(e.page - 1);
-          const url = contributeUrl(entry.vehicle_slug, e.procedure_id);
+          const url = contributeUrl(entry.vehicle_slug, entry.edition_id, e.procedure_id);
           await drawContributeMarker(doc, page, missingGeo, e.pixel_bbox, url, helvFont, showQr);
         } catch (err) {
           appendLog(`  couldn't draw contribute marker for ${e.procedure_id}: ${err.message}`);
@@ -694,6 +699,12 @@ patchBtn.addEventListener("click", async () => {
     await writeEmbeddedState(doc, {
       source_identifier: result.sourceIdentifier,
       repo_url: result.repoUrl,
+      // Real bug this closes: without edition_id here, feeding an
+      // already-patched file back in resolves by repo_url alone, which
+      // stopped uniquely identifying a registry row the moment a vehicle
+      // repo could hold more than one edition -- see findByRepoUrl in
+      // registry.js.
+      edition_id: result.editionId,
       generated_at: new Date().toISOString(),
       patched_figures: result.patchedFigures,
     });

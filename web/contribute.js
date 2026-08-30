@@ -55,35 +55,50 @@ const params = new URLSearchParams(location.search);
 // change keeps working without needing a re-patch.
 const vehicleSlug = params.get("v");
 const legacyRepoUrl = params.get("repo");
+// Required alongside v= now, not inferred -- a vehicle repo can hold
+// more than one edition, each with its own manifest.json/images/, so
+// vehicle_slug alone no longer picks a unique registry row. Every real
+// link into this page (patcher.js's QR codes, issue-requests.js's
+// "problem with this photo") passes edition explicitly as of this
+// change. Legacy repo= links predate multi-edition repos entirely (a
+// repo that could still be resolved by URL alone never had a second
+// edition to be ambiguous about), so they don't need this param to
+// stay unambiguous.
+const editionParam = params.get("edition");
 const hasProcedureContext = (params.has("v") || params.has("repo")) && params.has("procedure");
 let repoUrl = legacyRepoUrl || "https://github.com/BlaydeManual/suzuki-sv650-1999-2002";
 const procedureId = params.get("procedure") || "p040_2-10-periodic-maintenance_fig1";
 
 // registry.json is the only place edition_id lives (a real vehicle's
 // manifest.json has no such field -- edition is a registry-level
-// concept, since two editions of the same vehicle can be two separate
-// repos sharing one vehicle_slug). Without this, every real upload
-// against a live manifest -- as opposed to the MOCK_MANIFEST_CONTEXT
-// fixtures above, which hardcode edition_id -- got "(edition not
-// set)" in My uploads: a real, live bug, not a display quirk.
-let resolvedEditionId = null;
+// concept). Without this, every real upload against a live manifest --
+// as opposed to the MOCK_MANIFEST_CONTEXT fixtures above, which
+// hardcode edition_id -- got "(edition not set)" in My uploads: a real,
+// live bug, not a display quirk. Defaults to editionParam so a broken/
+// offline registry still lets a real QR-code visit (which always
+// carries edition=) work with the edition it already knows, rather
+// than losing it entirely.
+let resolvedEditionId = editionParam || null;
 
 // Resolves `v=<vehicle_slug>` to a real repo_url via registry.json --
 // the same lookup registry-browse.js already does per vehicle, just
-// for one slug instead of the whole list -- and captures that same
-// entry's edition_id along the way. For the legacy `repo=` path,
-// repoUrl is already known, so this looks the entry up by repo_url
-// instead, purely to still recover edition_id. Falls back silently
-// (matching every other real-repo-unreachable fallback on this page)
-// if the registry or the match can't be found, so a broken/offline
-// registry degrades to "showing what's known locally" instead of a
-// dead end.
+// for one slug instead of the whole list. Matches on edition_id too
+// when editionParam is present (the normal case now) so a vehicle with
+// two editions resolves to the RIGHT one, not just whichever registry
+// row happens to come first. For the legacy `repo=` path, repoUrl is
+// already known, so this looks the entry up by repo_url instead,
+// purely to still recover edition_id. Falls back silently (matching
+// every other real-repo-unreachable fallback on this page) if the
+// registry or the match can't be found, so a broken/offline registry
+// degrades to "showing what's known locally" instead of a dead end.
 async function resolveRepoUrl() {
   if (!vehicleSlug && !legacyRepoUrl) return;
   try {
     const registryData = await loadRegistry(CANONICAL_REGISTRY_URL);
     const match = (registryData.vehicles || []).find((v) =>
-      v.status === "approved" && (vehicleSlug ? v.vehicle_slug === vehicleSlug : v.repo_url === legacyRepoUrl));
+      v.status === "approved" && (vehicleSlug
+        ? v.vehicle_slug === vehicleSlug && (!editionParam || v.edition_id === editionParam)
+        : v.repo_url === legacyRepoUrl));
     if (match) {
       if (vehicleSlug) repoUrl = match.repo_url;
       resolvedEditionId = match.edition_id || null;
@@ -190,7 +205,7 @@ function log(msg) {
 // dead-ends just because nothing's deployed yet ----
 async function loadContext() {
   try {
-    const { manifest } = await fetchManifest(repoUrl);
+    const { manifest } = await fetchManifest(repoUrl, resolvedEditionId);
     const entry = (manifest.entries || []).find((e) => e.procedure_id === procedureId);
     const geo = entry && manifest.page_geometry && manifest.page_geometry[String(entry.page)];
     if (entry && geo) {
@@ -641,12 +656,15 @@ async function submitPhotoPrivate(upload) {
     body: JSON.stringify({ ref: `refs/heads/${branchName}`, sha: forkRef.object.sha }),
   });
 
-  // <procedure_id>__by_<username>[__altN].ext -- the exact convention
-  // patcher.js's parsePhotoFilename expects. Alt-numbering only kicks
-  // in if this same contributor already has a photo at this exact path
-  // (a genuine resubmission), not on any other kind of failure.
+  // <edition>/images/<procedure_id>__by_<username>[__altN].ext -- the
+  // exact convention registry.js's parsePhotoFilename expects, scoped
+  // under the edition this photo was actually shot against (a repo can
+  // hold more than one edition, each with its own images/ folder --
+  // see scaffold/CONTRIBUTING.md). Alt-numbering only kicks in if this
+  // same contributor already has a photo at this exact path (a genuine
+  // resubmission), not on any other kind of failure.
   const content = dataUrlToBase64(upload.photoDataUrl);
-  let path = `images/${upload.procedureId}__by_${forkOwner}${ext}`;
+  let path = `${upload.editionId}/images/${upload.procedureId}__by_${forkOwner}${ext}`;
   for (let altN = 2; ; altN++) {
     try {
       await githubApi(`/repos/${forkOwner}/${repo}/contents/${path}`, session.token, {
@@ -657,7 +675,7 @@ async function submitPhotoPrivate(upload) {
       break;
     } catch (e) {
       if (e.status === 422 && altN <= 5) {
-        path = `images/${upload.procedureId}__by_${forkOwner}__alt${altN}${ext}`;
+        path = `${upload.editionId}/images/${upload.procedureId}__by_${forkOwner}__alt${altN}${ext}`;
         continue;
       }
       throw e;
@@ -709,6 +727,11 @@ async function submitPhotoPublic(upload) {
     headers: { "Content-Type": "application/json", Authorization: `Bearer ${session.token}` },
     body: JSON.stringify({
       repo_url: upload.repoUrl,
+      // The Worker builds the actual commit path server-side -- this
+      // tells it which edition's images/ folder the photo belongs
+      // under, same as the fork-based path above now does client-side.
+      // Not yet consumed there as of this change; see ROADMAP.md.
+      edition_id: upload.editionId,
       procedure_id: upload.procedureId,
       section_heading: upload.sectionHeading,
       photo_data_url: upload.photoDataUrl,

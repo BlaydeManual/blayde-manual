@@ -98,29 +98,39 @@ async function initReviewTab() {
 }
 
 // Real open PRs on this repo, filtered to ones that actually add a
-// photo under images/ (contribute.js's convention) -- anything else
-// (a manifest-only PR, a docs tweak) is out of this pass's scope and
-// silently skipped, not shown as a broken row. One bad/unreadable PR
-// is isolated per-item, never breaks the whole list.
+// photo under <edition>/images/ (contribute.js's convention) -- anything
+// else (a manifest-only PR, a docs tweak) is out of this pass's scope
+// and silently skipped, not shown as a broken row. One bad/unreadable
+// PR is isolated per-item, never breaks the whole list.
 async function loadOpenPhotoPRs(repoUrl) {
   const session = BlaydeAuth.getSession();
   const [owner, repo] = ownerRepo(repoUrl);
   const prs = await githubApi(`/repos/${owner}/${repo}/pulls?state=open&per_page=50`, session.token);
 
-  let manifestPromise = null;
-  function getManifest() {
-    if (!manifestPromise) manifestPromise = fetchManifest(repoUrl);
-    return manifestPromise;
+  // Keyed by edition_id, not one shared promise -- a repo can hold more
+  // than one edition, and different PRs in the same repo can target
+  // different ones, each needing its own manifest.json fetched from its
+  // own edition folder.
+  const manifestPromises = new Map();
+  function getManifest(editionId) {
+    if (!manifestPromises.has(editionId)) manifestPromises.set(editionId, fetchManifest(repoUrl, editionId));
+    return manifestPromises.get(editionId);
   }
 
   const results = await Promise.all(prs.map(async (pr) => {
     try {
       const files = await githubApi(`/repos/${owner}/${repo}/pulls/${pr.number}/files`, session.token);
-      const photoFile = files.find((f) => f.status === "added" && /^images\//.test(f.filename));
+      const photoFile = files.find((f) => f.status === "added" && /^[^/]+\/images\//.test(f.filename));
       if (!photoFile) return null;
-      const filename = photoFile.filename.replace(/^images\//, "");
+      // edition_id comes from the photo's own path, not from the
+      // manifest's own field -- authoritative and available before the
+      // manifest fetch even happens, since it's which folder the file
+      // physically landed in.
+      const pathMatch = /^([^/]+)\/images\/(.+)$/.exec(photoFile.filename);
+      const editionId = pathMatch[1];
+      const filename = pathMatch[2];
       const { procedureId, contributor } = parsePhotoFilename(filename);
-      const { manifest, branch } = await getManifest();
+      const { manifest, branch } = await getManifest(editionId);
       const entry = (manifest.entries || []).find((e) => e.procedure_id === procedureId);
       const geo = entry && manifest.page_geometry?.[String(entry.page)];
       if (!entry || !geo) return null; // photo doesn't match a known procedure -- shouldn't happen if checker.py ran, skip defensively
@@ -135,7 +145,7 @@ async function loadOpenPhotoPRs(repoUrl) {
         // paths (fork-based Private PRs use the same filename
         // convention), so it's the one real signal here, not a fallback.
         number: pr.number, title: pr.title, author: contributor || pr.user?.login || "unknown",
-        repo_url: repoUrl, edition_id: manifest.edition_id || "(edition not set)",
+        repo_url: repoUrl, edition_id: editionId,
         procedure_id: procedureId, page: entry.page, section_heading: entry.section_heading,
         photo_raw_url: `https://raw.githubusercontent.com/${pr.head.repo.full_name}/${pr.head.ref}/${photoFile.filename}`,
         original_bbox: entry.pixel_bbox,

@@ -45,10 +45,10 @@ function matchesSearch(v, q) {
 // the manifest. A manifest fetch failure (repo gone, network hiccup)
 // degrades to "stats unavailable" for that one edition rather than
 // breaking the whole page.
-async function computeEditionStats(repoUrl) {
+async function computeEditionStats(repoUrl, editionId) {
   try {
-    const { manifest, branch } = await fetchManifest(repoUrl);
-    const files = await listRepoImages(repoUrl, branch);
+    const { manifest, branch } = await fetchManifest(repoUrl, editionId);
+    const files = await listRepoImages(repoUrl, editionId, branch);
     const covered = new Set();
     files.forEach((f) => {
       const parsed = parsePhotoFilename(f.name);
@@ -89,7 +89,7 @@ async function loadRealRegistry() {
   await Promise.all(
     allVehicles.flatMap((v) =>
       v.editions.map(async (e) => {
-        const stats = await computeEditionStats(e.repo_url);
+        const stats = await computeEditionStats(e.repo_url, e.id);
         Object.assign(e, stats);
       })
     )
