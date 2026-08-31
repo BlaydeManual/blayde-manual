@@ -116,6 +116,14 @@
   /* Full-bleed too, same as .vehicle-bar -- one shade darker so the two
      tiers read as nested, not identical. */
   .edition-bar { font-size: 0.95rem; font-weight: 700; color: #16181c; background: #aeb3ba; margin: 0 -22px 8px; padding: 6px 22px; }
+  /* Both bars double as a <summary>, collapsible via native <details> --
+     direct request: with real volume (60 photos across 3 manuals, or a
+     maintainer covering several unrelated repos), a flat unfoldable
+     list is the thing that doesn't scale, not the grouping itself. */
+  .vehicle-bar, .edition-bar { cursor: pointer; list-style: none; user-select: none; }
+  .vehicle-bar::-webkit-details-marker, .edition-bar::-webkit-details-marker { display: none; }
+  .vehicle-bar::before, .edition-bar::before { content: "\25B8  "; display: inline-block; width: 0.7em; }
+  details[open] > .vehicle-bar::before, details[open] > .edition-bar::before { content: "\25BE  "; }
   .tab-panel { display: none; }
   .tab-panel.active { display: block; }
   .pinned-note {
