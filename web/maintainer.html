@@ -616,19 +616,19 @@
           <input type="text" id="vehicleSlugConfirm" style="margin-bottom:6px;">
           <p class="sub" id="vehicleSlugSimilarNote" style="display:none; color:#ffcc66; margin:0 0 14px;"></p>
 
-          <h2 style="font-size: 1.05rem; margin:18px 0 4px;">Vehicle type</h2>
-          <p class="sub" style="margin:0 0 6px;">Powers the browse page's type filter. Required.</p>
-          <select id="vehicleClassConfirm" required style="margin-bottom:4px;">
+          <h2 style="font-size: 1.05rem; margin:18px 0 4px;">Category</h2>
+          <p class="sub" style="margin:0 0 6px;">Which part of the site this belongs under. Required.</p>
+          <select id="categoryConfirm" required style="margin-bottom:4px;">
             <option value="" disabled selected>Choose one...</option>
-            <option value="car">Car</option>
-            <option value="light_truck">Light Truck</option>
-            <option value="truck">Truck</option>
-            <option value="motorcycle">Motorcycle</option>
-            <option value="orv">ORV</option>
-            <option value="airplane">Airplane</option>
-            <option value="boat">Boat</option>
           </select>
-          <p class="sub" id="vehicleClassRequiredError" style="display:none; color:#ff6b6b; margin:0 0 14px;">Required before you can submit.</p>
+          <p class="sub" id="categoryRequiredError" style="display:none; color:#ff6b6b; margin:0 0 14px;">Required before you can submit.</p>
+
+          <h2 style="font-size: 1.05rem; margin:18px 0 4px;">Manual type</h2>
+          <p class="sub" style="margin:0 0 6px;">Powers the browse page's type filter within that category. Choose a category first. If nothing fits, pick Other -- it's always valid, and gets a real type once enough real submissions justify one.</p>
+          <select id="manualTypeConfirm" required disabled style="margin-bottom:4px;">
+            <option value="" disabled selected>Choose a category first...</option>
+          </select>
+          <p class="sub" id="manualTypeRequiredError" style="display:none; color:#ff6b6b; margin:0 0 14px;">Required before you can submit.</p>
 
           <h2 style="font-size: 1.05rem; margin:18px 0 4px;">What kind of manual is this?</h2>
           <p class="sub" style="margin:0 0 6px;">A short label for this edition, such as OEM, Haynes, or Chilton. If this vehicle already has a repo, this joins it as a new edition alongside whatever's already there. Required.</p>

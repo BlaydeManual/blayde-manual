@@ -80,8 +80,12 @@ function startReview(manifest, savedChunkIdx) {
   document.getElementById("editionIdRequiredError").style.display = "none";
   document.getElementById("sourceUrlConfirm").value = manifest.source_markers?.source_identifier || "";
   document.getElementById("sourceUrlError").style.display = "none";
-  document.getElementById("vehicleClassConfirm").value = manifest.vehicle_class || "";
-  document.getElementById("vehicleClassRequiredError").style.display = "none";
+  populateCategoryOptions().then(() => {
+    document.getElementById("categoryConfirm").value = manifest.category || "";
+    populateManualTypeOptions(manifest.category, manifest.manual_type);
+  });
+  document.getElementById("categoryRequiredError").style.display = "none";
+  document.getElementById("manualTypeRequiredError").style.display = "none";
   document.getElementById("submitError").style.display = "none";
   document.getElementById("submitBtn").disabled = false;
   document.getElementById("submitBtn").textContent = "Looks good, submit it";
@@ -93,14 +97,72 @@ function startReview(manifest, savedChunkIdx) {
 
 // Same non-guessable field as edition_id/source_url -- OCR can guess
 // make/model/year off the cover page, but nothing in the manual states
-// "this is a motorcycle" in a form worth parsing, so this is always a
-// human pick. Powers registry-browse.js's type filter (see ROADMAP.md's
-// "vehicle_class is used but never actually set anywhere" entry -- this
-// closes that gap on the producing side).
-document.getElementById("vehicleClassConfirm").addEventListener("change", (e) => {
+// which glass-tray category or manual type this belongs under, so it's
+// always a human pick. Cached at module scope, not re-fetched per
+// review session -- manual-types.json changes rarely enough that a
+// page reload is an acceptable way to pick up an edit.
+let manualTypesCache = null;
+
+async function populateCategoryOptions() {
+  const select = document.getElementById("categoryConfirm");
+  if (!manualTypesCache) {
+    try {
+      manualTypesCache = await loadRegistry(MANUAL_TYPES_URL);
+    } catch (e) {
+      appendLog?.(`Couldn't load manual-types.json: ${e.message}`);
+      return;
+    }
+  }
+  // Rebuild every time rather than checking for prior population --
+  // this only ever runs once per review session (startReview), so the
+  // small redundant work isn't worth a guard.
+  select.innerHTML = '<option value="" disabled selected>Choose one...</option>';
+  for (const cat of manualTypesCache.categories) {
+    const opt = document.createElement("option");
+    opt.value = cat.id;
+    opt.textContent = cat.label;
+    select.appendChild(opt);
+  }
+}
+
+// Rebuilds the manual-type select for the given category id, restoring
+// selectedTypeId if it's a valid member of that category's list --
+// used both on a fresh category pick (selectedTypeId undefined) and on
+// manifest reload (restoring a previously-confirmed type).
+function populateManualTypeOptions(categoryId, selectedTypeId) {
+  const select = document.getElementById("manualTypeConfirm");
+  const category = manualTypesCache?.categories.find((c) => c.id === categoryId);
+  if (!category) {
+    select.innerHTML = '<option value="" disabled selected>Choose a category first...</option>';
+    select.disabled = true;
+    return;
+  }
+  select.innerHTML = '<option value="" disabled selected>Choose one...</option>';
+  for (const type of category.types) {
+    const opt = document.createElement("option");
+    opt.value = type.id;
+    opt.textContent = type.label;
+    select.appendChild(opt);
+  }
+  select.disabled = false;
+  if (selectedTypeId && category.types.some((t) => t.id === selectedTypeId)) {
+    select.value = selectedTypeId;
+  }
+}
+
+document.getElementById("categoryConfirm").addEventListener("change", (e) => {
   if (!reviewManifest) return;
-  reviewManifest.vehicle_class = e.target.value;
-  if (e.target.value) document.getElementById("vehicleClassRequiredError").style.display = "none";
+  reviewManifest.category = e.target.value;
+  reviewManifest.manual_type = ""; // a new category invalidates whatever type was picked under the old one
+  populateManualTypeOptions(e.target.value);
+  if (e.target.value) document.getElementById("categoryRequiredError").style.display = "none";
+  saveReviewStateNow();
+});
+
+document.getElementById("manualTypeConfirm").addEventListener("change", (e) => {
+  if (!reviewManifest) return;
+  reviewManifest.manual_type = e.target.value;
+  if (e.target.value) document.getElementById("manualTypeRequiredError").style.display = "none";
   saveReviewStateNow();
 });
 
@@ -545,15 +607,24 @@ function renderModalOverlays() {
     }
   });
   document.getElementById("submitBtn").addEventListener("click", async () => {
-    const vehicleClass = document.getElementById("vehicleClassConfirm").value;
-    if (!vehicleClass) {
-      document.getElementById("vehicleClassRequiredError").style.display = "block";
-      document.getElementById("vehicleClassConfirm").scrollIntoView({ behavior: "smooth", block: "center" });
-      document.getElementById("vehicleClassConfirm").focus();
-      appendLog(`[submit] blocked -- pick a vehicle type before submitting.`);
+    const category = document.getElementById("categoryConfirm").value;
+    if (!category) {
+      document.getElementById("categoryRequiredError").style.display = "block";
+      document.getElementById("categoryConfirm").scrollIntoView({ behavior: "smooth", block: "center" });
+      document.getElementById("categoryConfirm").focus();
+      appendLog(`[submit] blocked -- pick a category before submitting.`);
       return;
     }
-    reviewManifest.vehicle_class = vehicleClass;
+    const manualType = document.getElementById("manualTypeConfirm").value;
+    if (!manualType) {
+      document.getElementById("manualTypeRequiredError").style.display = "block";
+      document.getElementById("manualTypeConfirm").scrollIntoView({ behavior: "smooth", block: "center" });
+      document.getElementById("manualTypeConfirm").focus();
+      appendLog(`[submit] blocked -- pick a manual type before submitting.`);
+      return;
+    }
+    reviewManifest.category = category;
+    reviewManifest.manual_type = manualType;
 
     const editionId = document.getElementById("editionIdConfirm").value.trim();
     if (!editionId) {

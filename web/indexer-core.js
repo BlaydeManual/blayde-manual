@@ -11,6 +11,7 @@
 // registry URL: closes off a spoofing vector (tricking a maintainer
 // into pointing this at a fake registry) by never exposing the field.
 const CANONICAL_REGISTRY_URL = "https://raw.githubusercontent.com/BlaydeManual/registry/main/registry.json";
+const MANUAL_TYPES_URL = "https://raw.githubusercontent.com/BlaydeManual/registry/main/manual-types.json";
 
 // ---- resumability (IndexedDB) -- spiked 2026-08-24, real numbers:
 // DB open ~17ms one-time, a 50-page checkpoint write batch ~1.2ms total,
