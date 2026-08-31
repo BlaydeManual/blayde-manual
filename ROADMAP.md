@@ -1419,7 +1419,7 @@ Two ways to do it, weighed rather than defaulted to the first idea:
 Neither option touches or risks the existing patch/re-patch mechanism --
 option A is purely a selection change on what already works.
 
-## Callout/annotation overlays (arrows, circled letters, numbered pointers) -- Phase 1 shipped 2026-08-30/31
+## Callout/annotation overlays: Phase 2, wiring into the actual patched PDF (Phase 1 editor shipped, see CHANGELOG.md)
 
 **The problem:** OEM manual photos often carry instructional annotations
 baked into the pixels -- an arrow pointing at one specific bolt, a circled
@@ -1427,67 +1427,36 @@ baked into the pixels -- an arrow pointing at one specific bolt, a circled
 the photo but loses that pointer, even though the pointer was often the
 whole instructional value of the image.
 
-**Shipped design (real, not the 2026-08-27 sketch below, which this
-replaces):** built into `review-panel.js`'s photo-review flow across
-[blayde-manual#62](https://github.com/BlaydeManual/blayde-manual/pull/62)
-through #64, iterated live against a real pending photo PR the whole way
-(`suzuki-sv650-1999`'s own submissions), not synthetic data.
+**What exists today** (see CHANGELOG.md for the shipped feature): a
+maintainer can draw arrows/lines/circles/numbers/short text labels on a
+submitted photo during review, stored as relative (0-100) vector shapes
+on `entry.annotations` in `manifest.json`. That's as far as it goes --
+`patcher.js` doesn't read `entry.annotations` at all yet, so a patched
+manual today shows the plain photo with no callouts on it, no matter how
+many were drawn during review.
 
-- **Five tools**, a toolbar not a wizard: Arrow, Line, Circle, Number,
-  Text. Each is click-drag to place/size, with move/resize handles that
-  only show while that tool is the active one (not per-shape click-to-
-  select). Number auto-increments a shared counter; Text is capped at 3
-  characters (a positional indicator like matching an OEM manual's own
-  `| F` mark, not a paraphrasable caption) and defaults to a circle
-  backing sized to match Number's own default, with a toolbar toggle for
-  circle vs. rectangle.
-- **Storage**: relative (0-100, not 0-1) vector shapes on
-  `entry.annotations` in `manifest.json`, closest in spirit to the
-  original `callouts` idea below but with a real shape list per tool
-  instead of a fixed arrow/circle_label pair, and real per-shape
-  attribution (`annotatedBy`, the signed-in maintainer's login).
-- **Rendering while authoring**: every shape uses the same "cased"/haloed
-  stroke technique map-road-casings use (a wide black stroke under a
-  narrower white one) so it stays legible over any photo, aspect-corrected
-  so Circle/Number render as true circles regardless of the box's own
-  shape. Delete/Backspace and Ctrl/Cmd+Z (20 steps) are built in.
-- **Where it lives**: the review pane has two modes now -- a big, zoomed
-  "annotate" view (default, magnified and padded around the target box,
-  where the toolbar is live and a "Show original page" toggle lets a
-  maintainer compare against where the original content actually was),
-  and a separate "View in full page" mode purely for dragging/resizing
-  the box itself, where annotations render read-only for context.
-- **Not built yet, deliberate Phase 2**: wiring these vector shapes into
-  `patcher.js`'s actual PDF output. Today they exist only in the review
-  editor and the manifest; a patched manual doesn't show them yet. This
-  is the real next step for this feature -- see the color-option note
-  below, blocked only on having real approved photos with real
-  annotations on them to render and check against.
-- **Color, still open:** shipped white-only (the halo already solves
-  legibility against any background; a color wheel was floated in the
-  original spec but adds a decision cost with no clearly demonstrated
-  reader-facing benefit yet). Direct next-step ask: give the patcher (not
-  just the editor) a real color option once Phase 2 wiring exists, and
-  confirm it actually reads correctly once baked into a real patched
-  page, not just in the editor's own preview.
-- **Known, deferred, not a Phase-1 blocker:** `review-panel.js`'s
-  `#targetBox`/annotation-layer positioning is computed from the page
-  canvas's CSS-rendered size, which was a real, live bug on desktop too
-  (not just mobile) until [#63](https://github.com/BlaydeManual/blayde-manual/pull/63)
-  fixed it; a separate, still-open concern about narrow/mobile viewports
-  more broadly (touch targets, layout) remains backburnered per direct
-  instruction until the annotation tool itself has seen more real use.
+**Phase 2, not built, blocked on having real content to check against:**
+1. Teach `patcher.js` to draw `entry.annotations` on top of the photo it
+   embeds -- same pdf-lib vector-drawing path already used for the cover
+   page and the QR/credit-tab overlays, so the rendering mechanism isn't
+   new, just needs to consume this specific data shape.
+2. **Direct ask, not yet designed:** give the *patcher* a real color
+   option for annotations, not just the review editor (which only ever
+   shipped white, on the reasoning that the halo already solves
+   legibility and a color wheel adds a decision with no demonstrated
+   benefit) -- and confirm whatever's chosen actually reads correctly
+   once baked into a real patched page, not just in the editor's own
+   live preview, since a rendered PDF page and an on-screen SVG overlay
+   can behave differently (font rendering, color profile, DPI).
+3. Requires real approved photos with real annotations on them to
+   render and check against -- waiting on that before either sub-item
+   is scoped further.
 
-**Original 2026-08-27 sketch, superseded, kept only for the historical
-record of what changed:** the earlier plan was a 4-step guided flow
-(click Illustrate, type a label, tap where the label sits, tap what it
-points to) producing a fixed `{arrow, circle_label}` shape pair in 0-1
-coordinates. Direct dictation from the project owner on 2026-08-30
-replaced this with the 5-tool toolbar above -- more tool variety (Line,
-plain Circle, free-text), a persistent multi-shape canvas instead of a
-one-shot wizard, and 0-100 coordinates matching the rest of this
-codebase's own convention (`pixel_bbox` math, `page_geometry`) rather
-than introducing a new 0-1 scale just for this feature.
+**Separately, still open:** the review pane's box positioning (fixed for
+desktop in an earlier pass) has a known, deliberately backburnered
+concern on narrow/mobile viewports specifically (touch targets, layout)
+-- revisit once the annotation tool itself has seen more real use, per
+direct instruction.
 
 ## Editable section_heading labels (feature request, not built)
 
@@ -2975,213 +2944,6 @@ today.
 Logged here so it isn't lost before the next testing pass -- fix
 starts immediately after this entry, same session.
 
-## RESOLVED 2026-08-31, was PINNED v0.9.9: intentional per-file copyright check as the gate before anything leaves this computer (2026-08-25)
-
-**Cleared by direct instruction 2026-08-31: "we have solved the per-file check and we are online now."** The site is confirmed live (blaydemanual.com, 2026-08-31). This closes out the specific pin below -- the blocking, every-single-push gate that existed because this project's source had never left this computer yet. Reading this as clearing the PIN's special "blocking" status now that launch has happened safely, not as a standing instruction to stop caring about copyrighted content in future commits -- LEGAL.md's underlying local-context rule (structure is public, manual pixels/text are local-only) is the project's permanent architecture, not something tied to this pin. Flagging that interpretation here in case it's not what was meant.
-
-**Original pin, kept for the record:** before any
-code from this project is uploaded to the new GitHub repo -- the first
-time this project's own source ever leaves this computer -- every file
-being pushed gets checked, intentionally, for copyrighted content. Not
-a spot-check, not "the tooling code is obviously fine so skip it": the
-actual gate is reading each file's own history for how it got there,
-since this project's specific risk isn't "did Claude write something
-infringing," it's "did a demo/test step pull in real copyrighted manual
-content and leave it sitting in a tracked file or a committed asset."
-
-This session's demo work is exactly the shape of risk this pin exists
-for: `web/_test_assets/DemoManual10pg.pdf` (10 real pages sliced from
-`local_pdfs/ServiceManual.pdf`, a real copyrighted service manual) was
-created to make the end-to-end demo testable, and lived inside `web/`
-specifically so the dev server and browser could fetch it. Anything
-placed there during testing must be deleted before a push, not just
-excluded via `.gitignore` -- a gitignored file sitting in the working
-tree is still a file someone could accidentally `git add -f`, ship as
-a zip, or forget about entirely. The standing pattern going forward:
-test fixtures that touch real manual content get cleaned up
-immediately after the test that needed them, not left for a future
-cleanup pass.
-
-**Concretely, the check before any push:**
-- Diff every file being added/changed against what's already known to
-  be safe (project source, scaffold templates, mock/synthetic data,
-  this project's own documentation) versus anything that could be, or
-  could contain fragments of, a real manual's actual content --
-  scanned pages, extracted text, extracted images, OCR output, or a
-  fingerprint/hash log that embeds more than the hash itself.
-- Specifically distrust anything created as a testing convenience
-  during a session (test PDFs, test images, cached fetch responses,
-  screenshots of a real manual page) -- these are exactly the files
-  that get created for a good reason, verified working, and then
-  forgotten instead of deleted.
-- `local_pdfs/` and any `web/_test_assets/`-style scratch directory are
-  the known danger zones already established this session -- confirm
-  neither is tracked and neither has ever been staged, not just that
-  `.gitignore` currently lists them.
-- This is in addition to, not a replacement for, `LEGAL.md`'s existing
-  "local-context rule" review of the architecture itself -- that
-  review covers whether the *design* ever transmits manual content;
-  this gate covers whether any *actual file* sitting in the repo at
-  push time does, regardless of design intent.
-
-**First real execution, 2026-08-25: two findings, both fixed.** See
-CHANGELOG.md's entry -- manual-text-derived `procedure_id`/
-`section_heading` eliminated (not shortened) in favor of purely
-positional IDs, `page_text_excerpt` dropped entirely, GPS EXIF stripped
-from the public hero images. Re-run this gate before every future push,
-not just the first one -- it caught real issues on the very first pass,
-so it isn't a one-time formality.
-
-## Designed, not yet built: metadata corrections (edition label, source URL) as Issue Requests (2026-08-25)
-
-**Raised directly, evaluating a real gap:** `registry.json`'s
-`repo_url` already has a defined resilience story (see "Can a repo be
-renamed or migrated later?" above -- fingerprints anchor everything, a
-required registry-sync step on any move). A vehicle's `source_identifier`
-(the manual's *original* source link -- ManualsLib, a forum post,
-wherever a submitter found it) never got the same treatment. If that
-link goes dead, nothing technical breaks -- matching and patching are
-fingerprint-based, never URL-based -- but it does quietly erode the one
-thing a stranger or an org reviewer uses to verify a listing is real.
-
-**Resolved design: both this and an edition mislabel (OEM tagged as
-something it isn't) become new Issue Requests types**, not a new
-mechanism -- `edition-relabel` and `source-url-update`, flowing into
-the exact same `MOCK_PRS` queue and `review-panel.js` accept/reject
-tool every other issue already uses. Neither has a bbox (vehicle/
-edition-level facts, not page/procedure-level) -- same family as the
-existing bbox-less `comment` issue type, so the "no bbox" guard in
-`review-panel.js`'s `renderPage()` needs broadening from
-`issue_type === "comment"` to the whole non-bbox family rather than
-one more special case bolted on. Raised from a small "something wrong
-with this vehicle's info?" action near wherever a maintainer currently
-sees the source URL/edition label -- most naturally My Vehicles, not
-the box editor (wrong scope entirely -- these aren't page-level
-corrections). Not yet built -- logged here so it isn't lost before the
-next implementation pass.
-
-## Direct-to-git contribution -- what's actually enforced vs. just a nicer path (2026-08-25)
-
-**Raised directly, evaluating a real gap:** every review/approval flow
-built this session (the org compare tool, `review-panel.js`'s
-accept/reject, the 2-distinct-approver quorum) assumes someone goes
-through the browser tool. What happens if a contributor or maintainer
-just uses `git`/`gh`/GitHub's own web UI directly -- a hand-written PR,
-a direct edit, a manual merge?
-
-**Explicit product decision: this must stay fully supported, not
-locked out.** GitHub-native contribution is a first-class path, not a
-bypass to prevent -- the browser tool is a convenience aimed at this
-project's target audience (mainstream, non-developer vehicle owners),
-not the only sanctioned interface. Anyone who's comfortable with git
-should be able to use it exactly as they would on any other open-source
-project. The actual question isn't "how do we stop this," it's "does
-skipping the tool actually break anything or let something bad through
-unnoticed" -- and the honest answer split into three parts once checked
-against the real files, not assumed:
-
-**Already safe regardless of path, confirmed:**
-- `checker.py` triggers in CI on any PR touching `images/**`, tool-made
-  or hand-written alike -- resolution, blur, file size, EXIF GPS,
-  filename-matches-a-real-`procedure_id` all still enforced.
-- A maintainer's review context (page, bbox, composite dimensions) can
-  always be looked up from `manifest.json` by the submitted filename's
-  `procedure_id` -- not dependent on which tool created the PR.
-- The actual human visual compare (maintainer picks their own PDF,
-  looks) is manual either way -- there was never an automated version
-  of this step to skip.
-
-**Real gap #1: CI validation is scoped to photos only.**
-`scaffold/.github/workflows/validate-photo.yml` triggers on
-`paths: images/**` alone -- a PR touching only `manifest.json` (a moved
-bbox, a changed status, an edited edition label) gets zero automated
-checking today, tool-made or hand-written. No check that a hand-edited
-bbox is even within the page's bounds. This is a bigger risk than a bad
-photo, since `manifest.json` is the one file every other review/patch
-tool trusts completely. **Needed:** a second CI job validating manifest
-structure (bbox sanity against `page_geometry`, no orphaned/duplicate
-`procedure_id`s) -- not yet written.
-
-**Real gap #2, the bigger one: none of the review/approval UX is
-technically enforced today, regardless of who's using what.** The
-compare tool, the quorum -- all of it is a UI convention right now, not
-a technical gate. Nothing stops a maintainer with merge rights from
-clicking Merge on GitHub's own PR page without ever opening the tool.
-Client-side JS cannot enforce this at all -- it has to be configured at
-the GitHub repo level or it's advisory only, and nothing in this
-project has configured it yet. **Needed:**
-- Branch protection + required status checks, set up once as an
-  **org-level ruleset** (applies automatically to every repo matching a
-  pattern, so a new vehicle repo inherits it without per-repo setup) --
-  require `validate-photo.yml` (and the new manifest-validation job
-  above) to pass, require at least one approving review, block direct
-  pushes to `main`.
-- For the registry repo specifically: required reviewers/CODEOWNERS
-  enforcing the real 2-distinct-approver quorum as a GitHub-enforced
-  rule, not just what the tool's own UI happens to ask for.
-
-**Extension, 2026-08-25: the same gap applies inside every vehicle
-repo, not just at the registry level -- a maintainer's write access
-covers every file the repo ships with, not just the two they actually
-need.** Raised directly: does a maintainer need edit access to
-everything scaffold/ forks in, or just their real job? Checked file by
-file against what routine maintaining actually requires:
-
-- **Needs routine write access -- this is the job:** `manifest.json`
-  (accepting a photo, adjusting a bbox, adding a confirmed missing
-  slot) and `images/**` (the merged contributed photos themselves).
-- **Should require org-team review, not single-maintainer discretion:**
-  - `checker.py` and `.github/workflows/validate-photo.yml` -- these
-    *are* the validation gate. Freely editable, a maintainer could
-    silently weaken or entirely disable the resolution/blur/GPS/
-    filename checks this session's client-side EXIF-strip work assumed
-    would stay backing it up.
-  - `LICENSE`, `LICENSE.md` -- legal terms, already decided above.
-  - `.github/PULL_REQUEST_TEMPLATE.md` -- the CC-BY/ownership consent
-    language lives here; freely editable, a maintainer could strip it
-    from their own repo, removing even the soft attestation trail.
-  - `CONTRIBUTING.md` is the one borderline case -- lower stakes than
-    the above, but "Maintainer Standards" is meant to be an org-wide
-    floor, not something one repo can quietly water down on its own.
-  - `README.md`/`images/README.md` are genuinely fine at normal
-    maintainer discretion -- informational copy, no security or legal
-    exposure either way.
-
-**Needed:** a `CODEOWNERS` rule scoped to those specific paths
-(`/LICENSE`, `/LICENSE.md`, `/checker.py`, `/.github/**`, arguably
-`/CONTRIBUTING.md`), requiring the org team's review specifically for
-changes there -- layered on top of the general branch-protection
-ruleset above, which still applies to everything else (including
-`manifest.json`/`images/**`) at the normal one-approving-review bar.
-Same org-level-ruleset mechanism, just with a narrower, stricter
-CODEOWNERS carve-out for the files that are infrastructure/governance
-rather than routine maintaining.
-
-**Also found in the same pass, fixed same session:** `scaffold/README.md`
-and `scaffold/LICENSE.md` both referenced "the parent project's
-`LEGAL.md`" -- a relative reference that's already broken today, since
-a forked vehicle repo has no such file. Fixed to link the real
-tooling-repo URL directly. `scaffold/README.md` also had zero mention
-of blaydemanual.com anywhere -- someone landing on a vehicle repo
-directly (a search hit, a curious dev) had no pointer back to the
-actual GitHub-invisible entry point this whole project is built around.
-Added a redirect note at the top: patch your manual at blaydemanual.com,
-this repo is the data behind it, useful for the source/history/manual-PR
-path specifically.
-
-**One thing checked and confirmed *not* a differential gap, but real on
-its own:** the CC-BY 4.0 license grant and "this is my own photo"
-attestation currently live only in the PR template checklist --
-`contribute.js` has no actual consent-capture step in the tool itself.
-Equally weak whether someone uses the browser tool or opens a raw PR,
-since GitHub doesn't enforce checkbox completion without a status check
-backing it. Not a bypass-specific issue, but worth its own fix.
-
-**Sequencing:** branch protection setup belongs in Stage 1 of the
-GitHub migration (repo/org creation), happening *with* each repo's
-creation, not as a later hardening pass -- a vehicle repo that exists
-even briefly without it is a real window, not a theoretical one.
-
 ## HARD GATE: no outside code contributions to the tooling repo until a CLA/DCO exists (2026-08-25)
 
 A real-world comparison against Mastodon, Home Assistant, and iNaturalist surfaced a gap specific to code contributions, separate from the photo-consent work already built this session. Home Assistant's CLA.md exists to protect the same thing LEGAL.md already argues for: as sole copyright holder today, before any outside contributor's code lands, dual-licensing stays available later as a real option. That protection only holds if every contributor's rights to their own contribution are actually attested to somewhere. Right now nothing captures that at all for code, the way the new checkboxes in contribute.js now capture it for photos.
@@ -3451,23 +3213,3 @@ Direct correction to the original flow: "I actually only want them to save in th
 Real, load-bearing finding that justified the redesign, not just a naming change: saving a draft never actually needed a GitHub identity at all -- `submitPhotoPrivate`/`submitPhotoPublic` both independently re-check their own live session at call time and throw a clear error if it's missing, so nothing downstream depended on signing in before that point. The capture screen's old sign-in gate was checked directly against real code before removing it, confirmed as pure UI friction, not a real requirement.
 
 **Backlog, flagged directly, not built:** the project owner connected this change to an older idea -- "Use completely offline with your own repo" -- meaning saved Reviewables could be exported to a local file/matrix a contributor could later re-load (a real, currently-missing function) against their own copy of a vehicle repo, entirely without ever creating a GitHub account. This redesign is a real, direct step toward that (Save for Review is already 100% local/accountless), but the actual export/load mechanism itself is not designed or built -- noted here so it isn't lost, to pick up whenever this gets prioritized.
-
-## Review pane real bugs and real feature requests, live-tested against real pending photo PRs (2026-08-30/31)
-
-Same session as the annotation editor above; logged separately since these are independent fixes/features on `review-panel.js`, not part of the annotation tool itself.
-
-**[#63](https://github.com/BlaydeManual/blayde-manual/pull/63), real bug, found live via a screenshot: "that's not even where the bbox is supposed to be."** `bboxToCanvas`/`canvasToBbox` computed the review box's position from `#pageCanvas`'s raw pdf.js render-buffer size (renderScale=2.0, so a Letter page alone is ~1224px), not its actual CSS-rendered size. Since `<main>` caps at 960px and the canvas has `max-width:100%`, this was wrong on essentially every real desktop window, not the mobile-only issue an earlier note assumed -- confirmed live, the old math put the box at x=707px against a canvas displayed at 277px wide. Fixed using `canvas.offsetWidth/offsetHeight` (the pre-transform layout size), not `getBoundingClientRect` (which reflects post-transform geometry once the zoom view below applies a CSS transform to the canvas's parent -- a real circularity caught before it shipped).
-
-**Same PR: the review pane split into two view modes**, since a small box on a full page was too small to annotate against. A default **zoomed view** (`#zoomViewport`, CSS-transformed to magnify/center on the box with padding) is where the annotation toolbar lives and is interactive, with the "Show original page" toggle; a secondary **full-page view** ("View in full page") is where the box's own drag/resize handles work, always shows the real photo with no comparison toggle there, and shows annotations read-only. Confirmed live in both directions: transform math, handle visibility, `pointer-events`, and that box-dragging only starts in full-page mode via real dispatched `mousedown` events.
-
-**[#64](https://github.com/BlaydeManual/blayde-manual/pull/64):** three more fixes from the same live-testing pass -- (1) a solid white rect drawn behind every patched photo, in both `patcher.js`'s real output and the review preview, closing a real gap where a contributor's photo with any transparency (a PNG alpha channel) could let the original scanned photo bleed through in the final PDF; (2) Text tool defaults to a circle now, sized to exactly match Number's own default (a first attempt sized for a worst-case 3-character string came out ~4x too big); (3) "Show original page" now also hides annotations, not just the photo, and the toggle moved onto the same row as "View in full page," pushed to opposite ends.
-
-**[#65](https://github.com/BlaydeManual/blayde-manual/pull/65):** real `X/2` review-status badges added to the photo-request LIST itself (not just the single-PR detail view from the earlier Approve-button work), 4 states (ready/changes-requested/needs-your-review/waiting-on-others), "waiting on others" sinking to the bottom of its edition group. Found and fixed a real pre-existing bug in passing: `--mint` was referenced by the annotation attribution line with no definition anywhere in `maintainer.html`'s CSS, rendering as unreadable black-on-black text since the annotation editor shipped.
-
-**[#66](https://github.com/BlaydeManual/blayde-manual/pull/66), sitewide accessibility pass, addressing a preference raised more than once that the tool pages read as too small.** Researched real guidance first: WCAG 1.4.4 doesn't mandate a pixel minimum, but 16px is the de facto accessible floor (every browser's own default). `index.html` already used a larger root size for this; the three tool pages (`maintainer.html`/`contribute.html`/`registry-browse.html`) never did, with some UI chrome as small as ~10px at the default root. Fixed via a root bump (16px to 17px) plus a uniform +0.1rem bump to every existing font-size in those files -- safe to do broadly since every spacing/sizing value on these pages is px, never rem. Same PR redesigned the #65 badges per direct feedback: moved next to the Review button, solid fills with each state's text color chosen by actually computing WCAG contrast against its own fill (verified numerically, not assumed), and the row given `flex-wrap` since the bigger badge+button group doesn't reliably fit one line on a narrow viewport anymore.
-
-**[#67](https://github.com/BlaydeManual/blayde-manual/pull/67):** Contributor Portal's My Reviewables split into three colored sections (Public/blue, Private/violet, Drafts/muted-grey), deliberately breaking the site's red/black scheme on this one menu page. Which bucket an upload belongs in is derived from existing data (`forkOwner` presence means Private), not a new stored field.
-
-**[#68](https://github.com/BlaydeManual/blayde-manual/pull/68), real bug found immediately after #67 shipped, live: a real pending PR on `suzuki-sv650-1999` with 1/2 approvals (visible in the Maintainer Portal) didn't show up in the Contributor Portal at all.** Root cause: My Reviewables (`uploads`) has always been pure `localStorage`, never a live GitHub query -- #67 only reorganized this same local-only data, it didn't fix the underlying gap. Built `syncRealSubmissions()`: finds every real PR the signed-in user has opened across BlaydeManual's public repos via two GitHub Search API queries -- `author:<login>` for the Private/fork path (real author), and a full-text search for the literal phrase `handleDirectContribute`'s PR body always includes for the Public/direct-contribute path (whose PRs are opened by the GitHub App's bot identity, never the contributor, so `author:` alone would miss every one). Both use the contributor's own basic OAuth token against public repos, no App credential needed. Results merge into #67's sections, deduped against local `uploads` by `(repoUrl, prNumber)`.
-
-**Real, confirmed-live bug, found and fixed while checking a re-patch report (2026-08-31), no code change needed.** A user's own previously-patched output file (`BlaydeManual_suzuki-sv650-1999_OEM.pdf`, 416 pages) failed the "feed a patched file back in" resolution path and suggested indexing it as a brand-new vehicle, even though it was a real, valid prior output. Root-caused by loading the actual file with the exact same `@cantoo/pdf-lib@2.9.1` the site uses: the file's embedded state (`blayde_manual_state.json`) genuinely has no `edition_id` field, so `findByRepoUrl` in `registry.js` (which requires both `repo_url` AND `edition_id` to match) correctly fails to find a row, since the real registry entry has `edition_id: "oem"`. The file predates the fix that made `patcher.js` write `edition_id` into its own embedded state (line 715, already commented as closing exactly this bug) -- today's patcher writes it correctly. Resolution: re-run the ORIGINAL source scan (not this old output file) through the current live patcher to get a fresh file with `edition_id` embedded. **Considered and declined:** a backward-compatible fallback in `findByRepoUrl` (match on `repo_url` alone when `edition_id` is missing and the repo has exactly one registered edition -- true for both real vehicles today) would fix old files like this one without requiring a re-patch; direct instruction was to just re-patch instead, so this fallback is not built.
