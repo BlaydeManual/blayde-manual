@@ -255,7 +255,18 @@
   #pageCanvas { display: block; max-width: 100%; height: auto; }
   #targetBox {
     position: absolute; border: 2px dashed var(--red);
-    background: rgba(200,16,46,0.10); cursor: move; box-sizing: border-box;
+    cursor: move; box-sizing: border-box;
+  }
+  /* Solid white, matching patcher.js's own backing rect (drawn behind
+     every patched photo so transparency in a contributor's file can't
+     let the original scanned photo bleed through) -- painted here too
+     so the preview shows the same coverage the real output will have.
+     Fades with #submittedPhotoImg, not independently, so "Show
+     original page" still reveals the true page underneath rather than
+     a plain white square. */
+  #targetBoxBacking {
+    position: absolute; inset: 0; background: #fff; pointer-events: none;
+    transition: opacity 0.15s;
   }
   #targetBox img {
     position: absolute; inset: 0; width: 100%; height: 100%;
@@ -358,6 +369,7 @@
           <div class="compare-wrap" id="compareWrap">
             <canvas id="pageCanvas"></canvas>
             <div id="targetBox">
+              <div id="targetBoxBacking"></div>
               <img id="submittedPhotoImg" alt="submitted photo">
               <svg id="annotationLayer" viewBox="0 0 100 100" preserveAspectRatio="none"></svg>
               <div class="handle nw" data-corner="nw"></div>

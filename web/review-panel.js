@@ -360,6 +360,7 @@ async function openPR(number) {
   // before would otherwise start this one with its own real photo
   // hidden, or the button reading the wrong label.
   document.getElementById("submittedPhotoImg").style.opacity = "1";
+  document.getElementById("targetBoxBacking").style.opacity = "1";
   document.getElementById("toggleOriginalBtn").style.display = "none";
   document.getElementById("toggleOriginalBtn").textContent = "Show original page";
   document.getElementById("toggleOriginalBtn").classList.remove("active");
@@ -481,6 +482,7 @@ function setReviewViewMode(mode) {
     // not the annotation handles, so this also closes any open text
     // editor left over from the zoomed view).
     document.getElementById("submittedPhotoImg").style.opacity = "1";
+    document.getElementById("targetBoxBacking").style.opacity = "1";
     document.getElementById("toggleOriginalBtn").textContent = "Show original page";
     document.getElementById("toggleOriginalBtn").classList.remove("active");
     document.querySelectorAll("#annoToolbar [data-anno-tool]").forEach((b) => b.classList.remove("active"));
@@ -531,9 +533,13 @@ function applyZoom() {
 // shows through.
 document.getElementById("toggleOriginalBtn").addEventListener("click", () => {
   const img = document.getElementById("submittedPhotoImg");
+  const backing = document.getElementById("targetBoxBacking");
   const btn = document.getElementById("toggleOriginalBtn");
   const showingOriginal = img.style.opacity === "0";
-  img.style.opacity = showingOriginal ? "1" : "0";
+  // The white backing fades with the photo, not independently -- it
+  // exists to match patcher.js's own solid backing behind the real
+  // photo, not to block the comparison this button is for.
+  img.style.opacity = backing.style.opacity = showingOriginal ? "1" : "0";
   btn.textContent = showingOriginal ? "Show original page" : "Show new photo";
   btn.classList.toggle("active", !showingOriginal);
 });
