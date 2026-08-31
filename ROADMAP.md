@@ -1419,7 +1419,7 @@ Two ways to do it, weighed rather than defaulted to the first idea:
 Neither option touches or risks the existing patch/re-patch mechanism --
 option A is purely a selection change on what already works.
 
-## Callout/annotation overlays (arrows, circled letters, numbered pointers)
+## Callout/annotation overlays (arrows, circled letters, numbered pointers) -- Phase 1 shipped 2026-08-30/31
 
 **The problem:** OEM manual photos often carry instructional annotations
 baked into the pixels -- an arrow pointing at one specific bolt, a circled
@@ -1427,53 +1427,67 @@ baked into the pixels -- an arrow pointing at one specific bolt, a circled
 the photo but loses that pointer, even though the pointer was often the
 whole instructional value of the image.
 
-**Current best idea:** don't ask contributors to draw on their own photos
-(inconsistent, most people won't bother). Instead store callouts as
-structured vector data per `procedure_id`, in relative (0-1) coordinates so
-they scale to any photo:
+**Shipped design (real, not the 2026-08-27 sketch below, which this
+replaces):** built into `review-panel.js`'s photo-review flow across
+[blayde-manual#62](https://github.com/BlaydeManual/blayde-manual/pull/62)
+through #64, iterated live against a real pending photo PR the whole way
+(`suzuki-sv650-1999`'s own submissions), not synthetic data.
 
-```json
-{
-  "callouts": [
-    {"type": "arrow", "from": [0.62, 0.31], "to": [0.71, 0.38]},
-    {"type": "circle_label", "center": [0.40, 0.50], "radius": 0.04, "label": "A"}
-  ]
-}
-```
+- **Five tools**, a toolbar not a wizard: Arrow, Line, Circle, Number,
+  Text. Each is click-drag to place/size, with move/resize handles that
+  only show while that tool is the active one (not per-shape click-to-
+  select). Number auto-increments a shared counter; Text is capped at 3
+  characters (a positional indicator like matching an OEM manual's own
+  `| F` mark, not a paraphrasable caption) and defaults to a circle
+  backing sized to match Number's own default, with a toolbar toggle for
+  circle vs. rectangle.
+- **Storage**: relative (0-100, not 0-1) vector shapes on
+  `entry.annotations` in `manifest.json`, closest in spirit to the
+  original `callouts` idea below but with a real shape list per tool
+  instead of a fixed arrow/circle_label pair, and real per-shape
+  attribution (`annotatedBy`, the signed-in maintainer's login).
+- **Rendering while authoring**: every shape uses the same "cased"/haloed
+  stroke technique map-road-casings use (a wide black stroke under a
+  narrower white one) so it stays legible over any photo, aspect-corrected
+  so Circle/Number render as true circles regardless of the box's own
+  shape. Delete/Backspace and Ctrl/Cmd+Z (20 steps) are built in.
+- **Where it lives**: the review pane has two modes now -- a big, zoomed
+  "annotate" view (default, magnified and padded around the target box,
+  where the toolbar is live and a "Show original page" toggle lets a
+  maintainer compare against where the original content actually was),
+  and a separate "View in full page" mode purely for dragging/resizing
+  the box itself, where annotations render read-only for context.
+- **Not built yet, deliberate Phase 2**: wiring these vector shapes into
+  `patcher.js`'s actual PDF output. Today they exist only in the review
+  editor and the manifest; a patched manual doesn't show them yet. This
+  is the real next step for this feature -- see the color-option note
+  below, blocked only on having real approved photos with real
+  annotations on them to render and check against.
+- **Color, still open:** shipped white-only (the halo already solves
+  legibility against any background; a color wheel was floated in the
+  original spec but adds a decision cost with no clearly demonstrated
+  reader-facing benefit yet). Direct next-step ask: give the patcher (not
+  just the editor) a real color option once Phase 2 wiring exists, and
+  confirm it actually reads correctly once baked into a real patched
+  page, not just in the editor's own preview.
+- **Known, deferred, not a Phase-1 blocker:** `review-panel.js`'s
+  `#targetBox`/annotation-layer positioning is computed from the page
+  canvas's CSS-rendered size, which was a real, live bug on desktop too
+  (not just mobile) until [#63](https://github.com/BlaydeManual/blayde-manual/pull/63)
+  fixed it; a separate, still-open concern about narrow/mobile viewports
+  more broadly (touch targets, layout) remains backburnered per direct
+  instruction until the annotation tool itself has seen more real use.
 
-A maintainer places these once per procedure (looking at the original
-photo), and `patcher.js` draws them on top of whatever photo is currently
-approved -- same pdf-lib vector-drawing path already used for the cover
-page and the QR/credit-tab overlays, so the plumbing to *render* this
-already exists. What's missing is the authoring UI: a click-to-place
-tool against the reference crop, most naturally as a companion mode to
-the review gallery (`review-panel.js` / `org-approval.js`).
-
-**Authoring UI, designed 2026-08-27 (not built yet):** happens during
-the review/submission screen, against whichever photo a reviewer is
-looking at. Four steps:
-1. Click an "Illustrate" button (name TBD).
-2. Type the label's text -- usually a number (matching the OEM manual's
-   own numbered-callout convention), but sometimes a short word instead
-   (e.g. "grease," for a lubrication point that isn't numbered in the
-   source at all). Click Next.
-3. Tap where the label itself should sit on the photo.
-4. Tap where the arrow should point to (the actual part/bolt/point being
-   called out). The arrow is drawn from the label's position (step 3) to
-   this point, so only two taps are needed, not four.
-
-Maps directly onto the `callouts` JSON shape above: step 2's text becomes
-`label`, step 3's tap becomes a `circle_label`'s `center` (or a plain
-label's anchor point, if circles turn out not to be needed for every
-case), step 4's tap becomes an `arrow`'s `to` (with `from` implied as the
-label's own position, rather than a separate fifth tap). Multiple
-callouts per photo just repeat the four steps.
-
-Why vector data instead of copying the original annotation pixels:
-recreating the *functional position* of a pointer is a much cleaner
-copyright position than reproducing Suzuki's actual drawn arrow graphic --
-consistent with the rest of this project's "structure is public, pixels
-are local/contributed" split (see LEGAL.md).
+**Original 2026-08-27 sketch, superseded, kept only for the historical
+record of what changed:** the earlier plan was a 4-step guided flow
+(click Illustrate, type a label, tap where the label sits, tap what it
+points to) producing a fixed `{arrow, circle_label}` shape pair in 0-1
+coordinates. Direct dictation from the project owner on 2026-08-30
+replaced this with the 5-tool toolbar above -- more tool variety (Line,
+plain Circle, free-text), a persistent multi-shape canvas instead of a
+one-shot wizard, and 0-100 coordinates matching the rest of this
+codebase's own convention (`pixel_bbox` math, `page_geometry`) rather
+than introducing a new 0-1 scale just for this feature.
 
 ## Editable section_heading labels (feature request, not built)
 
@@ -2961,9 +2975,11 @@ today.
 Logged here so it isn't lost before the next testing pass -- fix
 starts immediately after this entry, same session.
 
-## PINNED, v0.9.9: intentional per-file copyright check as the gate before anything leaves this computer (2026-08-25)
+## RESOLVED 2026-08-31, was PINNED v0.9.9: intentional per-file copyright check as the gate before anything leaves this computer (2026-08-25)
 
-**Direct instruction, standing until explicitly cleared:** before any
+**Cleared by direct instruction 2026-08-31: "we have solved the per-file check and we are online now."** The site is confirmed live (blaydemanual.com, 2026-08-31). This closes out the specific pin below -- the blocking, every-single-push gate that existed because this project's source had never left this computer yet. Reading this as clearing the PIN's special "blocking" status now that launch has happened safely, not as a standing instruction to stop caring about copyrighted content in future commits -- LEGAL.md's underlying local-context rule (structure is public, manual pixels/text are local-only) is the project's permanent architecture, not something tied to this pin. Flagging that interpretation here in case it's not what was meant.
+
+**Original pin, kept for the record:** before any
 code from this project is uploaded to the new GitHub repo -- the first
 time this project's own source ever leaves this computer -- every file
 being pushed gets checked, intentionally, for copyrighted content. Not
@@ -3435,3 +3451,23 @@ Direct correction to the original flow: "I actually only want them to save in th
 Real, load-bearing finding that justified the redesign, not just a naming change: saving a draft never actually needed a GitHub identity at all -- `submitPhotoPrivate`/`submitPhotoPublic` both independently re-check their own live session at call time and throw a clear error if it's missing, so nothing downstream depended on signing in before that point. The capture screen's old sign-in gate was checked directly against real code before removing it, confirmed as pure UI friction, not a real requirement.
 
 **Backlog, flagged directly, not built:** the project owner connected this change to an older idea -- "Use completely offline with your own repo" -- meaning saved Reviewables could be exported to a local file/matrix a contributor could later re-load (a real, currently-missing function) against their own copy of a vehicle repo, entirely without ever creating a GitHub account. This redesign is a real, direct step toward that (Save for Review is already 100% local/accountless), but the actual export/load mechanism itself is not designed or built -- noted here so it isn't lost, to pick up whenever this gets prioritized.
+
+## Review pane real bugs and real feature requests, live-tested against real pending photo PRs (2026-08-30/31)
+
+Same session as the annotation editor above; logged separately since these are independent fixes/features on `review-panel.js`, not part of the annotation tool itself.
+
+**[#63](https://github.com/BlaydeManual/blayde-manual/pull/63), real bug, found live via a screenshot: "that's not even where the bbox is supposed to be."** `bboxToCanvas`/`canvasToBbox` computed the review box's position from `#pageCanvas`'s raw pdf.js render-buffer size (renderScale=2.0, so a Letter page alone is ~1224px), not its actual CSS-rendered size. Since `<main>` caps at 960px and the canvas has `max-width:100%`, this was wrong on essentially every real desktop window, not the mobile-only issue an earlier note assumed -- confirmed live, the old math put the box at x=707px against a canvas displayed at 277px wide. Fixed using `canvas.offsetWidth/offsetHeight` (the pre-transform layout size), not `getBoundingClientRect` (which reflects post-transform geometry once the zoom view below applies a CSS transform to the canvas's parent -- a real circularity caught before it shipped).
+
+**Same PR: the review pane split into two view modes**, since a small box on a full page was too small to annotate against. A default **zoomed view** (`#zoomViewport`, CSS-transformed to magnify/center on the box with padding) is where the annotation toolbar lives and is interactive, with the "Show original page" toggle; a secondary **full-page view** ("View in full page") is where the box's own drag/resize handles work, always shows the real photo with no comparison toggle there, and shows annotations read-only. Confirmed live in both directions: transform math, handle visibility, `pointer-events`, and that box-dragging only starts in full-page mode via real dispatched `mousedown` events.
+
+**[#64](https://github.com/BlaydeManual/blayde-manual/pull/64):** three more fixes from the same live-testing pass -- (1) a solid white rect drawn behind every patched photo, in both `patcher.js`'s real output and the review preview, closing a real gap where a contributor's photo with any transparency (a PNG alpha channel) could let the original scanned photo bleed through in the final PDF; (2) Text tool defaults to a circle now, sized to exactly match Number's own default (a first attempt sized for a worst-case 3-character string came out ~4x too big); (3) "Show original page" now also hides annotations, not just the photo, and the toggle moved onto the same row as "View in full page," pushed to opposite ends.
+
+**[#65](https://github.com/BlaydeManual/blayde-manual/pull/65):** real `X/2` review-status badges added to the photo-request LIST itself (not just the single-PR detail view from the earlier Approve-button work), 4 states (ready/changes-requested/needs-your-review/waiting-on-others), "waiting on others" sinking to the bottom of its edition group. Found and fixed a real pre-existing bug in passing: `--mint` was referenced by the annotation attribution line with no definition anywhere in `maintainer.html`'s CSS, rendering as unreadable black-on-black text since the annotation editor shipped.
+
+**[#66](https://github.com/BlaydeManual/blayde-manual/pull/66), sitewide accessibility pass, addressing a preference raised more than once that the tool pages read as too small.** Researched real guidance first: WCAG 1.4.4 doesn't mandate a pixel minimum, but 16px is the de facto accessible floor (every browser's own default). `index.html` already used a larger root size for this; the three tool pages (`maintainer.html`/`contribute.html`/`registry-browse.html`) never did, with some UI chrome as small as ~10px at the default root. Fixed via a root bump (16px to 17px) plus a uniform +0.1rem bump to every existing font-size in those files -- safe to do broadly since every spacing/sizing value on these pages is px, never rem. Same PR redesigned the #65 badges per direct feedback: moved next to the Review button, solid fills with each state's text color chosen by actually computing WCAG contrast against its own fill (verified numerically, not assumed), and the row given `flex-wrap` since the bigger badge+button group doesn't reliably fit one line on a narrow viewport anymore.
+
+**[#67](https://github.com/BlaydeManual/blayde-manual/pull/67):** Contributor Portal's My Reviewables split into three colored sections (Public/blue, Private/violet, Drafts/muted-grey), deliberately breaking the site's red/black scheme on this one menu page. Which bucket an upload belongs in is derived from existing data (`forkOwner` presence means Private), not a new stored field.
+
+**[#68](https://github.com/BlaydeManual/blayde-manual/pull/68), real bug found immediately after #67 shipped, live: a real pending PR on `suzuki-sv650-1999` with 1/2 approvals (visible in the Maintainer Portal) didn't show up in the Contributor Portal at all.** Root cause: My Reviewables (`uploads`) has always been pure `localStorage`, never a live GitHub query -- #67 only reorganized this same local-only data, it didn't fix the underlying gap. Built `syncRealSubmissions()`: finds every real PR the signed-in user has opened across BlaydeManual's public repos via two GitHub Search API queries -- `author:<login>` for the Private/fork path (real author), and a full-text search for the literal phrase `handleDirectContribute`'s PR body always includes for the Public/direct-contribute path (whose PRs are opened by the GitHub App's bot identity, never the contributor, so `author:` alone would miss every one). Both use the contributor's own basic OAuth token against public repos, no App credential needed. Results merge into #67's sections, deduped against local `uploads` by `(repoUrl, prNumber)`.
+
+**Real, confirmed-live bug, found and fixed while checking a re-patch report (2026-08-31), no code change needed.** A user's own previously-patched output file (`BlaydeManual_suzuki-sv650-1999_OEM.pdf`, 416 pages) failed the "feed a patched file back in" resolution path and suggested indexing it as a brand-new vehicle, even though it was a real, valid prior output. Root-caused by loading the actual file with the exact same `@cantoo/pdf-lib@2.9.1` the site uses: the file's embedded state (`blayde_manual_state.json`) genuinely has no `edition_id` field, so `findByRepoUrl` in `registry.js` (which requires both `repo_url` AND `edition_id` to match) correctly fails to find a row, since the real registry entry has `edition_id: "oem"`. The file predates the fix that made `patcher.js` write `edition_id` into its own embedded state (line 715, already commented as closing exactly this bug) -- today's patcher writes it correctly. Resolution: re-run the ORIGINAL source scan (not this old output file) through the current live patcher to get a fresh file with `edition_id` embedded. **Considered and declined:** a backward-compatible fallback in `findByRepoUrl` (match on `repo_url` alone when `edition_id` is missing and the repo has exactly one registered edition -- true for both real vehicles today) would fix old files like this one without requiring a re-patch; direct instruction was to just re-patch instead, so this fallback is not built.
