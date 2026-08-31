@@ -114,6 +114,34 @@
   #cropEditorActions { margin-top: 8px; display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
 
   #uploadsSection { display: none; }
+  /* Direct request: split "My Reviewables" by where each photo
+     actually stands -- still local-only, pushed privately, or already
+     a real public PR -- with distinct backgrounds so the three are
+     easy to tell apart at a glance. Deliberately breaks from the
+     site's red/black scheme here (menu/utility pages, not the public-
+     facing brand pages) -- blue reads as "out in the world" (the same
+     association most platforms use for "public"), violet as "yours,
+     not shared" (distinct from blue and from the red accent used
+     everywhere else for actionable/attention items), amber-grey for
+     drafts (unfinished, not yet a real submission either way). */
+  .visibility-section { border-radius: 8px; padding: 14px 18px; margin-bottom: 16px; border: 1px solid; }
+  .visibility-section:last-child { margin-bottom: 0; }
+  .visibility-section-title { font-size: 1.05rem; font-weight: 700; margin: 0 0 4px; display: flex; align-items: center; gap: 8px; }
+  .visibility-section-desc { font-size: 0.85rem; margin: 0 0 10px; opacity: 0.85; }
+  .visibility-section.is-public { background: rgba(59,130,246,0.08); border-color: rgba(59,130,246,0.35); }
+  .visibility-section.is-public .visibility-section-title { color: #5b9bf7; }
+  .visibility-section.is-private { background: rgba(167,139,250,0.08); border-color: rgba(167,139,250,0.35); }
+  .visibility-section.is-private .visibility-section-title { color: #a78bfa; }
+  .visibility-section.is-draft { background: rgba(138,143,152,0.07); border-color: var(--steel-dark); }
+  .visibility-section.is-draft .visibility-section-title { color: var(--steel); }
+  .visibility-section .vehicle-group:last-child { margin-bottom: 0; }
+  /* .vehicle-bar/.edition-bar's full-bleed trick assumes the padding
+     of whatever card they're directly inside -- 22px on the outer
+     .card, but 18px on this narrower .visibility-section, so the
+     bleed math needs its own override here or the bar overshoots the
+     section's own colored border on one side. */
+  .visibility-section .vehicle-bar { margin: 0 -18px 10px; padding: 9px 18px; }
+  .visibility-section .edition-bar { margin: 10px -18px 6px; padding: 6px 18px; }
   .vehicle-group { margin-bottom: 12px; }
   .vehicle-group:last-child { margin-bottom: 0; }
   /* Full-bleed light-grey separator bar, same treatment as the
@@ -256,7 +284,7 @@
 
   <div class="card" id="uploadsSection">
     <h2>My Reviewables</h2>
-    <p class="sub" style="margin:0 0 8px;">Everything here only ever lived on this device -- nothing about it is public yet. View it side by side with the original page, make sure it's the right shot, then Submit when you're ready (asks Public or Private at that point -- signing in only happens then, never before).</p>
+    <p class="sub" style="margin:0 0 8px;">Grouped by where each one actually stands: still just on this device, pushed privately to your own fork, or already a real public pull request. View it side by side with the original page, make sure it's the right shot, then Submit when you're ready (asks Public or Private at that point -- signing in only happens then, never before).</p>
     <p class="sub" id="uploadsEmpty" style="margin:0;">Nothing yet -- photos you save for review will show up here.</p>
     <div id="uploadsList"></div>
 
