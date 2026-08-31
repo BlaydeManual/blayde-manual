@@ -152,6 +152,10 @@ async function loadOpenPhotoPRs(repoUrl) {
         composite_width_px: geo.composite_width_px, composite_height_px: geo.composite_height_px,
         page_width_pt: geo.page_width_pt, page_height_pt: geo.page_height_pt,
         base_branch: branch,
+        // Relative (0-100) vector annotations already on this entry, if
+        // any -- carried through so re-opening a PR shows prior
+        // annotation work instead of silently discarding it.
+        original_annotations: entry.annotations || [],
       };
     } catch (e) {
       return null;
@@ -352,6 +356,28 @@ async function openPR(number) {
   pdfDoc = null;
   submittedPhotoImg = null;
   reviewStatus = null;
+  // A leftover "showing original" state from whatever PR was open
+  // before would otherwise start this one with its own real photo
+  // hidden, or the button reading the wrong label.
+  document.getElementById("submittedPhotoImg").style.opacity = "1";
+  document.getElementById("toggleOriginalBtn").style.display = "none";
+  document.getElementById("toggleOriginalBtn").textContent = "Show original page";
+  document.getElementById("toggleOriginalBtn").classList.remove("active");
+  // Deep-cloned, not a reference into currentPR/currentPRs -- dragging
+  // shapes around during review must never mutate the cached list that
+  // renderPRList/loadOpenPhotoPRs already built, the same reasoning
+  // original_bbox vs. box already follows for the crop position.
+  annotations = JSON.parse(JSON.stringify(currentPR.original_annotations || []));
+  annoTool = null;
+  annoLastInteractedId = null;
+  annoHistory = []; // a new PR's undo history starts clean -- never carries a previous photo's edits
+  document.querySelectorAll("#annoToolbar [data-anno-tool]").forEach((b) => b.classList.remove("active"));
+  document.getElementById("annoNextNumberRow").style.display = "none";
+  document.getElementById("annoTextEditRow").style.display = "none";
+  annoNextNumber = (annotations.filter((a) => a.type === "number").reduce((max, a) => Math.max(max, a.value || 0), 0)) + 1;
+  document.getElementById("annoNextNumberInput").value = annoNextNumber;
+  annoRenderHelp();
+  renderAnnotations();
   document.getElementById("prLog").textContent = "";
   document.getElementById("reviewArea").classList.add("open");
   document.getElementById("reviewTitle").textContent =
@@ -419,7 +445,28 @@ async function renderPage() {
   log(`rendered page ${currentPR.page} at ${canvas.width}x${canvas.height} -- drag the box or its corners to fit the submitted photo`);
   updateAcceptButtonState();
   document.getElementById("resetBoxBtn").disabled = false;
+  // Only useful once the original page is actually rendered underneath
+  // -- before that there's nothing real to compare against yet.
+  document.getElementById("toggleOriginalBtn").style.display = "inline-block";
 }
+
+// Direct request: annotating (an arrow, a circled letter) needs to
+// reference where the ORIGINAL manual actually had it, not just the
+// replacement photo in isolation -- and the original page is already
+// rendered on pageCanvas, directly underneath #targetBox at the exact
+// same position/size the submitted photo occupies. A toggle just needs
+// to get the new photo out of the way, not fetch or render anything
+// new. The annotation layer is a sibling drawn after the photo either
+// way, so it (and drawing on it) keeps working while the original
+// shows through.
+document.getElementById("toggleOriginalBtn").addEventListener("click", () => {
+  const img = document.getElementById("submittedPhotoImg");
+  const btn = document.getElementById("toggleOriginalBtn");
+  const showingOriginal = img.style.opacity === "0";
+  img.style.opacity = showingOriginal ? "1" : "0";
+  btn.textContent = showingOriginal ? "Show original page" : "Show new photo";
+  btn.classList.toggle("active", !showingOriginal);
+});
 
 // ---- bbox <-> canvas-pixel conversion, same math as patcher.js's
 // scale_x/scale_y (composite_px / page_pt), just going the other
@@ -448,6 +495,472 @@ document.getElementById("resetBoxBtn").addEventListener("click", () => {
   resetBox();
   log("box reset to the original submission bbox");
 });
+
+// ---- annotation editor -- arrows/circles/numbers/lines/short text
+// callouts, stored as relative (0-100) vector shapes on the manifest
+// entry (entry.annotations), not baked into the photo's own pixels.
+// Rendering these into the actual patched PDF output is a deliberate,
+// separate follow-up (patcher.js) -- this is the editor half only.
+//
+// Every shape is drawn with a black-outlined color stroke ("cased"/
+// haloed, the same technique road casings on maps use) so it stays
+// legible over any photo regardless of what's directly behind it --
+// two overlapping strokes, wider black one first, narrower white one
+// on top, rather than relying on a single color to contrast correctly
+// against a background nobody controls.
+let annotations = [];
+let annoTool = null; // 'arrow' | 'line' | 'circle' | 'number' | 'text' | null
+let annoDrag = null;
+let annoNextNumber = 1;
+let annoEditingTextId = null;
+// The shape a keyboard Delete/Backspace acts on -- there's no
+// click-to-select model here (handles show for every shape a tool
+// owns at once, not one at a time), so "the thing you just touched"
+// is what Delete removes, updated on every create/move/resize.
+let annoLastInteractedId = null;
+let annoHistory = [];
+const ANNO_HISTORY_MAX = 20;
+const ANNO_MAX_LEN = 30; // % of the box's own size -- no single shape needs to be bigger than this to be useful
+const ANNO_NS = "http://www.w3.org/2000/svg";
+const ANNO_TOOL_META = {
+  arrow: { icon: "↗", word: "Arrow" },
+  line: { icon: "―", word: "Line" },
+  circle: { icon: "○", word: "Circle" },
+  number: { icon: "①", word: "Number" },
+  text: { icon: "✎", word: "Text" },
+};
+
+// Direct feedback: a separate icon/word toggle didn't add anything --
+// just always show both together.
+function annoLabel(tool) {
+  const m = ANNO_TOOL_META[tool];
+  return `${m.icon} ${m.word}`;
+}
+
+function annoPointFromEvent(e) {
+  const svg = document.getElementById("annotationLayer");
+  const rect = svg.getBoundingClientRect();
+  const t = e.touches ? e.touches[0] : e;
+  return { x: ((t.clientX - rect.left) / rect.width) * 100, y: ((t.clientY - rect.top) / rect.height) * 100 };
+}
+
+function annoClamp01(v) { return Math.max(0, Math.min(100, v)); }
+
+// Caps a shape's own extent at ANNO_MAX_LEN without changing its
+// anchor point -- direct spec: "no reason to have any single line
+// bigger than that."
+function annoClampLen(x0, y0, x1, y1) {
+  const dx = x1 - x0, dy = y1 - y0;
+  const len = Math.hypot(dx, dy);
+  if (len <= ANNO_MAX_LEN || len === 0) return { x1, y1 };
+  const s = ANNO_MAX_LEN / len;
+  return { x1: x0 + dx * s, y1: y0 + dy * s };
+}
+
+function annoEl(tag, attrs) {
+  const el = document.createElementNS(ANNO_NS, tag);
+  for (const k in attrs) el.setAttribute(k, attrs[k]);
+  return el;
+}
+
+// The actual halo: identical geometry drawn twice, black wider stroke
+// first, white narrower stroke on top. `scale` lets a caller thin the
+// whole halo down proportionally -- Number's own ring uses half scale,
+// since up to 12 of them can share one photo and a full-weight ring
+// per number reads as visual noise the arrow/line/plain-circle tools
+// don't have to deal with.
+function annoHaloed(tag, attrs, groupAttrs, scale) {
+  const s = scale || 1;
+  const g = annoEl("g", groupAttrs || {});
+  g.appendChild(annoEl(tag, { ...attrs, stroke: "#000", "stroke-width": 2.4 * s, fill: attrs.fill === "none" || !attrs.fill ? "none" : "#000" }));
+  g.appendChild(annoEl(tag, { ...attrs, stroke: "#fff", "stroke-width": 1.1 * s, fill: attrs.fill === "none" || !attrs.fill ? "none" : attrs.fill }));
+  return g;
+}
+
+// White fill + red border, matching the handle convention every major
+// design tool (Figma, Sketch, Google Slides) actually uses -- confirmed
+// by direct research after "handles... look broken instead of grab
+// here." The visible dot stays modest, but the actual clickable/
+// touchable area is a separate, much larger invisible circle
+// (pointer-events:all so it's hittable despite being unpainted) --
+// WCAG 2.5.8 wants a real 24px+ target, Apple's HIG recommends 44px;
+// the old handle's visible-only hit area was under 10px on a typical
+// box size, which is exactly why it felt unreliable to grab.
+function annoHandle(cx, cy, extraAttrs, cursor) {
+  const g = annoEl("g", { ...extraAttrs, style: `cursor:${cursor || "grab"};` });
+  g.appendChild(annoEl("circle", { cx, cy, r: 4.2, fill: "transparent", "pointer-events": "all" }));
+  g.appendChild(annoEl("circle", { cx, cy, r: 1.8, class: "anno-handle" }));
+  return g;
+}
+
+// The SVG's viewBox is a square 0-100 grid, but #targetBox almost never
+// is (bboxes are rarely square) -- preserveAspectRatio="none" stretches
+// X and Y by different amounts to fill it, so a plain <circle> renders
+// as a visible oval, not a circle. Real question, confirmed live: a
+// 636x476 box rendered a "circle" at 120x90px. Every circle/number
+// below draws as an <ellipse> instead, with ry inflated by this exact
+// ratio to cancel the stretch back out -- computed fresh per render,
+// never baked into stored data, since the box's own aspect can change
+// (a maintainer resizing it) between saves.
+function annoBoxAspect() {
+  const rect = document.getElementById("annotationLayer").getBoundingClientRect();
+  return rect.height > 0 ? rect.width / rect.height : 1;
+}
+
+function renderAnnotations() {
+  annoRenderAttribution();
+  const aspect = annoBoxAspect();
+  const svg = document.getElementById("annotationLayer");
+  svg.innerHTML = "";
+  annotations.forEach((a) => {
+    const g = annoEl("g", { class: "anno-shape", "data-anno-id": a.id });
+    // Every shape gets a generously-sized, fully transparent hit area
+    // UNDER its visible geometry -- pointer-events:all so it's
+    // clickable/touchable despite being unpainted. Real report: without
+    // this, clicking anywhere but the thin visible stroke (the whole
+    // interior of a circle/number, most of a text box) missed the
+    // shape entirely and fell through to "create a new one" instead of
+    // selecting the existing one to move.
+    if (a.type === "arrow" || a.type === "line") {
+      g.appendChild(annoEl("line", { x1: a.x0, y1: a.y0, x2: a.x1, y2: a.y1, stroke: "transparent", "stroke-width": 6, "pointer-events": "all" }));
+      g.appendChild(annoHaloed("line", { x1: a.x0, y1: a.y0, x2: a.x1, y2: a.y1, "stroke-linecap": "round" }));
+      if (a.type === "arrow") {
+        const angle = Math.atan2(a.y0 - a.y1, a.x0 - a.x1);
+        const hl = 3.4, spread = 0.5;
+        const p1x = a.x0 - hl * Math.cos(angle - spread), p1y = a.y0 - hl * Math.sin(angle - spread);
+        const p2x = a.x0 - hl * Math.cos(angle + spread), p2y = a.y0 - hl * Math.sin(angle + spread);
+        g.appendChild(annoHaloed("polyline", { points: `${p1x},${p1y} ${a.x0},${a.y0} ${p2x},${p2y}`, fill: "none", "stroke-linecap": "round", "stroke-linejoin": "round" }));
+      }
+    } else if (a.type === "circle" || a.type === "number") {
+      const ry = a.r * aspect;
+      // A filled disc, not just a wide ring -- clicking anywhere inside
+      // a circle/number (not only right on its edge) should grab it.
+      g.appendChild(annoEl("ellipse", { cx: a.cx, cy: a.cy, rx: a.r, ry, fill: "transparent", "pointer-events": "all" }));
+      // Number's own ring renders at half weight (scale 0.5) -- direct
+      // feedback: up to a dozen of these can share one photo, and a
+      // full-weight ring on every one reads as clutter the arrow/line/
+      // plain-circle tools don't have to deal with.
+      g.appendChild(annoHaloed("ellipse", { cx: a.cx, cy: a.cy, rx: a.r, ry, fill: "none" }, null, a.type === "number" ? 0.5 : 1));
+      if (a.type === "number") {
+        const fontSize = Math.max(2, a.r * 1.1);
+        g.appendChild(annoEl("text", {
+          x: a.cx, y: a.cy, "font-size": fontSize, "text-anchor": "middle", "dominant-baseline": "central",
+          "font-weight": "700", fill: "#fff", stroke: "#000", "stroke-width": fontSize * 0.12, "paint-order": "stroke fill", "pointer-events": "none",
+        })).textContent = a.value;
+      }
+    } else if (a.type === "text") {
+      g.appendChild(annoEl("rect", { x: a.x, y: a.y, width: a.w, height: a.h, fill: "transparent", "pointer-events": "all" }));
+      g.appendChild(annoHaloed("rect", { x: a.x, y: a.y, width: a.w, height: a.h, fill: "none", rx: 0.6 }));
+      const fontSize = Math.max(2.5, a.h * 0.6);
+      g.appendChild(annoEl("text", {
+        x: a.x + a.w / 2, y: a.y + a.h / 2, "font-size": fontSize, "text-anchor": "middle", "dominant-baseline": "central",
+        "font-weight": "700", fill: "#fff", stroke: "#000", "stroke-width": fontSize * 0.12, "paint-order": "stroke fill", "pointer-events": "none",
+      })).textContent = a.content || "";
+    }
+    svg.appendChild(g);
+
+    // Move/edit handles only show for whichever tool is currently
+    // active, scoped to shapes of that exact type -- direct spec:
+    // "whenever selected, the move/edit tags show of all components
+    // [the active tool owns], otherwise hide." Not a per-shape click-
+    // to-select state; the active TOOL is what shows or hides them.
+    if (annoTool === a.type) {
+      if (a.type === "arrow" || a.type === "line") {
+        svg.appendChild(annoHandle(a.x0, a.y0, { "data-anno-id": a.id, "data-anno-handle": "p0" }, "grab"));
+        svg.appendChild(annoHandle(a.x1, a.y1, { "data-anno-id": a.id, "data-anno-handle": "p1" }, "grab"));
+      } else if (a.type === "circle" || a.type === "number") {
+        svg.appendChild(annoHandle(a.cx + a.r, a.cy, { "data-anno-id": a.id, "data-anno-handle": "radius" }, "ew-resize"));
+      } else if (a.type === "text") {
+        // Same corner-resize cursor already used for the crop-box/bbox
+        // corner handles elsewhere on this page -- one consistent
+        // convention for "this drags to resize," not a different one
+        // invented for this tool.
+        svg.appendChild(annoHandle(a.x + a.w, a.y + a.h, { "data-anno-id": a.id, "data-anno-handle": "resize" }, "nwse-resize"));
+        const pencil = annoEl("g", { "data-anno-id": a.id, "data-anno-handle": "edit", style: "cursor:pointer;" });
+        pencil.appendChild(annoEl("circle", { cx: a.x - 0.2, cy: a.y - 2.2, r: 3.2, fill: "transparent", "pointer-events": "all" }));
+        const pencilIcon = annoEl("text", {
+          x: a.x - 0.2, y: a.y - 2.2, "font-size": 4, "text-anchor": "middle", "dominant-baseline": "central",
+          fill: "#fff", stroke: "#000", "stroke-width": 0.5, "paint-order": "stroke fill",
+        });
+        pencilIcon.textContent = "✎";
+        pencil.appendChild(pencilIcon);
+        svg.appendChild(pencil);
+      }
+    }
+  });
+}
+
+function annoNewShapeFor(tool, x, y) {
+  const id = `a${Date.now()}${Math.floor(Math.random() * 1000)}`;
+  // Real attribution, not assumed -- same reasoning the photo-credit
+  // tag already applies to a contributor's own photo (patcher.js's
+  // drawCreditTab): who added a specific arrow/circle/number/label is
+  // worth knowing later, the same way whose photo it is already is.
+  const annotatedBy = BlaydeAuth.getSession()?.username || null;
+  if (tool === "arrow" || tool === "line") return { id, type: tool, x0: x, y0: y, x1: x, y1: y, annotatedBy };
+  if (tool === "circle") return { id, type: "circle", cx: x, cy: y, r: 0.1, annotatedBy };
+  // Starts at its real minimum size immediately, not 0.1 -- direct
+  // report: the very first rendered frame (before any drag movement
+  // reaches the clamp in annoPointerMove) showed a near-invisible dot,
+  // "looks like a dog[dot] on first press." A number needs to be
+  // legible the instant it's placed, drag or no drag.
+  if (tool === "number") return { id, type: "number", cx: x, cy: y, r: annoMinNumberRadius(annoNextNumber), value: annoNextNumber, annotatedBy };
+  if (tool === "text") return { id, type: "text", x, y, w: Math.min(8, ANNO_MAX_LEN), h: Math.min(6, ANNO_MAX_LEN), content: "", annotatedBy };
+  return null;
+}
+
+document.getElementById("annotationLayer").addEventListener("mousedown", (e) => annoPointerDown(e));
+document.getElementById("annotationLayer").addEventListener("touchstart", (e) => { e.preventDefault(); annoPointerDown(e); }, { passive: false });
+document.addEventListener("mousemove", (e) => annoPointerMove(e));
+document.addEventListener("touchmove", (e) => { if (annoDrag) e.preventDefault(); annoPointerMove(e); }, { passive: false });
+document.addEventListener("mouseup", annoPointerUp);
+document.addEventListener("touchend", annoPointerUp);
+
+function annoPointerDown(e) {
+  // .closest(), not a direct dataset read off e.target -- real bug,
+  // caught live: both handles and shape hit-areas are wrapped in a <g>
+  // that actually carries data-anno-id/data-anno-handle, but a click
+  // lands on whichever inner element (a circle, a line) is directly
+  // under the cursor, which never had those attributes itself. Every
+  // click that wasn't precisely on the outermost element fell through
+  // to "empty space," which with a tool still active meant a new shape
+  // instead of grabbing the existing one.
+  const handleEl = e.target.closest?.("[data-anno-handle]");
+  const shapeEl = e.target.closest?.("[data-anno-id]");
+  const handleId = handleEl?.dataset.annoHandle;
+  const shapeId = handleEl?.dataset.annoId || shapeEl?.dataset.annoId;
+  const p = annoPointFromEvent(e);
+  if (handleId === "edit") {
+    annoOpenTextEditor(shapeId);
+    return;
+  }
+  if (shapeId) {
+    const shape = annotations.find((a) => a.id === shapeId);
+    if (!shape) return;
+    annoLastInteractedId = shapeId;
+    annoSnapshot(); // before this drag mutates it, so Ctrl+Z reverts the whole gesture, not one intermediate frame
+    annoDrag = { mode: handleId ? "handle" : "move", id: shapeId, handle: handleId, startX: p.x, startY: p.y, orig: { ...shape } };
+    return;
+  }
+  if (!annoTool) return; // no tool active -- clicking empty space does nothing
+  annoSnapshot();
+  const shape = annoNewShapeFor(annoTool, p.x, p.y);
+  annotations.push(shape);
+  annoLastInteractedId = shape.id;
+  annoDrag = { mode: "create", id: shape.id, startX: p.x, startY: p.y, orig: { ...shape } };
+  renderAnnotations();
+}
+
+// One snapshot per whole gesture (a full create/move/resize, not every
+// intermediate mousemove frame), so Ctrl+Z undoes "that drag," not one
+// pixel of it. Capped so a very long review session can't grow this
+// unbounded.
+function annoSnapshot() {
+  annoHistory.push(JSON.parse(JSON.stringify(annotations)));
+  if (annoHistory.length > ANNO_HISTORY_MAX) annoHistory.shift();
+}
+
+function annoUndo() {
+  if (!annoHistory.length) return;
+  annotations = annoHistory.pop();
+  annoLastInteractedId = null;
+  renderAnnotations();
+}
+
+function annoDeleteLastInteracted() {
+  if (!annoLastInteractedId || !annotations.some((a) => a.id === annoLastInteractedId)) return;
+  annoSnapshot();
+  annotations = annotations.filter((a) => a.id !== annoLastInteractedId);
+  annoLastInteractedId = null;
+  renderAnnotations();
+}
+
+document.addEventListener("keydown", (e) => {
+  // Never hijack Delete/Backspace while actually typing -- deleting a
+  // character in the text-label editor shouldn't also delete the whole
+  // shape underneath it.
+  const typing = document.activeElement && ["INPUT", "TEXTAREA"].includes(document.activeElement.tagName);
+  if (typing) return;
+  if (e.key === "Delete" || e.key === "Backspace") {
+    e.preventDefault();
+    annoDeleteLastInteracted();
+  } else if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "z") {
+    e.preventDefault();
+    annoUndo();
+  }
+});
+
+function annoPointerMove(e) {
+  if (!annoDrag) return;
+  const p = annoPointFromEvent(e);
+  const shape = annotations.find((a) => a.id === annoDrag.id);
+  if (!shape) return;
+  const o = annoDrag.orig;
+  const dx = p.x - annoDrag.startX, dy = p.y - annoDrag.startY;
+
+  if (shape.type === "arrow" || shape.type === "line") {
+    if (annoDrag.mode === "move") {
+      shape.x0 = annoClamp01(o.x0 + dx); shape.y0 = annoClamp01(o.y0 + dy);
+      shape.x1 = annoClamp01(o.x1 + dx); shape.y1 = annoClamp01(o.y1 + dy);
+    } else {
+      // "create" and dragging the tail handle ("p1") both extend the
+      // same endpoint; dragging the head handle ("p0") moves the head
+      // instead -- matches the spec's "first click-down starts the
+      // HEAD, dragging extends the tail" for a fresh arrow, while still
+      // letting either end be adjusted afterward once it exists.
+      if (annoDrag.mode === "handle" && annoDrag.handle === "p0") {
+        shape.x0 = annoClamp01(p.x); shape.y0 = annoClamp01(p.y);
+      } else {
+        const clamped = annoClampLen(shape.x0, shape.y0, annoClamp01(p.x), annoClamp01(p.y));
+        shape.x1 = clamped.x1; shape.y1 = clamped.y1;
+      }
+    }
+  } else if (shape.type === "circle" || shape.type === "number") {
+    if (annoDrag.mode === "move") {
+      shape.cx = annoClamp01(o.cx + dx); shape.cy = annoClamp01(o.cy + dy);
+    } else {
+      const r = Math.min(ANNO_MAX_LEN / 2, Math.hypot(p.x - shape.cx, p.y - shape.cy));
+      shape.r = shape.type === "number" ? Math.max(annoMinNumberRadius(shape.value), r) : Math.max(0.1, r);
+    }
+  } else if (shape.type === "text") {
+    if (annoDrag.mode === "move") {
+      shape.x = annoClamp01(o.x + dx); shape.y = annoClamp01(o.y + dy);
+    } else {
+      shape.w = Math.max(3, Math.min(ANNO_MAX_LEN, o.w + dx));
+      shape.h = Math.max(2.5, Math.min(ANNO_MAX_LEN, o.h + dy));
+    }
+  }
+  renderAnnotations();
+}
+
+// Derived from real font metrics at render time, not a hardcoded pixel
+// guess -- measures the digit(s) at the size renderAnnotations will
+// actually draw them at, so the minimum stays correct regardless of
+// how many digits `value` ends up being (1-12, per the real use case).
+function annoMinNumberRadius(value) {
+  const probe = document.createElementNS(ANNO_NS, "text");
+  // Probed at the same font-size a freshly-placed number actually
+  // renders at (see renderAnnotations' fontSize = r*1.1 below) -- the
+  // old probe used a much smaller font-size than what ever gets drawn,
+  // so its "minimum" undersold the real legible size. Direct report:
+  // "much bigger... looks like a dot on first press."
+  probe.setAttribute("font-size", 7);
+  probe.setAttribute("font-weight", "700");
+  probe.setAttribute("visibility", "hidden");
+  probe.textContent = String(value ?? 1);
+  document.getElementById("annotationLayer").appendChild(probe);
+  let width = 5;
+  try { width = probe.getBBox().width || width; } catch (e) { /* not yet in a laid-out document -- fall back */ }
+  probe.remove();
+  // Generous padding around the digit(s), not a tight fit around them.
+  return Math.max(5, width * 0.9 + 2);
+}
+
+function annoPointerUp() {
+  if (!annoDrag) return;
+  const wasCreate = annoDrag.mode === "create";
+  const shape = annotations.find((a) => a.id === annoDrag.id);
+  annoDrag = null;
+  if (!shape) return;
+  if (shape.type === "number" && wasCreate) {
+    annoNextNumber += 1;
+    document.getElementById("annoNextNumberInput").value = annoNextNumber;
+  }
+  if (shape.type === "text" && wasCreate) {
+    annoOpenTextEditor(shape.id);
+  }
+  renderAnnotations();
+}
+
+function annoOpenTextEditor(shapeId) {
+  const shape = annotations.find((a) => a.id === shapeId);
+  if (!shape) return;
+  annoEditingTextId = shapeId;
+  const row = document.getElementById("annoTextEditRow");
+  const input = document.getElementById("annoTextInput");
+  input.value = shape.content || "";
+  row.style.display = "flex";
+  input.focus();
+}
+
+function annoSaveTextEdit() {
+  const shape = annotations.find((a) => a.id === annoEditingTextId);
+  if (shape) {
+    annoSnapshot();
+    shape.content = document.getElementById("annoTextInput").value.slice(0, 3);
+    annoLastInteractedId = shape.id;
+  }
+  document.getElementById("annoTextEditRow").style.display = "none";
+  annoEditingTextId = null;
+  renderAnnotations();
+}
+document.getElementById("annoTextDoneBtn").addEventListener("click", annoSaveTextEdit);
+// Enter saves, same as clicking Save -- a 3-character label doesn't
+// need a mouse trip just to confirm it.
+document.getElementById("annoTextInput").addEventListener("keydown", (e) => {
+  if (e.key === "Enter") { e.preventDefault(); annoSaveTextEdit(); }
+});
+
+// Short, tool-specific guidance -- direct request: keep it friendly and
+// concise, and change what it says depending on what's actually
+// selected, rather than one static block of instructions up front that
+// a maintainer has to remember five tools' worth of at once.
+const ANNO_TOOL_HELP = {
+  arrow: "Click to plant the arrowhead, drag to the tail, release.",
+  line: "Click to start the line, drag to the other end, release.",
+  circle: "Click for the center, drag out to set the radius.",
+  number: "Click to drop the next number. Change “Next number” first if you need to skip ahead.",
+  text: "Click to place a short label (3 characters max), then use its pencil to edit.",
+};
+
+// Real, visible attribution -- who actually drew what's on this photo,
+// same "who did this" question the contributor's own photo credit
+// already answers. Shown whenever at least one shape carries it,
+// listing each distinct annotator once (usually one maintainer, but
+// more than one could touch the same PR over separate sessions).
+function annoRenderAttribution() {
+  const el = document.getElementById("annoAttribution");
+  if (!el) return;
+  const logins = [...new Set(annotations.map((a) => a.annotatedBy).filter(Boolean))];
+  if (!logins.length) { el.style.display = "none"; return; }
+  el.textContent = `Annotated by: ${logins.map((l) => "@" + l).join(", ")}`;
+  el.style.display = "block";
+}
+
+function annoRenderHelp() {
+  const el = document.getElementById("annoHelp");
+  if (!el) return;
+  if (annoTool) {
+    el.innerHTML = `<strong>${ANNO_TOOL_META[annoTool].word}:</strong> ${ANNO_TOOL_HELP[annoTool]} Click an existing one (its handles are showing) to move or resize it.`;
+  } else {
+    el.innerHTML = `Pick a tool above to start. <kbd>Delete</kbd> removes whatever you last touched; <kbd>Ctrl</kbd>+<kbd>Z</kbd> (<kbd>&#8984;</kbd>+<kbd>Z</kbd> on Mac) undoes.`;
+  }
+}
+
+document.querySelectorAll("#annoToolbar [data-anno-tool]").forEach((btn) => {
+  btn.textContent = annoLabel(btn.dataset.annoTool);
+  btn.addEventListener("click", () => {
+    const tool = btn.dataset.annoTool;
+    annoTool = annoTool === tool ? null : tool;
+    document.querySelectorAll("#annoToolbar [data-anno-tool]").forEach((b) => b.classList.toggle("active", b.dataset.annoTool === annoTool));
+    document.getElementById("annoNextNumberRow").style.display = annoTool === "number" ? "inline-flex" : "none";
+    // Real bug, caught live: switching tools (including turning Text
+    // off) left the label editor sitting open with no way to close it
+    // short of clicking Save. Any tool click closes it -- an
+    // in-progress, unsaved label is discarded, same as clicking away
+    // from an editor anywhere else discards it.
+    document.getElementById("annoTextEditRow").style.display = "none";
+    annoEditingTextId = null;
+    annoRenderHelp();
+    renderAnnotations();
+  });
+});
+
+document.getElementById("annoNextNumberInput").addEventListener("change", (e) => {
+  annoNextNumber = parseInt(e.target.value, 10) || 1;
+});
+
+annoRenderHelp();
 
 function paintBox() {
   const el = document.getElementById("targetBox");
@@ -547,18 +1060,32 @@ document.getElementById("acceptBtn").addEventListener("click", async () => {
 
     const finalBbox = canvasToBbox(box);
     const bboxChanged = JSON.stringify(finalBbox) !== JSON.stringify(currentPR.original_bbox);
-    if (bboxChanged) {
-      log(`updating ${currentPR.procedure_id}'s photo position in manifest.json (adjusted during review)...`);
+    const annotationsChanged = JSON.stringify(annotations) !== JSON.stringify(currentPR.original_annotations || []);
+    if (bboxChanged || annotationsChanged) {
+      const parts = [bboxChanged && "position", annotationsChanged && "annotations"].filter(Boolean).join(" and ");
+      log(`updating ${currentPR.procedure_id}'s ${parts} in manifest.json (adjusted during review)...`);
       const manifestFile = await githubApi(`/repos/${owner}/${repo}/contents/${currentPR.edition_id}/manifest.json?ref=${currentPR.base_branch}`, session.token);
       const manifestData = JSON.parse(base64ToUtf8(manifestFile.content.replace(/\n/g, "")));
       const entry = manifestData.entries.find((e) => e.procedure_id === currentPR.procedure_id);
       if (entry) {
-        entry.pixel_bbox = finalBbox;
+        if (bboxChanged) entry.pixel_bbox = finalBbox;
+        // Vector shapes only, in relative (0-100) coordinates -- never
+        // baked into the photo's own pixels, so a later re-crop or a
+        // viewer's color preference (see ROADMAP.md) can still apply
+        // cleanly. Rendering these into the actual patched PDF is a
+        // separate, not-yet-built step (patcher.js); this only commits
+        // the editor's own data.
+        if (annotationsChanged) entry.annotations = annotations;
+        // Real attribution in the commit history itself, not just on
+        // the shapes in manifest.json -- same "who did this" question
+        // a contributor's own photo credit already answers, applied to
+        // whoever drew the arrows/circles/labels on top of it.
+        const annotatedByNote = annotationsChanged ? ` (annotated by @${session.username})` : "";
         await githubApi(`/repos/${owner}/${repo}/contents/${currentPR.edition_id}/manifest.json`, session.token, {
           method: "PUT",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
-            message: `Adjust ${currentPR.procedure_id}'s photo position (reviewed in #${currentPR.number})`,
+            message: `Adjust ${currentPR.procedure_id}'s ${parts} (reviewed in #${currentPR.number})${annotatedByNote}`,
             content: utf8ToBase64(JSON.stringify(manifestData, null, 2)),
             sha: manifestFile.sha,
             branch: currentPR.base_branch,
@@ -566,7 +1093,7 @@ document.getElementById("acceptBtn").addEventListener("click", async () => {
         });
         log(`manifest.json updated.`);
       } else {
-        log(`WARNING: ${currentPR.procedure_id} not found in manifest.json anymore -- skipped the position update.`);
+        log(`WARNING: ${currentPR.procedure_id} not found in manifest.json anymore -- skipped the position/annotation update.`);
       }
     }
 
