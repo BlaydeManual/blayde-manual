@@ -54,6 +54,42 @@
   h1 span { color: var(--red); text-shadow: var(--red-halo); }
   .sub { color: var(--steel); font-size: 0.98rem; margin: 0 0 20px; }
 
+  /* Category tabs -- a hard filter here (unlike the maintainer/
+     contributor side, where category is a grouping tier -- see
+     ROADMAP.md's "Category expansion" section). Each tab carries its
+     own CVD-verified accent color as --accent; the active tab's glass
+     tray (tinted border + fill) is the only place that color shows up
+     -- the page's persistent black/red header chrome never changes. */
+  .category-tabs {
+    display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 16px;
+  }
+  .cat-tab {
+    display: flex; align-items: center; gap: 6px;
+    padding: 7px 14px; border-radius: 999px; font-size: 0.9rem; font-weight: 700;
+    background: var(--black-2); color: var(--steel); border: 1px solid var(--steel-dark);
+    cursor: pointer; user-select: none; transition: background 0.12s, color 0.12s, border-color 0.12s;
+  }
+  .cat-tab svg { width: 16px; height: 16px; stroke: currentColor; flex-shrink: 0; }
+  .cat-tab:hover { border-color: var(--steel); color: var(--text); }
+  .cat-tab.active {
+    background: color-mix(in srgb, var(--accent) 20%, var(--black-2));
+    border-color: var(--accent); color: var(--text);
+  }
+  .cat-tab.active svg { stroke: var(--accent); }
+
+  /* The glass tray itself -- wraps the search row + results whenever a
+     specific category is active. No accent set (All tab) means no
+     tray, just the plain page background -- the tray is a per-category
+     thing, not a permanent chrome element. */
+  #browseTray {
+    border-radius: 10px; padding: 0; transition: background 0.15s, border-color 0.15s;
+  }
+  #browseTray.tray-active {
+    background: color-mix(in srgb, var(--accent) 7%, transparent);
+    border: 1px solid color-mix(in srgb, var(--accent) 35%, var(--steel-dark));
+    padding: 16px; margin: 0 -16px 8px;
+  }
+
   .search-row { display: flex; gap: 8px; margin-bottom: 20px; }
   .search-row input[type=text] {
     flex: 1; padding: 10px 12px; background: var(--black-2); color: var(--text);
@@ -124,18 +160,22 @@
     <a class="pill-link pill-contributors" href="contribute.html">Contributors</a>
     <a class="pill-link pill-maintainers" href="maintainer.html">Maintainers</a>
   </div>
-  <h1>BLAYDE MANUAL <span>// BROWSE VEHICLES</span></h1>
-  <p class="sub">Does your vehicle already exist here, and how far along is each manual? No account needed to look -- follow a manual's own source link to grab a copy and patch it yourself.</p>
+  <h1>BLAYDE MANUAL <span>// BROWSE</span></h1>
+  <p class="sub">Does it already exist here, and how far along is each manual? No account needed to look -- follow a manual's own source link to grab a copy and patch it yourself.</p>
 
-  <div class="search-row">
-    <input type="text" id="searchInput" placeholder="Search by vehicle name...">
-    <select id="classFilter">
-      <option value="">All types</option>
-    </select>
+  <div class="category-tabs" id="categoryTabs"></div>
+
+  <div id="browseTray">
+    <div class="search-row">
+      <input type="text" id="searchInput" placeholder="Search by name...">
+      <select id="classFilter">
+        <option value="">All types</option>
+      </select>
+    </div>
+
+    <div id="results"></div>
+    <p id="emptyState" style="display:none;">Nothing matches that search. <a href="index.html" style="color:var(--steel);">Be the first to index your manual &rarr;</a></p>
   </div>
-
-  <div id="results"></div>
-  <p id="emptyState" style="display:none;">Nothing matches that search. <a href="index.html" style="color:var(--steel);">Be the first to index your manual &rarr;</a></p>
 
   <footer>
     See <a href="https://github.com/BlaydeManual/blayde-manual/blob/main/README.md">README.md</a> for the technical pipeline, <a href="https://github.com/BlaydeManual/blayde-manual/blob/main/LEGAL.md">LEGAL.md</a> for the full legal reasoning, and <a href="https://github.com/BlaydeManual/blayde-manual/blob/main/ROADMAP.md">ROADMAP.md</a> for what's designed but not yet built.
