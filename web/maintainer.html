@@ -281,12 +281,12 @@
   #annoTextEditRow input { padding: 5px 8px; background: #000; color: var(--text); border: 1px solid var(--steel-dark); border-radius: 4px; font-size: 0.85rem; width: 70px; }
   #annoHelp {
     background: rgba(200,16,46,0.08); border: 1px solid var(--steel-dark); border-left: 3px solid var(--red);
-    border-radius: 6px; padding: 8px 12px; font-size: 0.8rem; color: var(--steel); margin: 8px 0;
+    border-radius: 6px; padding: 10px 14px; font-size: 0.95rem; line-height: 1.5; color: var(--text); margin: 8px 0;
   }
   #annoHelp strong { color: var(--text); }
   #annoHelp kbd {
     background: var(--black-2); border: 1px solid var(--steel-dark); border-radius: 3px;
-    padding: 1px 5px; font-size: 0.75rem; color: var(--text); font-family: ui-monospace, monospace;
+    padding: 2px 6px; font-size: 0.85rem; color: var(--text); font-family: ui-monospace, monospace;
   }
   .fit-readout b { color: var(--text); }
   .actions { display: flex; gap: 10px; margin-top: 14px; }
@@ -351,8 +351,6 @@
         <div class="fit-readout" id="fitReadout"></div>
         <button type="button" class="secondary" id="toggleOriginalBtn" style="display:none;" title="See the original manual page through the box, to place annotations against what was really there">Show original page</button>
 
-        <div id="annoAttribution" style="display:none; font-size:0.78rem; color:var(--mint); margin:4px 0;"></div>
-        <div id="annoHelp"></div>
         <div id="annoToolbar">
           <button type="button" data-anno-tool="arrow">&#8599; Arrow</button>
           <button type="button" data-anno-tool="line">&#8213; Line</button>
@@ -361,6 +359,8 @@
           <button type="button" data-anno-tool="text">&#9998; Text</button>
           <span id="annoNextNumberRow">Next number: <input type="number" id="annoNextNumberInput" min="1" value="1"></span>
         </div>
+        <div id="annoAttribution" style="display:none; color:var(--mint); margin:4px 0;"></div>
+        <div id="annoHelp"></div>
         <div id="annoTextEditRow">
           <span class="sub" style="margin:0;">Label (3 characters max):</span>
           <input type="text" id="annoTextInput" maxlength="3">

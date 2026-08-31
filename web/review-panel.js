@@ -593,8 +593,23 @@ function annoHandle(cx, cy, extraAttrs, cursor) {
   return g;
 }
 
+// The SVG's viewBox is a square 0-100 grid, but #targetBox almost never
+// is (bboxes are rarely square) -- preserveAspectRatio="none" stretches
+// X and Y by different amounts to fill it, so a plain <circle> renders
+// as a visible oval, not a circle. Real question, confirmed live: a
+// 636x476 box rendered a "circle" at 120x90px. Every circle/number
+// below draws as an <ellipse> instead, with ry inflated by this exact
+// ratio to cancel the stretch back out -- computed fresh per render,
+// never baked into stored data, since the box's own aspect can change
+// (a maintainer resizing it) between saves.
+function annoBoxAspect() {
+  const rect = document.getElementById("annotationLayer").getBoundingClientRect();
+  return rect.height > 0 ? rect.width / rect.height : 1;
+}
+
 function renderAnnotations() {
   annoRenderAttribution();
+  const aspect = annoBoxAspect();
   const svg = document.getElementById("annotationLayer");
   svg.innerHTML = "";
   annotations.forEach((a) => {
@@ -617,14 +632,15 @@ function renderAnnotations() {
         g.appendChild(annoHaloed("polyline", { points: `${p1x},${p1y} ${a.x0},${a.y0} ${p2x},${p2y}`, fill: "none", "stroke-linecap": "round", "stroke-linejoin": "round" }));
       }
     } else if (a.type === "circle" || a.type === "number") {
+      const ry = a.r * aspect;
       // A filled disc, not just a wide ring -- clicking anywhere inside
       // a circle/number (not only right on its edge) should grab it.
-      g.appendChild(annoEl("circle", { cx: a.cx, cy: a.cy, r: a.r, fill: "transparent", "pointer-events": "all" }));
+      g.appendChild(annoEl("ellipse", { cx: a.cx, cy: a.cy, rx: a.r, ry, fill: "transparent", "pointer-events": "all" }));
       // Number's own ring renders at half weight (scale 0.5) -- direct
       // feedback: up to a dozen of these can share one photo, and a
       // full-weight ring on every one reads as clutter the arrow/line/
       // plain-circle tools don't have to deal with.
-      g.appendChild(annoHaloed("circle", { cx: a.cx, cy: a.cy, r: a.r, fill: "none" }, null, a.type === "number" ? 0.5 : 1));
+      g.appendChild(annoHaloed("ellipse", { cx: a.cx, cy: a.cy, rx: a.r, ry, fill: "none" }, null, a.type === "number" ? 0.5 : 1));
       if (a.type === "number") {
         const fontSize = Math.max(2, a.r * 1.1);
         g.appendChild(annoEl("text", {
@@ -867,7 +883,7 @@ function annoOpenTextEditor(shapeId) {
   input.focus();
 }
 
-document.getElementById("annoTextDoneBtn").addEventListener("click", () => {
+function annoSaveTextEdit() {
   const shape = annotations.find((a) => a.id === annoEditingTextId);
   if (shape) {
     annoSnapshot();
@@ -877,6 +893,12 @@ document.getElementById("annoTextDoneBtn").addEventListener("click", () => {
   document.getElementById("annoTextEditRow").style.display = "none";
   annoEditingTextId = null;
   renderAnnotations();
+}
+document.getElementById("annoTextDoneBtn").addEventListener("click", annoSaveTextEdit);
+// Enter saves, same as clicking Save -- a 3-character label doesn't
+// need a mouse trip just to confirm it.
+document.getElementById("annoTextInput").addEventListener("keydown", (e) => {
+  if (e.key === "Enter") { e.preventDefault(); annoSaveTextEdit(); }
 });
 
 // Short, tool-specific guidance -- direct request: keep it friendly and
@@ -922,6 +944,13 @@ document.querySelectorAll("#annoToolbar [data-anno-tool]").forEach((btn) => {
     annoTool = annoTool === tool ? null : tool;
     document.querySelectorAll("#annoToolbar [data-anno-tool]").forEach((b) => b.classList.toggle("active", b.dataset.annoTool === annoTool));
     document.getElementById("annoNextNumberRow").style.display = annoTool === "number" ? "inline-flex" : "none";
+    // Real bug, caught live: switching tools (including turning Text
+    // off) left the label editor sitting open with no way to close it
+    // short of clicking Save. Any tool click closes it -- an
+    // in-progress, unsaved label is discarded, same as clicking away
+    // from an editor anywhere else discards it.
+    document.getElementById("annoTextEditRow").style.display = "none";
+    annoEditingTextId = null;
     annoRenderHelp();
     renderAnnotations();
   });
