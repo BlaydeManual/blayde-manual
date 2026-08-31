@@ -18,6 +18,39 @@ and corrections in both directions -- see
 
 ## [Unreleased]
 
+- **Added a photo annotation editor to the PR review panel** (PRs #62-64):
+  five tools (Arrow, Line, Circle, Number, Text) for drawing callouts on
+  a submitted photo during review, stored as relative (0-100) vector
+  shapes on `entry.annotations`. Not yet wired into `patcher.js`'s
+  actual PDF output -- see ROADMAP.md's "Callout/annotation overlays"
+  section for that remaining work. Iterated live against a real pending
+  photo PR throughout.
+- **Fixed: the review box was positioned using the canvas's raw render-
+  buffer size instead of its CSS-rendered size** (PR #63), landing it
+  nowhere near the submitted photo on any window narrower than the
+  page's full render width -- effectively every real desktop window,
+  not just mobile as an earlier note assumed. Also split the review
+  pane into a zoomed annotate view and a separate full-page position-
+  adjust view.
+- **Added a solid white backing behind every patched photo**, in both
+  `patcher.js`'s real output and the review preview (PR #64) -- closes
+  a real gap where a contributor's photo with any transparency could
+  let the original scanned photo bleed through in the final PDF.
+- **Added real review-status badges** to the photo-request list on both
+  the Maintainer Portal (PR #65) and the Contributor Portal (PR #67),
+  sorted so rows needing the viewer's own action float to the top.
+- **Accessibility pass on the three tool pages** (`maintainer.html`,
+  `contribute.html`, `registry-browse.html`): root font-size and every
+  existing `rem`-based font-size bumped up, after confirming these pages
+  never adopted the larger root `index.html` already used (PR #66).
+  Same PR redesigned the review-status badges above with solid,
+  contrast-checked fills.
+- **Contributor Portal's "My Reviewables" split into colored Public/
+  Private/Draft sections** (PR #67), and fixed a real bug where it only
+  ever reflected this device's own `localStorage`, so a submission made
+  from a different browser or device was invisible even though it was a
+  real, live PR (PR #68) -- now synced against GitHub directly via the
+  Search API.
 - **Implemented the edition-subdirectory model designed on 2026-08-25.**
   A vehicle repo can now genuinely hold multiple editions (OEM, Haynes,
   etc.) side by side, each in its own `<edition_id>/manifest.json` +

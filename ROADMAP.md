@@ -1419,7 +1419,7 @@ Two ways to do it, weighed rather than defaulted to the first idea:
 Neither option touches or risks the existing patch/re-patch mechanism --
 option A is purely a selection change on what already works.
 
-## Callout/annotation overlays (arrows, circled letters, numbered pointers)
+## Callout/annotation overlays: Phase 2, wiring into the actual patched PDF (Phase 1 editor shipped, see CHANGELOG.md)
 
 **The problem:** OEM manual photos often carry instructional annotations
 baked into the pixels -- an arrow pointing at one specific bolt, a circled
@@ -1427,53 +1427,36 @@ baked into the pixels -- an arrow pointing at one specific bolt, a circled
 the photo but loses that pointer, even though the pointer was often the
 whole instructional value of the image.
 
-**Current best idea:** don't ask contributors to draw on their own photos
-(inconsistent, most people won't bother). Instead store callouts as
-structured vector data per `procedure_id`, in relative (0-1) coordinates so
-they scale to any photo:
+**What exists today** (see CHANGELOG.md for the shipped feature): a
+maintainer can draw arrows/lines/circles/numbers/short text labels on a
+submitted photo during review, stored as relative (0-100) vector shapes
+on `entry.annotations` in `manifest.json`. That's as far as it goes --
+`patcher.js` doesn't read `entry.annotations` at all yet, so a patched
+manual today shows the plain photo with no callouts on it, no matter how
+many were drawn during review.
 
-```json
-{
-  "callouts": [
-    {"type": "arrow", "from": [0.62, 0.31], "to": [0.71, 0.38]},
-    {"type": "circle_label", "center": [0.40, 0.50], "radius": 0.04, "label": "A"}
-  ]
-}
-```
+**Phase 2, not built, blocked on having real content to check against:**
+1. Teach `patcher.js` to draw `entry.annotations` on top of the photo it
+   embeds -- same pdf-lib vector-drawing path already used for the cover
+   page and the QR/credit-tab overlays, so the rendering mechanism isn't
+   new, just needs to consume this specific data shape.
+2. **Direct ask, not yet designed:** give the *patcher* a real color
+   option for annotations, not just the review editor (which only ever
+   shipped white, on the reasoning that the halo already solves
+   legibility and a color wheel adds a decision with no demonstrated
+   benefit) -- and confirm whatever's chosen actually reads correctly
+   once baked into a real patched page, not just in the editor's own
+   live preview, since a rendered PDF page and an on-screen SVG overlay
+   can behave differently (font rendering, color profile, DPI).
+3. Requires real approved photos with real annotations on them to
+   render and check against -- waiting on that before either sub-item
+   is scoped further.
 
-A maintainer places these once per procedure (looking at the original
-photo), and `patcher.js` draws them on top of whatever photo is currently
-approved -- same pdf-lib vector-drawing path already used for the cover
-page and the QR/credit-tab overlays, so the plumbing to *render* this
-already exists. What's missing is the authoring UI: a click-to-place
-tool against the reference crop, most naturally as a companion mode to
-the review gallery (`review-panel.js` / `org-approval.js`).
-
-**Authoring UI, designed 2026-08-27 (not built yet):** happens during
-the review/submission screen, against whichever photo a reviewer is
-looking at. Four steps:
-1. Click an "Illustrate" button (name TBD).
-2. Type the label's text -- usually a number (matching the OEM manual's
-   own numbered-callout convention), but sometimes a short word instead
-   (e.g. "grease," for a lubrication point that isn't numbered in the
-   source at all). Click Next.
-3. Tap where the label itself should sit on the photo.
-4. Tap where the arrow should point to (the actual part/bolt/point being
-   called out). The arrow is drawn from the label's position (step 3) to
-   this point, so only two taps are needed, not four.
-
-Maps directly onto the `callouts` JSON shape above: step 2's text becomes
-`label`, step 3's tap becomes a `circle_label`'s `center` (or a plain
-label's anchor point, if circles turn out not to be needed for every
-case), step 4's tap becomes an `arrow`'s `to` (with `from` implied as the
-label's own position, rather than a separate fifth tap). Multiple
-callouts per photo just repeat the four steps.
-
-Why vector data instead of copying the original annotation pixels:
-recreating the *functional position* of a pointer is a much cleaner
-copyright position than reproducing Suzuki's actual drawn arrow graphic --
-consistent with the rest of this project's "structure is public, pixels
-are local/contributed" split (see LEGAL.md).
+**Separately, still open:** the review pane's box positioning (fixed for
+desktop in an earlier pass) has a known, deliberately backburnered
+concern on narrow/mobile viewports specifically (touch targets, layout)
+-- revisit once the annotation tool itself has seen more real use, per
+direct instruction.
 
 ## Editable section_heading labels (feature request, not built)
 
@@ -2960,211 +2943,6 @@ today.
 
 Logged here so it isn't lost before the next testing pass -- fix
 starts immediately after this entry, same session.
-
-## PINNED, v0.9.9: intentional per-file copyright check as the gate before anything leaves this computer (2026-08-25)
-
-**Direct instruction, standing until explicitly cleared:** before any
-code from this project is uploaded to the new GitHub repo -- the first
-time this project's own source ever leaves this computer -- every file
-being pushed gets checked, intentionally, for copyrighted content. Not
-a spot-check, not "the tooling code is obviously fine so skip it": the
-actual gate is reading each file's own history for how it got there,
-since this project's specific risk isn't "did Claude write something
-infringing," it's "did a demo/test step pull in real copyrighted manual
-content and leave it sitting in a tracked file or a committed asset."
-
-This session's demo work is exactly the shape of risk this pin exists
-for: `web/_test_assets/DemoManual10pg.pdf` (10 real pages sliced from
-`local_pdfs/ServiceManual.pdf`, a real copyrighted service manual) was
-created to make the end-to-end demo testable, and lived inside `web/`
-specifically so the dev server and browser could fetch it. Anything
-placed there during testing must be deleted before a push, not just
-excluded via `.gitignore` -- a gitignored file sitting in the working
-tree is still a file someone could accidentally `git add -f`, ship as
-a zip, or forget about entirely. The standing pattern going forward:
-test fixtures that touch real manual content get cleaned up
-immediately after the test that needed them, not left for a future
-cleanup pass.
-
-**Concretely, the check before any push:**
-- Diff every file being added/changed against what's already known to
-  be safe (project source, scaffold templates, mock/synthetic data,
-  this project's own documentation) versus anything that could be, or
-  could contain fragments of, a real manual's actual content --
-  scanned pages, extracted text, extracted images, OCR output, or a
-  fingerprint/hash log that embeds more than the hash itself.
-- Specifically distrust anything created as a testing convenience
-  during a session (test PDFs, test images, cached fetch responses,
-  screenshots of a real manual page) -- these are exactly the files
-  that get created for a good reason, verified working, and then
-  forgotten instead of deleted.
-- `local_pdfs/` and any `web/_test_assets/`-style scratch directory are
-  the known danger zones already established this session -- confirm
-  neither is tracked and neither has ever been staged, not just that
-  `.gitignore` currently lists them.
-- This is in addition to, not a replacement for, `LEGAL.md`'s existing
-  "local-context rule" review of the architecture itself -- that
-  review covers whether the *design* ever transmits manual content;
-  this gate covers whether any *actual file* sitting in the repo at
-  push time does, regardless of design intent.
-
-**First real execution, 2026-08-25: two findings, both fixed.** See
-CHANGELOG.md's entry -- manual-text-derived `procedure_id`/
-`section_heading` eliminated (not shortened) in favor of purely
-positional IDs, `page_text_excerpt` dropped entirely, GPS EXIF stripped
-from the public hero images. Re-run this gate before every future push,
-not just the first one -- it caught real issues on the very first pass,
-so it isn't a one-time formality.
-
-## Designed, not yet built: metadata corrections (edition label, source URL) as Issue Requests (2026-08-25)
-
-**Raised directly, evaluating a real gap:** `registry.json`'s
-`repo_url` already has a defined resilience story (see "Can a repo be
-renamed or migrated later?" above -- fingerprints anchor everything, a
-required registry-sync step on any move). A vehicle's `source_identifier`
-(the manual's *original* source link -- ManualsLib, a forum post,
-wherever a submitter found it) never got the same treatment. If that
-link goes dead, nothing technical breaks -- matching and patching are
-fingerprint-based, never URL-based -- but it does quietly erode the one
-thing a stranger or an org reviewer uses to verify a listing is real.
-
-**Resolved design: both this and an edition mislabel (OEM tagged as
-something it isn't) become new Issue Requests types**, not a new
-mechanism -- `edition-relabel` and `source-url-update`, flowing into
-the exact same `MOCK_PRS` queue and `review-panel.js` accept/reject
-tool every other issue already uses. Neither has a bbox (vehicle/
-edition-level facts, not page/procedure-level) -- same family as the
-existing bbox-less `comment` issue type, so the "no bbox" guard in
-`review-panel.js`'s `renderPage()` needs broadening from
-`issue_type === "comment"` to the whole non-bbox family rather than
-one more special case bolted on. Raised from a small "something wrong
-with this vehicle's info?" action near wherever a maintainer currently
-sees the source URL/edition label -- most naturally My Vehicles, not
-the box editor (wrong scope entirely -- these aren't page-level
-corrections). Not yet built -- logged here so it isn't lost before the
-next implementation pass.
-
-## Direct-to-git contribution -- what's actually enforced vs. just a nicer path (2026-08-25)
-
-**Raised directly, evaluating a real gap:** every review/approval flow
-built this session (the org compare tool, `review-panel.js`'s
-accept/reject, the 2-distinct-approver quorum) assumes someone goes
-through the browser tool. What happens if a contributor or maintainer
-just uses `git`/`gh`/GitHub's own web UI directly -- a hand-written PR,
-a direct edit, a manual merge?
-
-**Explicit product decision: this must stay fully supported, not
-locked out.** GitHub-native contribution is a first-class path, not a
-bypass to prevent -- the browser tool is a convenience aimed at this
-project's target audience (mainstream, non-developer vehicle owners),
-not the only sanctioned interface. Anyone who's comfortable with git
-should be able to use it exactly as they would on any other open-source
-project. The actual question isn't "how do we stop this," it's "does
-skipping the tool actually break anything or let something bad through
-unnoticed" -- and the honest answer split into three parts once checked
-against the real files, not assumed:
-
-**Already safe regardless of path, confirmed:**
-- `checker.py` triggers in CI on any PR touching `images/**`, tool-made
-  or hand-written alike -- resolution, blur, file size, EXIF GPS,
-  filename-matches-a-real-`procedure_id` all still enforced.
-- A maintainer's review context (page, bbox, composite dimensions) can
-  always be looked up from `manifest.json` by the submitted filename's
-  `procedure_id` -- not dependent on which tool created the PR.
-- The actual human visual compare (maintainer picks their own PDF,
-  looks) is manual either way -- there was never an automated version
-  of this step to skip.
-
-**Real gap #1: CI validation is scoped to photos only.**
-`scaffold/.github/workflows/validate-photo.yml` triggers on
-`paths: images/**` alone -- a PR touching only `manifest.json` (a moved
-bbox, a changed status, an edited edition label) gets zero automated
-checking today, tool-made or hand-written. No check that a hand-edited
-bbox is even within the page's bounds. This is a bigger risk than a bad
-photo, since `manifest.json` is the one file every other review/patch
-tool trusts completely. **Needed:** a second CI job validating manifest
-structure (bbox sanity against `page_geometry`, no orphaned/duplicate
-`procedure_id`s) -- not yet written.
-
-**Real gap #2, the bigger one: none of the review/approval UX is
-technically enforced today, regardless of who's using what.** The
-compare tool, the quorum -- all of it is a UI convention right now, not
-a technical gate. Nothing stops a maintainer with merge rights from
-clicking Merge on GitHub's own PR page without ever opening the tool.
-Client-side JS cannot enforce this at all -- it has to be configured at
-the GitHub repo level or it's advisory only, and nothing in this
-project has configured it yet. **Needed:**
-- Branch protection + required status checks, set up once as an
-  **org-level ruleset** (applies automatically to every repo matching a
-  pattern, so a new vehicle repo inherits it without per-repo setup) --
-  require `validate-photo.yml` (and the new manifest-validation job
-  above) to pass, require at least one approving review, block direct
-  pushes to `main`.
-- For the registry repo specifically: required reviewers/CODEOWNERS
-  enforcing the real 2-distinct-approver quorum as a GitHub-enforced
-  rule, not just what the tool's own UI happens to ask for.
-
-**Extension, 2026-08-25: the same gap applies inside every vehicle
-repo, not just at the registry level -- a maintainer's write access
-covers every file the repo ships with, not just the two they actually
-need.** Raised directly: does a maintainer need edit access to
-everything scaffold/ forks in, or just their real job? Checked file by
-file against what routine maintaining actually requires:
-
-- **Needs routine write access -- this is the job:** `manifest.json`
-  (accepting a photo, adjusting a bbox, adding a confirmed missing
-  slot) and `images/**` (the merged contributed photos themselves).
-- **Should require org-team review, not single-maintainer discretion:**
-  - `checker.py` and `.github/workflows/validate-photo.yml` -- these
-    *are* the validation gate. Freely editable, a maintainer could
-    silently weaken or entirely disable the resolution/blur/GPS/
-    filename checks this session's client-side EXIF-strip work assumed
-    would stay backing it up.
-  - `LICENSE`, `LICENSE.md` -- legal terms, already decided above.
-  - `.github/PULL_REQUEST_TEMPLATE.md` -- the CC-BY/ownership consent
-    language lives here; freely editable, a maintainer could strip it
-    from their own repo, removing even the soft attestation trail.
-  - `CONTRIBUTING.md` is the one borderline case -- lower stakes than
-    the above, but "Maintainer Standards" is meant to be an org-wide
-    floor, not something one repo can quietly water down on its own.
-  - `README.md`/`images/README.md` are genuinely fine at normal
-    maintainer discretion -- informational copy, no security or legal
-    exposure either way.
-
-**Needed:** a `CODEOWNERS` rule scoped to those specific paths
-(`/LICENSE`, `/LICENSE.md`, `/checker.py`, `/.github/**`, arguably
-`/CONTRIBUTING.md`), requiring the org team's review specifically for
-changes there -- layered on top of the general branch-protection
-ruleset above, which still applies to everything else (including
-`manifest.json`/`images/**`) at the normal one-approving-review bar.
-Same org-level-ruleset mechanism, just with a narrower, stricter
-CODEOWNERS carve-out for the files that are infrastructure/governance
-rather than routine maintaining.
-
-**Also found in the same pass, fixed same session:** `scaffold/README.md`
-and `scaffold/LICENSE.md` both referenced "the parent project's
-`LEGAL.md`" -- a relative reference that's already broken today, since
-a forked vehicle repo has no such file. Fixed to link the real
-tooling-repo URL directly. `scaffold/README.md` also had zero mention
-of blaydemanual.com anywhere -- someone landing on a vehicle repo
-directly (a search hit, a curious dev) had no pointer back to the
-actual GitHub-invisible entry point this whole project is built around.
-Added a redirect note at the top: patch your manual at blaydemanual.com,
-this repo is the data behind it, useful for the source/history/manual-PR
-path specifically.
-
-**One thing checked and confirmed *not* a differential gap, but real on
-its own:** the CC-BY 4.0 license grant and "this is my own photo"
-attestation currently live only in the PR template checklist --
-`contribute.js` has no actual consent-capture step in the tool itself.
-Equally weak whether someone uses the browser tool or opens a raw PR,
-since GitHub doesn't enforce checkbox completion without a status check
-backing it. Not a bypass-specific issue, but worth its own fix.
-
-**Sequencing:** branch protection setup belongs in Stage 1 of the
-GitHub migration (repo/org creation), happening *with* each repo's
-creation, not as a later hardening pass -- a vehicle repo that exists
-even briefly without it is a real window, not a theoretical one.
 
 ## HARD GATE: no outside code contributions to the tooling repo until a CLA/DCO exists (2026-08-25)
 
