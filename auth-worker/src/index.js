@@ -776,11 +776,13 @@ async function handleApproveVehicle(request, env) {
       });
     } catch (e) { /* approval itself already succeeded; a maintainer can always be added manually via My Vehicles */ }
 
-    // vehicle_display_name/vehicle_class copied from whichever existing
-    // registry row already shares this repo_url, not trusted fresh from
-    // this submission's own manifest -- every edition of one vehicle
-    // should display identically, not drift based on whichever
-    // submitter typed what into their own indexing pass.
+    // vehicle_display_name/vehicle_class/category/manual_type copied
+    // from whichever existing registry row already shares this
+    // repo_url, not trusted fresh from this submission's own manifest
+    // -- every edition of one vehicle should display identically, not
+    // drift based on whichever submitter typed what into their own
+    // indexing pass. Category/manual_type describe the whole item, not
+    // one edition, same reasoning vehicle_class already followed.
     const registryFile = await ghApi(`/repos/${REGISTRY_OWNER}/${REGISTRY_REPO}/contents/registry.json`, installationToken);
     const registryData = JSON.parse(base64ToUtf8(registryFile.content));
     registryData.vehicles = registryData.vehicles || [];
@@ -790,6 +792,8 @@ async function handleApproveVehicle(request, env) {
       edition_id: editionId,
       vehicle_display_name: sibling?.vehicle_display_name || manifest.vehicle,
       vehicle_class: sibling?.vehicle_class || manifest.vehicle_class || null,
+      category: sibling?.category || manifest.category || null,
+      manual_type: sibling?.manual_type || manifest.manual_type || null,
       repo_url: logEntry.target_repo_url,
       source_pdf_sha256: manifest.source_pdf_sha256 || null,
       status: "approved",
@@ -921,6 +925,8 @@ async function handleApproveVehicle(request, env) {
     edition_id: editionId,
     vehicle_display_name: manifest.vehicle,
     vehicle_class: manifest.vehicle_class || null,
+    category: manifest.category || null,
+    manual_type: manifest.manual_type || null,
     repo_url: `https://github.com/${REGISTRY_OWNER}/${repoName}`,
     // manifest.source_pdf_sha256, not logEntry.manifest_sha256 -- real,
     // live bug found and fixed here: this previously stored the
