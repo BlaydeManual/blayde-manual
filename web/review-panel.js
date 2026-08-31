@@ -167,10 +167,42 @@ async function loadOpenPhotoPRs(repoUrl) {
 // Grouped by vehicle, then by edition within it -- a vehicle repo can
 // hold more than one edition, so "which vehicle" alone is one tier too
 // shallow.
+// Real review/merge status per row, not just in the single-PR detail
+// view -- direct request: the list should always show X/2 so a
+// maintainer can see at a glance which ones still need reviewing,
+// colored by whether it's actually actionable for THEM specifically
+// (the same "can't approve your own PR" logic GitHub itself applies),
+// not just "has anyone approved yet."
+function prStatusInfo(pr, status, myLogin) {
+  if (!status) return { state: "loading", label: "Checking review status…" };
+  if (status.error) return { state: "loading", label: "Review status unavailable" };
+  const count = `${status.approved_count}/${status.required_approvals}`;
+  if (status.ready_to_merge) return { state: "ready", label: `${count} ✓ Ready to merge` };
+  if (status.changes_requested_by.length) return { state: "changes", label: `${count} · Changes requested` };
+  const isContributor = myLogin && pr.author === myLogin;
+  const alreadyApproved = myLogin && status.approved_by.includes(myLogin);
+  if (isContributor || alreadyApproved) return { state: "waiting", label: `${count} · Waiting on others` };
+  return { state: "needsYou", label: `${count} · Needs your review` };
+}
+
 async function renderPRList(approvedRepos) {
   const wrap = document.getElementById("prList");
   wrap.innerHTML = "";
+  const myLogin = BlaydeAuth.getSession()?.username;
+
+  // Fetched once per PR, in parallel, up front -- sorting (below)
+  // needs each row's state known before rows are built, not patched in
+  // after the fact.
+  const statusByNumber = new Map();
+  await Promise.all(currentPRs.map(async (pr) => {
+    statusByNumber.set(pr.number, await fetchReviewStatus(pr));
+  }));
+
   for (const repoUrl of approvedRepos) {
+    // Page order here decides which edition heading appears first and
+    // which PR within an edition is seen first, before the
+    // needs-attention/waiting split below reorders within each
+    // edition's own list.
     const prs = currentPRs.filter((pr) => pr.repo_url === repoUrl).sort((a, b) => a.page - b.page);
     if (!prs.length) continue;
     const group = document.createElement("div");
@@ -190,18 +222,28 @@ async function renderPRList(approvedRepos) {
       editionHeading.textContent = editionId;
       group.appendChild(editionHeading);
       const editionWrap = document.createElement("div");
-      editionPrs.forEach((pr) => {
-        const row = document.createElement("div");
-        row.className = "pr-row";
-        row.innerHTML = `
-          <div>
-            <div class="pr-title">${formatProcedureLabel(pr.procedure_id, pr.page, pr.section_heading)}</div>
-            <div class="pr-meta">@${pr.author} &middot; Request #${pr.number}</div>
-          </div>
-          <button data-pr="${pr.number}">Review</button>
-        `;
-        editionWrap.appendChild(row);
-      });
+      // Page order within two tiers, not one flat page order -- direct
+      // spec: rows waiting on someone else (not actionable for you)
+      // sink to the bottom, so what you can actually act on floats to
+      // the top. Array.sort is stable (guaranteed since ES2019), so
+      // page order survives within each tier without sorting on it
+      // explicitly.
+      editionPrs
+        .map((pr) => ({ pr, info: prStatusInfo(pr, statusByNumber.get(pr.number), myLogin) }))
+        .sort((a, b) => (a.info.state === "waiting" ? 1 : 0) - (b.info.state === "waiting" ? 1 : 0))
+        .forEach(({ pr, info }) => {
+          const row = document.createElement("div");
+          row.className = "pr-row";
+          row.innerHTML = `
+            <div>
+              <div class="pr-title">${formatProcedureLabel(pr.procedure_id, pr.page, pr.section_heading)}</div>
+              <div class="pr-meta">@${pr.author} &middot; Request #${pr.number}</div>
+              <span class="pr-status-badge status-${info.state}">${info.label}</span>
+            </div>
+            <button data-pr="${pr.number}">Review</button>
+          `;
+          editionWrap.appendChild(row);
+        });
       group.appendChild(editionWrap);
     });
     wrap.appendChild(group);
@@ -221,11 +263,14 @@ async function renderPRList(approvedRepos) {
 // enable a merge attempt), or the real status object otherwise. ----
 let reviewStatus = null;
 
-async function loadReviewStatus() {
-  const pr = currentPR;
-  reviewStatus = null;
-  renderReviewStatusLine();
-  updateAcceptButtonState();
+// Shared by the single-PR detail view (loadReviewStatus) and the list
+// view's per-row badges (renderPRList) -- both need the exact same
+// approved_count/required_approvals/approved_by/changes_requested_by/
+// checks_passing/ready_to_merge shape, just rendered differently.
+// Returns the real result object, or {error} on any failure -- never
+// throws, since a list of N rows fetching this in parallel shouldn't
+// let one bad response break the others.
+async function fetchReviewStatus(pr) {
   try {
     const session = BlaydeAuth.getSession();
     const resp = await fetch(
@@ -233,13 +278,21 @@ async function loadReviewStatus() {
       { headers: { Authorization: `Bearer ${session.token}` } }
     );
     const result = await resp.json().catch(() => ({}));
-    if (currentPR !== pr) return; // maintainer moved to a different PR while this was in flight
     if (!resp.ok || result.error) throw new Error(result.error || `status check failed (${resp.status})`);
-    reviewStatus = result;
+    return result;
   } catch (e) {
-    if (currentPR !== pr) return;
-    reviewStatus = { error: e.message };
+    return { error: e.message };
   }
+}
+
+async function loadReviewStatus() {
+  const pr = currentPR;
+  reviewStatus = null;
+  renderReviewStatusLine();
+  updateAcceptButtonState();
+  const result = await fetchReviewStatus(pr);
+  if (currentPR !== pr) return; // maintainer moved to a different PR while this was in flight
+  reviewStatus = result;
   renderReviewStatusLine();
   updateAcceptButtonState();
 }
