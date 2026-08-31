@@ -299,6 +299,14 @@ function drawImageAt(page, image, pageGeometry, pixelBbox) {
   const ptX0 = x0 / scaleX, ptY0Top = y0 / scaleY, ptX1 = x1 / scaleX, ptY1Top = y1 / scaleY;
   const width = ptX1 - ptX0, height = ptY1Top - ptY0Top;
   const yBottom = page_height_pt - ptY1Top;
+  // A solid backing behind every patched photo -- drawImage stretches
+  // an opaque JPEG to fill the box completely on its own, but a photo
+  // with any transparency (a contributor's PNG with an alpha channel)
+  // would otherwise let the original scanned photo show through
+  // whatever's transparent, defeating the whole point of a patch.
+  // Pure white, not the brand's WHITE token (that's tuned for on-dark
+  // UI text contrast, not paper) -- this needs to read as blank paper.
+  page.drawRectangle({ x: ptX0, y: yBottom, width, height, color: rgb(1, 1, 1) });
   page.drawImage(image, { x: ptX0, y: yBottom, width, height });
   return { x: ptX0, y: yBottom, width, height };
 }
