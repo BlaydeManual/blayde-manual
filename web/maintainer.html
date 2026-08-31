@@ -269,9 +269,11 @@
      it varies by what the handle actually does. */
   #annotationLayer .anno-handle { fill: #fff; stroke: var(--red); stroke-width: 1.1; }
   #annotationLayer .anno-shape { cursor: move; }
-  #annoToolbar { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin: 10px 0; }
+  #annoToolbar { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; justify-content: center; margin: 10px 0; }
+  #targetBox img { transition: opacity 0.15s; }
   #annoToolbar button { margin: 0; padding: 7px 12px; font-size: 0.82rem; background: var(--black-2); color: var(--text); border: 1px solid var(--steel-dark); }
   #annoToolbar button.active { background: var(--red); color: #fff; border-color: var(--red); }
+  #toggleOriginalBtn.active { background: var(--red); color: #fff; border-color: var(--red); }
   #annoToolbar .anno-sep { width: 1px; align-self: stretch; background: var(--steel-dark); margin: 0 4px; }
   #annoNextNumberRow { display: none; align-items: center; gap: 6px; font-size: 0.8rem; color: var(--steel); }
   #annoNextNumberRow input { width: 50px; padding: 4px 6px; background: #000; color: var(--text); border: 1px solid var(--steel-dark); border-radius: 4px; font-size: 0.82rem; }
@@ -347,6 +349,7 @@
           </div>
         </div>
         <div class="fit-readout" id="fitReadout"></div>
+        <button type="button" class="secondary" id="toggleOriginalBtn" style="display:none;" title="See the original manual page through the box, to place annotations against what was really there">Show original page</button>
 
         <div id="annoHelp"></div>
         <div id="annoToolbar">

@@ -356,6 +356,13 @@ async function openPR(number) {
   pdfDoc = null;
   submittedPhotoImg = null;
   reviewStatus = null;
+  // A leftover "showing original" state from whatever PR was open
+  // before would otherwise start this one with its own real photo
+  // hidden, or the button reading the wrong label.
+  document.getElementById("submittedPhotoImg").style.opacity = "1";
+  document.getElementById("toggleOriginalBtn").style.display = "none";
+  document.getElementById("toggleOriginalBtn").textContent = "Show original page";
+  document.getElementById("toggleOriginalBtn").classList.remove("active");
   // Deep-cloned, not a reference into currentPR/currentPRs -- dragging
   // shapes around during review must never mutate the cached list that
   // renderPRList/loadOpenPhotoPRs already built, the same reasoning
@@ -438,7 +445,28 @@ async function renderPage() {
   log(`rendered page ${currentPR.page} at ${canvas.width}x${canvas.height} -- drag the box or its corners to fit the submitted photo`);
   updateAcceptButtonState();
   document.getElementById("resetBoxBtn").disabled = false;
+  // Only useful once the original page is actually rendered underneath
+  // -- before that there's nothing real to compare against yet.
+  document.getElementById("toggleOriginalBtn").style.display = "inline-block";
 }
+
+// Direct request: annotating (an arrow, a circled letter) needs to
+// reference where the ORIGINAL manual actually had it, not just the
+// replacement photo in isolation -- and the original page is already
+// rendered on pageCanvas, directly underneath #targetBox at the exact
+// same position/size the submitted photo occupies. A toggle just needs
+// to get the new photo out of the way, not fetch or render anything
+// new. The annotation layer is a sibling drawn after the photo either
+// way, so it (and drawing on it) keeps working while the original
+// shows through.
+document.getElementById("toggleOriginalBtn").addEventListener("click", () => {
+  const img = document.getElementById("submittedPhotoImg");
+  const btn = document.getElementById("toggleOriginalBtn");
+  const showingOriginal = img.style.opacity === "0";
+  img.style.opacity = showingOriginal ? "1" : "0";
+  btn.textContent = showingOriginal ? "Show original page" : "Show new photo";
+  btn.classList.toggle("active", !showingOriginal);
+});
 
 // ---- bbox <-> canvas-pixel conversion, same math as patcher.js's
 // scale_x/scale_y (composite_px / page_pt), just going the other
