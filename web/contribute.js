@@ -124,6 +124,16 @@ let selectedPhotoDataUrl = null;
 let selectedPhotoFilename = null;
 let uploads = loadUploads();
 let maintainerRequests = loadMaintainerRequests();
+// Real GitHub state, not device-local -- see syncRealSubmissions.
+// uploads (above) is purely localStorage, so a submission made from a
+// different browser/device (or from before this browser's localStorage
+// existed) was completely invisible here even though it's a real,
+// live PR -- exactly the gap a maintainer confirmed live ("has a
+// pending submission with 1/2 approvals... contributor site only shows
+// one approved submission"). Kept separate from `uploads` rather than
+// merged into it, so a server-fetched record never accidentally gets
+// persisted back to localStorage as if it were a local draft.
+let remoteUploads = [];
 
 function loadUploads() {
   try {
@@ -250,12 +260,18 @@ const existingSession = window.BlaydeAuth ? BlaydeAuth.getSession() : null;
 if (existingSession) {
   signedIn = true;
   currentUsername = existingSession.username;
+  // Fire-and-forget -- renderUploads() below already shows whatever
+  // this device knows locally immediately; this fills in anything real
+  // that only exists on GitHub once the search completes, then
+  // re-renders.
+  syncRealSubmissions();
 }
 BlaydeAuth?.renderAuthStatus(handleLoggedOut);
 
 function handleLoggedOut() {
   signedIn = false;
   currentUsername = null;
+  remoteUploads = []; // scoped to whoever was signed in -- stale otherwise if a different account signs in next
   if (!hasProcedureContext) document.getElementById("landingSignIn").style.display = "block";
   renderUploads();
 }
@@ -296,6 +312,7 @@ async function performSignIn() {
     currentUsername = session.username;
     BlaydeAuth.renderAuthStatus(handleLoggedOut);
     log(`Signed in with GitHub as @${currentUsername}.`);
+    syncRealSubmissions();
     return true;
   } catch (err) {
     log(`Sign-in failed: ${err.message}`);
@@ -1052,6 +1069,91 @@ function outcomeFor(upload) {
   return null;
 }
 
+// ---- real GitHub sync for "My Reviewables" -- finds every open OR
+// closed PR the signed-in user has actually submitted across
+// BlaydeManual's public vehicle repos, regardless of which device
+// submitted it. Two GitHub Search API queries, since a photo PR's real
+// author differs by path:
+//  - Private (fork-based): the contributor's own account opens the PR
+//    directly, so `author:<login>` finds it.
+//  - Public (direct-contribute): the GitHub App's bot identity opens
+//    the PR, never the contributor -- but handleDirectContribute's own
+//    PR body always includes the literal phrase "Submitted by
+//    @<login>", which IS full-text searchable.
+// Both are real, cheap Search API calls (no per-repo enumeration
+// needed) against public repos, so this works with the contributor's
+// own basic OAuth token -- no App/installation credential required.
+async function syncRealSubmissions() {
+  if (!signedIn || !currentUsername) return;
+  const token = BlaydeAuth.getSession()?.token;
+  if (!token) return;
+  try {
+    const [privateResults, publicResults] = await Promise.all([
+      githubApi(`/search/issues?q=${encodeURIComponent(`type:pr org:BlaydeManual author:${currentUsername}`)}`, token),
+      githubApi(`/search/issues?q=${encodeURIComponent(`type:pr org:BlaydeManual "Submitted by @${currentUsername} via the Contributor Portal's Public path"`)}`, token),
+    ]);
+    const found = [
+      ...(privateResults.items || []).map((pr) => ({ pr, isPrivate: true })),
+      ...(publicResults.items || []).map((pr) => ({ pr, isPrivate: false })),
+    ];
+    const built = await Promise.all(found.map(({ pr, isPrivate }) => buildRemoteUpload(pr, isPrivate)));
+    remoteUploads = built.filter(Boolean);
+  } catch (e) {
+    log(`Couldn't check GitHub for your existing submissions: ${e.message}`);
+  }
+  renderUploads();
+}
+
+// repository_url looks like https://api.github.com/repos/OWNER/REPO.
+async function buildRemoteUpload(pr, isPrivate) {
+  try {
+    const token = BlaydeAuth.getSession()?.token;
+    const m = /^https:\/\/api\.github\.com\/repos\/([^/]+)\/([^/]+)$/.exec(pr.repository_url);
+    if (!m) return null;
+    const [, owner, repo] = m;
+    const repoUrlReal = `https://github.com/${owner}/${repo}`;
+    const files = await githubApi(`/repos/${owner}/${repo}/pulls/${pr.number}/files`, token);
+    const photoFile = files.find((f) => f.status === "added" && /^[^/]+\/images\//.test(f.filename));
+    if (!photoFile) return null; // not a photo PR (or the photo path doesn't match the known convention) -- skip rather than show a broken row
+    const pathMatch = /^([^/]+)\/images\/(.+)$/.exec(photoFile.filename);
+    const editionId = pathMatch[1];
+    const { procedureId } = parsePhotoFilename(pathMatch[2]);
+
+    let page = null, sectionHeading = procedureId;
+    try {
+      const { manifest } = await fetchManifest(repoUrlReal, editionId);
+      const entry = (manifest.entries || []).find((e) => e.procedure_id === procedureId);
+      if (entry) { page = entry.page; sectionHeading = entry.section_heading || procedureId; }
+    } catch (e) { /* manifest unreachable -- still show the row with just the procedure id */ }
+
+    // pr.pull_request.merged_at only appears on a PR that's actually
+    // merged, distinct from a real state:closed rejection -- reuses the
+    // exact status vocabulary (and CSS) local uploads already have,
+    // rather than inventing a fourth state just for remote ones.
+    const status = pr.state === "open" ? "submitted" : pr.pull_request?.merged_at ? "accepted" : "rejected";
+
+    return {
+      id: `remote:${owner}/${repo}#${pr.number}`,
+      remote: true,
+      status,
+      repoUrl: repoUrlReal,
+      vehicleSlug: repo,
+      editionId,
+      page,
+      procedureId,
+      sectionHeading,
+      // A plain https URL works fine as an <img src> -- doesn't need to
+      // be a data: URI the way a locally-held draft's photo does.
+      photoDataUrl: photoFile.raw_url,
+      prNumber: pr.number,
+      prUrl: pr.html_url,
+      forkOwner: isPrivate ? currentUsername : undefined,
+    };
+  } catch (e) {
+    return null; // one bad PR shouldn't hide every other real submission
+  }
+}
+
 // ---- My uploads -- grouped by vehicle (collapsible, since this list
 // grows across every procedure/vehicle someone's ever contributed to,
 // not just the one the QR pointed at this time), sorted by page within
@@ -1131,6 +1233,14 @@ function renderUploadGroup(uploadList, container, maintainRowShown) {
             </div>
           </div>
           <div class="upload-actions">
+            ${u.remote ? (
+              // Fetched fresh from GitHub, not this device's own draft
+              // data -- there's no local crop/bbox state to open the
+              // compare viewer against, and nothing local to delete or
+              // open a PR for (it's already open). GitHub itself is the
+              // one real source of truth here.
+              `<a class="secondary" href="${u.prUrl}" target="_blank" rel="noopener" style="display:inline-block; padding:6px 12px; text-decoration:none;">View on GitHub</a>`
+            ) : `
             <button class="secondary" data-view="${u.id}">View</button>
             ${u.status === "draft" ? `<button data-submit="${u.id}">Submit</button>` : ""}
             ${u.status === "draft" ? `<button class="secondary" data-delete="${u.id}">Delete</button>` : ""}
@@ -1140,6 +1250,7 @@ function renderUploadGroup(uploadList, container, maintainRowShown) {
                 ? `<span class="sub" style="margin:0 0 0 6px; color:var(--mint);">Removal requested</span>`
                 : `<button class="secondary" data-remove="${u.id}">Request removal</button>`
             ) : ""}
+            `}
           </div>
         `;
         details.appendChild(row);
@@ -1188,13 +1299,21 @@ function renderUploads() {
   // BEFORE actually signing in reads as broken, since the gate just
   // told you sign-in was required to get here. Once signed in, both
   // paths behave the same.
+  // Remote entries are dropped if a local record already covers the
+  // exact same PR (same repo + number) -- this device already knows
+  // about it in full, no need to show a second, thinner row for it.
+  const allUploads = [
+    ...uploads,
+    ...remoteUploads.filter((r) => !uploads.some((u) => u.prNumber === r.prNumber && u.repoUrl === r.repoUrl)),
+  ];
+
   const canShow = signedIn || (hasProcedureContext && uploads.length > 0);
   section.style.display = canShow ? "block" : "none";
-  empty.style.display = uploads.length ? "none" : "block";
+  empty.style.display = allUploads.length ? "none" : "block";
   list.innerHTML = "";
 
   const byBucket = { public: [], private: [], draft: [] };
-  uploads.forEach((u) => byBucket[visibilityBucketFor(u)].push(u));
+  allUploads.forEach((u) => byBucket[visibilityBucketFor(u)].push(u));
 
   // Local, not module-level -- renderUploads() runs once at load time
   // (see the bottom of this file) before a top-level const declared
