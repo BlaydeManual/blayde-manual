@@ -21,6 +21,13 @@
   :root {
     --red: #c8102e; --black: #0c0d0f; --black-2: #16181c;
     --steel: #8a8f98; --steel-dark: #666c76; --text: #e8e8ea;
+    /* --mint was referenced by #annoAttribution with no definition
+       anywhere -- an undefined custom property with no fallback
+       resolves to the property's initial value (effectively black
+       text on this dark theme), so that line has been rendering
+       unreadable this whole time. Defining it for real here, and
+       adding --amber alongside it for the review-status badges below. */
+    --mint: #3ecf8e; --amber: #d9a441;
     /* Soft dark halo behind red text on a dark background -- see
        web/index.html for the full reasoning (real optical effect, not
        just style). */
@@ -229,6 +236,19 @@
   .pr-title { font-size: 0.88rem; }
   .pr-meta { color: var(--steel); font-size: 0.75rem; margin-top: 2px; }
   .pr-row button { font-size: 0.78rem; padding: 6px 12px; margin-top: 0; }
+  /* Review-status badge, one per row -- four states, colored so the
+     ones that actually need YOUR action (not just "someone's action")
+     stand out from the ones that don't. See renderPRList's
+     prStatusBadge for what maps to which. */
+  .pr-status-badge {
+    display: inline-block; font-size: 0.72rem; font-weight: 700; padding: 3px 9px;
+    border-radius: 999px; margin-top: 4px; white-space: nowrap;
+  }
+  .pr-status-badge.status-ready { background: rgba(62,207,142,0.15); color: var(--mint); border: 1px solid var(--mint); }
+  .pr-status-badge.status-changes { background: rgba(217,164,65,0.15); color: var(--amber); border: 1px solid var(--amber); }
+  .pr-status-badge.status-needsYou { background: rgba(200,16,46,0.15); color: var(--red); border: 1px solid var(--red); }
+  .pr-status-badge.status-waiting { background: rgba(138,143,152,0.12); color: var(--steel); border: 1px solid var(--steel-dark); }
+  .pr-status-badge.status-loading { background: rgba(138,143,152,0.08); color: var(--steel); border: 1px solid var(--steel-dark); }
   #reviewArea, #orgReviewArea { display: none; }
   #reviewArea.open, #orgReviewArea.open { display: block; }
   /* ---- two view modes, direct spec: a big zoomed compare/annotate
