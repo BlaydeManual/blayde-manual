@@ -27,6 +27,10 @@
     --red-halo: 0 0 3px rgba(0,0,0,0.9), 0 0 1px rgba(0,0,0,0.9);
   }
   * { box-sizing: border-box; }
+  /* Same accessibility pass as maintainer.html -- see that file's
+     comment for the full reasoning (16px accessible floor, spacing
+     here is all px so this only affects text). */
+  html { font-size: 17px; }
   body {
     background: var(--black); color: var(--text); margin: 0; padding: 32px 24px;
     font-family: -apple-system, "Segoe UI", Roboto, sans-serif; line-height: 1.5;
@@ -34,7 +38,7 @@
   main { max-width: 640px; margin: 0 auto; }
   .top-nav { display: flex; justify-content: flex-end; align-items: center; gap: 10px; margin-bottom: 14px; }
   .pill-link {
-    font-size: 0.78rem; font-weight: 700; text-decoration: none;
+    font-size: 0.88rem; font-weight: 700; text-decoration: none;
     padding: 5px 14px; border-radius: 999px; letter-spacing: 0.1px;
   }
   .pill-link.pill-home {
@@ -42,32 +46,32 @@
   }
   .pill-link.pill-home:hover { border-color: var(--steel); }
   #authStatus {
-    display: none; align-items: center; gap: 8px; font-size: 0.78rem; color: var(--steel);
+    display: none; align-items: center; gap: 8px; font-size: 0.88rem; color: var(--steel);
   }
   #authStatus .auth-username { color: var(--text); font-weight: 700; }
   #authStatus a { color: var(--steel); text-decoration: underline; }
   #authStatus a:hover { color: var(--text); }
-  h1 { font-size: 1.3rem; margin: 0 0 4px; }
+  h1 { font-size: 1.4rem; margin: 0 0 4px; }
   h1 span { color: var(--red); text-shadow: var(--red-halo); }
-  .sub { color: var(--steel); font-size: 0.85rem; margin: 0 0 20px; }
+  .sub { color: var(--steel); font-size: 0.95rem; margin: 0 0 20px; }
   .card {
     background: var(--black-2); border: 1px solid var(--steel-dark);
     border-left: 3px solid var(--red); border-radius: 8px;
     padding: 18px 22px; margin-bottom: 14px;
   }
-  .card h2 { font-size: 0.95rem; margin: 0 0 8px; }
-  label { display: block; font-size: 0.82rem; color: var(--steel); margin: 10px 0 5px; }
-  input[type=file] { color: var(--text); font-size: 0.82rem; }
+  .card h2 { font-size: 1.05rem; margin: 0 0 8px; }
+  label { display: block; font-size: 0.92rem; color: var(--steel); margin: 10px 0 5px; }
+  input[type=file] { color: var(--text); font-size: 0.92rem; }
   button {
     background: var(--red); color: #fff; border: none; padding: 9px 18px;
-    font-size: 0.85rem; font-weight: 700; border-radius: 6px; cursor: pointer;
+    font-size: 0.95rem; font-weight: 700; border-radius: 6px; cursor: pointer;
     margin-top: 12px; margin-right: 8px;
   }
   button.secondary { background: var(--black-3); color: var(--steel); border: 1px solid var(--steel-dark); }
   button:disabled { background: var(--steel-dark); opacity: 0.6; cursor: default; }
 
   #signInPrompt { display: none; background: #000; border: 1px solid var(--steel-dark); border-radius: 6px; padding: 14px; margin-top: 12px; }
-  #signInPrompt p { margin: 0 0 10px; font-size: 0.82rem; color: var(--steel); }
+  #signInPrompt p { margin: 0 0 10px; font-size: 0.92rem; color: var(--steel); }
 
   /* Arriving with no specific procedure (e.g. the landing page's
      "Contributors" pill, not an in-PDF QR code) has nothing to show a
@@ -116,7 +120,7 @@
      Maintainer Portal's vehicle grouping -- also the <details> toggle,
      since this list can span every vehicle someone's ever contributed to. */
   .vehicle-bar {
-    font-size: 1.05rem; font-weight: 700; color: #16181c; background: #c8ccd1;
+    font-size: 1.15rem; font-weight: 700; color: #16181c; background: #c8ccd1;
     margin: 0 -22px 10px; padding: 9px 22px; cursor: pointer; list-style: none;
   }
   .vehicle-bar::-webkit-details-marker { display: none; }
@@ -126,35 +130,35 @@
      comment. A vehicle repo can hold more than one edition now. */
   /* Full-bleed too, same as .vehicle-bar -- one shade darker so the two
      tiers read as nested, not identical. */
-  .edition-bar { font-size: 0.8rem; font-weight: 700; color: #16181c; background: #aeb3ba; margin: 10px -22px 6px; padding: 6px 22px; }
+  .edition-bar { font-size: 0.9rem; font-weight: 700; color: #16181c; background: #aeb3ba; margin: 10px -22px 6px; padding: 6px 22px; }
   .upload-row {
     display: flex; justify-content: space-between; align-items: center;
     padding: 10px 0; border-bottom: 1px solid var(--steel-dark); gap: 10px;
   }
   .upload-row:last-child { border-bottom: none; }
-  .upload-title { font-size: 0.86rem; }
-  .upload-meta { color: var(--steel); font-size: 0.74rem; margin-top: 2px; }
-  .upload-status { font-size: 0.68rem; font-weight: 700; padding: 2px 7px; border-radius: 4px; margin-left: 6px; }
+  .upload-title { font-size: 0.96rem; }
+  .upload-meta { color: var(--steel); font-size: 0.84rem; margin-top: 2px; }
+  .upload-status { font-size: 0.78rem; font-weight: 700; padding: 2px 7px; border-radius: 4px; margin-left: 6px; }
   .upload-status.draft { background: rgba(138,143,152,0.15); color: var(--steel); }
   .upload-status.forked { background: rgba(255,204,102,0.15); color: #ffcc66; }
   .upload-status.submitted { background: rgba(159,225,203,0.12); color: var(--mint); }
   .upload-status.accepted { background: rgba(159,225,203,0.18); color: var(--mint); }
   .upload-status.rejected { background: rgba(200,16,46,0.14); color: #ff6b6b; }
-  .upload-note { font-size: 0.74rem; color: var(--steel); font-style: italic; margin-top: 3px; }
-  .upload-actions button { font-size: 0.76rem; padding: 6px 12px; margin: 0 0 0 6px; }
+  .upload-note { font-size: 0.84rem; color: var(--steel); font-style: italic; margin-top: 3px; }
+  .upload-actions button { font-size: 0.86rem; padding: 6px 12px; margin: 0 0 0 6px; }
   .upload-thumb { width: 50px; height: 38px; object-fit: cover; border-radius: 4px; flex-shrink: 0; }
   .maintain-request-row { margin-top: 10px; padding-top: 10px; border-top: 1px solid var(--steel-dark); }
-  .maintain-request-row button { font-size: 0.78rem; padding: 6px 12px; margin: 0; }
+  .maintain-request-row button { font-size: 0.88rem; padding: 6px 12px; margin: 0; }
   .upload-left { display: flex; align-items: center; gap: 10px; }
 
   .compare-area { display: none; margin-top: 14px; border-top: 1px solid var(--steel-dark); padding-top: 14px; }
   .compare-grid { display: flex; gap: 12px; margin-top: 10px; }
   .compare-col { flex: 1; }
-  .compare-col h3 { font-size: 0.75rem; color: var(--steel); margin: 0 0 6px; font-weight: 700; }
+  .compare-col h3 { font-size: 0.85rem; color: var(--steel); margin: 0 0 6px; font-weight: 700; }
   .compare-col img { width: 100%; border-radius: 6px; border: 1px solid var(--steel-dark); display: block; }
 
   #log {
-    font-family: ui-monospace, monospace; font-size: 0.76rem; color: var(--mint);
+    font-family: ui-monospace, monospace; font-size: 0.86rem; color: var(--mint);
     white-space: pre-wrap; margin-top: 10px;
   }
 
@@ -165,14 +169,14 @@
   #toast {
     position: fixed; top: 20px; left: 50%; z-index: 1000;
     display: flex; align-items: center; gap: 10px;
-    background: var(--mint); color: #06231a; font-weight: 700; font-size: 0.92rem;
+    background: var(--mint); color: #06231a; font-weight: 700; font-size: 1.02rem;
     padding: 14px 22px; border-radius: 10px;
     box-shadow: 0 10px 30px rgba(0,0,0,0.5), 0 0 0 1px rgba(6,35,26,0.15);
     pointer-events: none; opacity: 0;
     transform: translate(-50%, -16px) scale(0.94);
   }
   #toast.show { animation: toast-pop 3.6s ease forwards; }
-  #toast .toast-icon { font-size: 1.15rem; line-height: 1; }
+  #toast .toast-icon { font-size: 1.25rem; line-height: 1; }
   @keyframes toast-pop {
     0%   { opacity: 0; transform: translate(-50%, -16px) scale(0.9); }
     12%  { opacity: 1; transform: translate(-50%, 0) scale(1.04); }
@@ -233,11 +237,11 @@
 
       <img id="previewThumb" class="preview-thumb" alt="preview">
       <div id="consentRow" style="display:none; margin:10px 0;">
-        <label style="display:flex; align-items:flex-start; gap:8px; font-size:0.82rem; color:var(--steel); margin:6px 0;">
+        <label style="display:flex; align-items:flex-start; gap:8px; font-size: 0.92rem; color:var(--steel); margin:6px 0;">
           <input type="checkbox" id="consentOwnPhoto" style="margin-top:2px;">
           <span>This is my own photo. It was not sourced from a forum post, someone else's build thread, or the original manual. I have complete rights over this submission.</span>
         </label>
-        <label style="display:flex; align-items:flex-start; gap:8px; font-size:0.82rem; color:var(--steel); margin:6px 0;">
+        <label style="display:flex; align-items:flex-start; gap:8px; font-size: 0.92rem; color:var(--steel); margin:6px 0;">
           <input type="checkbox" id="consentLicense" style="margin-top:2px;">
           <span>I license this photo under <a href="https://creativecommons.org/licenses/by/4.0/" target="_blank" rel="noopener" style="color:var(--mint);"><strong>CC-BY 4.0</strong></a>. Anyone may use this photo, with attribution to me.</span>
         </label>
@@ -262,7 +266,7 @@
     </div>
 
     <div class="compare-area" id="compareArea">
-      <h3 style="font-size:0.85rem; margin:0 0 4px;">Viewing: <span id="compareTitle"></span></h3>
+      <h3 style="font-size: 0.95rem; margin:0 0 4px;">Viewing: <span id="compareTitle"></span></h3>
       <p class="sub" style="margin:0 0 6px;">This repo never stores the manual's own pages -- pick your own copy to see the exact spot you're proposing a photo for.</p>
       <p class="sub" style="margin:0 0 10px; color:var(--mint);">Don't worry about getting the framing exact -- the maintainer will have an opportunity to position and resize this upon approval.</p>
       <input type="file" id="comparePdfPicker" accept="application/pdf">
