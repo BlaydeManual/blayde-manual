@@ -251,7 +251,10 @@
   .compare-wrap {
     position: relative; max-width: 100%; transform-origin: 0 0;
   }
-  #viewModeRow { display: none; gap: 10px; margin: 4px 0 14px; }
+  /* Show-original on the left, the full-page/back-to-annotate action
+     on the right -- direct spec: keep them on one row, pushed to
+     opposite ends, not stacked. */
+  #viewModeRow { display: none; align-items: center; justify-content: space-between; gap: 10px; margin: 4px 0 14px; }
   #pageCanvas { display: block; max-width: 100%; height: auto; }
   #targetBox {
     position: absolute; border: 2px dashed var(--red);
@@ -290,7 +293,7 @@
      -- a deliberate v1 simplification, since a maintainer already sizes
      the box to closely match the photo as part of the existing review
      step. ---- */
-  #annotationLayer { position: absolute; inset: 0; width: 100%; height: 100%; }
+  #annotationLayer { position: absolute; inset: 0; width: 100%; height: 100%; transition: opacity 0.15s; }
   /* White fill + red border -- the handle convention Figma/Sketch/
      Slides all use, confirmed by research. Cursor lives on the
      wrapping <g> (see annoHandle in review-panel.js), not here, since
@@ -305,6 +308,9 @@
   #annoToolbar .anno-sep { width: 1px; align-self: stretch; background: var(--steel-dark); margin: 0 4px; }
   #annoNextNumberRow { display: none; align-items: center; gap: 6px; font-size: 0.8rem; color: var(--steel); }
   #annoNextNumberRow input { width: 50px; padding: 4px 6px; background: #000; color: var(--text); border: 1px solid var(--steel-dark); border-radius: 4px; font-size: 0.82rem; }
+  #annoTextFrameRow { display: none; align-items: center; gap: 6px; font-size: 0.8rem; color: var(--steel); }
+  #annoTextFrameRow button { margin: 0; padding: 5px 10px; font-size: 0.78rem; background: var(--black-2); color: var(--text); border: 1px solid var(--steel-dark); }
+  #annoTextFrameRow button.active { background: var(--red); color: #fff; border-color: var(--red); }
   #annoTextEditRow { display: none; align-items: center; gap: 6px; margin: 8px 0; }
   #annoTextEditRow input { padding: 5px 8px; background: #000; color: var(--text); border: 1px solid var(--steel-dark); border-radius: 4px; font-size: 0.85rem; width: 70px; }
   #annoHelp {
@@ -380,11 +386,11 @@
           </div>
         </div>
         <div id="viewModeRow">
+          <button type="button" class="secondary" id="toggleOriginalBtn" style="display:none;" title="See the original manual page through the box, to place annotations against what was really there">Show original page</button>
           <button type="button" class="secondary" id="viewFullPageBtn">View in full page (adjust position)</button>
           <button type="button" class="secondary" id="viewZoomedBtn" style="display:none;">Back to annotate</button>
         </div>
         <div class="fit-readout" id="fitReadout"></div>
-        <button type="button" class="secondary" id="toggleOriginalBtn" style="display:none;" title="See the original manual page through the box, to place annotations against what was really there">Show original page</button>
 
         <div id="annoToolbar">
           <button type="button" data-anno-tool="arrow">&#8599; Arrow</button>
@@ -393,6 +399,10 @@
           <button type="button" data-anno-tool="number">&#9312; Number</button>
           <button type="button" data-anno-tool="text">&#9998; Text</button>
           <span id="annoNextNumberRow">Next number: <input type="number" id="annoNextNumberInput" min="1" value="1"></span>
+          <span id="annoTextFrameRow">Label shape:
+            <button type="button" data-anno-frame="circle" class="active">&#9675; Circle</button>
+            <button type="button" data-anno-frame="rect">&#9645; Rectangle</button>
+          </span>
         </div>
         <div id="annoAttribution" style="display:none; color:var(--mint); margin:4px 0;"></div>
         <div id="annoHelp"></div>

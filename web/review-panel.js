@@ -361,6 +361,7 @@ async function openPR(number) {
   // hidden, or the button reading the wrong label.
   document.getElementById("submittedPhotoImg").style.opacity = "1";
   document.getElementById("targetBoxBacking").style.opacity = "1";
+  document.getElementById("annotationLayer").style.opacity = "1";
   document.getElementById("toggleOriginalBtn").style.display = "none";
   document.getElementById("toggleOriginalBtn").textContent = "Show original page";
   document.getElementById("toggleOriginalBtn").classList.remove("active");
@@ -374,6 +375,7 @@ async function openPR(number) {
   annoHistory = []; // a new PR's undo history starts clean -- never carries a previous photo's edits
   document.querySelectorAll("#annoToolbar [data-anno-tool]").forEach((b) => b.classList.remove("active"));
   document.getElementById("annoNextNumberRow").style.display = "none";
+  document.getElementById("annoTextFrameRow").style.display = "none";
   document.getElementById("annoTextEditRow").style.display = "none";
   annoNextNumber = (annotations.filter((a) => a.type === "number").reduce((max, a) => Math.max(max, a.value || 0), 0)) + 1;
   document.getElementById("annoNextNumberInput").value = annoNextNumber;
@@ -483,11 +485,13 @@ function setReviewViewMode(mode) {
     // editor left over from the zoomed view).
     document.getElementById("submittedPhotoImg").style.opacity = "1";
     document.getElementById("targetBoxBacking").style.opacity = "1";
+    document.getElementById("annotationLayer").style.opacity = "1";
     document.getElementById("toggleOriginalBtn").textContent = "Show original page";
     document.getElementById("toggleOriginalBtn").classList.remove("active");
     document.querySelectorAll("#annoToolbar [data-anno-tool]").forEach((b) => b.classList.remove("active"));
     annoTool = null;
     document.getElementById("annoNextNumberRow").style.display = "none";
+    document.getElementById("annoTextFrameRow").style.display = "none";
     document.getElementById("annoTextEditRow").style.display = "none";
     annoEditingTextId = null;
     renderAnnotations();
@@ -534,12 +538,16 @@ function applyZoom() {
 document.getElementById("toggleOriginalBtn").addEventListener("click", () => {
   const img = document.getElementById("submittedPhotoImg");
   const backing = document.getElementById("targetBoxBacking");
+  const annoLayer = document.getElementById("annotationLayer");
   const btn = document.getElementById("toggleOriginalBtn");
   const showingOriginal = img.style.opacity === "0";
-  // The white backing fades with the photo, not independently -- it
-  // exists to match patcher.js's own solid backing behind the real
-  // photo, not to block the comparison this button is for.
-  img.style.opacity = backing.style.opacity = showingOriginal ? "1" : "0";
+  // The white backing AND the annotation layer fade with the photo,
+  // not independently -- direct feedback: annotations drawn on top of
+  // the new photo obscured the original page underneath, defeating
+  // the point of comparing against it. The backing exists to match
+  // patcher.js's own solid backing behind the real photo, not to block
+  // this comparison either.
+  img.style.opacity = backing.style.opacity = annoLayer.style.opacity = showingOriginal ? "1" : "0";
   btn.textContent = showingOriginal ? "Show original page" : "Show new photo";
   btn.classList.toggle("active", !showingOriginal);
 });
@@ -640,7 +648,13 @@ let annoLastInteractedId = null;
 let annoHistory = [];
 const ANNO_HISTORY_MAX = 20;
 const ANNO_MAX_LEN = 30; // % of the box's own size -- no single shape needs to be bigger than this to be useful
+const ANNO_TEXT_MAXLEN = 3;
 const ANNO_NS = "http://www.w3.org/2000/svg";
+// Which backing shape a freshly-placed Text label gets -- circle by
+// default (direct request: match Number's look, not the old
+// rectangle), rectangle on demand via the toolbar toggle. Session-
+// level, not per-PR -- a maintainer's preference here, not review data.
+let annoTextFrame = "circle";
 const ANNO_TOOL_META = {
   arrow: { icon: "↗", word: "Arrow" },
   line: { icon: "―", word: "Line" },
@@ -767,7 +781,20 @@ function renderAnnotations() {
           "font-weight": "700", fill: "#fff", stroke: "#000", "stroke-width": fontSize * 0.12, "paint-order": "stroke fill", "pointer-events": "none",
         })).textContent = a.value;
       }
-    } else if (a.type === "text") {
+    } else if (a.type === "text" && a.frame === "circle") {
+      // Same treatment as Number -- aspect-corrected ellipse so it
+      // reads as a real circle regardless of the box's own shape,
+      // full-weight ring since (unlike Number) these don't tend to
+      // stack a dozen to a photo.
+      const ry = a.r * aspect;
+      g.appendChild(annoEl("ellipse", { cx: a.cx, cy: a.cy, rx: a.r, ry, fill: "transparent", "pointer-events": "all" }));
+      g.appendChild(annoHaloed("ellipse", { cx: a.cx, cy: a.cy, rx: a.r, ry, fill: "none" }));
+      const fontSize = Math.max(2, a.r * 1.1);
+      g.appendChild(annoEl("text", {
+        x: a.cx, y: a.cy, "font-size": fontSize, "text-anchor": "middle", "dominant-baseline": "central",
+        "font-weight": "700", fill: "#fff", stroke: "#000", "stroke-width": fontSize * 0.12, "paint-order": "stroke fill", "pointer-events": "none",
+      })).textContent = a.content || "";
+    } else if (a.type === "text") { // frame === "rect"
       g.appendChild(annoEl("rect", { x: a.x, y: a.y, width: a.w, height: a.h, fill: "transparent", "pointer-events": "all" }));
       g.appendChild(annoHaloed("rect", { x: a.x, y: a.y, width: a.w, height: a.h, fill: "none", rx: 0.6 }));
       const fontSize = Math.max(2.5, a.h * 0.6);
@@ -789,7 +816,19 @@ function renderAnnotations() {
         svg.appendChild(annoHandle(a.x1, a.y1, { "data-anno-id": a.id, "data-anno-handle": "p1" }, "grab"));
       } else if (a.type === "circle" || a.type === "number") {
         svg.appendChild(annoHandle(a.cx + a.r, a.cy, { "data-anno-id": a.id, "data-anno-handle": "radius" }, "ew-resize"));
-      } else if (a.type === "text") {
+      } else if (a.type === "text" && a.frame === "circle") {
+        svg.appendChild(annoHandle(a.cx + a.r, a.cy, { "data-anno-id": a.id, "data-anno-handle": "radius" }, "ew-resize"));
+        const pencilCx = a.cx, pencilCy = a.cy - a.r * aspect - 3;
+        const pencil = annoEl("g", { "data-anno-id": a.id, "data-anno-handle": "edit", style: "cursor:pointer;" });
+        pencil.appendChild(annoEl("circle", { cx: pencilCx, cy: pencilCy, r: 3.2, fill: "transparent", "pointer-events": "all" }));
+        const pencilIcon = annoEl("text", {
+          x: pencilCx, y: pencilCy, "font-size": 4, "text-anchor": "middle", "dominant-baseline": "central",
+          fill: "#fff", stroke: "#000", "stroke-width": 0.5, "paint-order": "stroke fill",
+        });
+        pencilIcon.textContent = "✎";
+        pencil.appendChild(pencilIcon);
+        svg.appendChild(pencil);
+      } else if (a.type === "text") { // frame === "rect"
         // Same corner-resize cursor already used for the crop-box/bbox
         // corner handles elsewhere on this page -- one consistent
         // convention for "this drags to resize," not a different one
@@ -824,7 +863,12 @@ function annoNewShapeFor(tool, x, y) {
   // "looks like a dog[dot] on first press." A number needs to be
   // legible the instant it's placed, drag or no drag.
   if (tool === "number") return { id, type: "number", cx: x, cy: y, r: annoMinNumberRadius(annoNextNumber), value: annoNextNumber, annotatedBy };
-  if (tool === "text") return { id, type: "text", x, y, w: Math.min(8, ANNO_MAX_LEN), h: Math.min(6, ANNO_MAX_LEN), content: "", annotatedBy };
+  if (tool === "text") {
+    if (annoTextFrame === "circle") {
+      return { id, type: "text", frame: "circle", cx: x, cy: y, r: annoMinTextRadius(""), content: "", annotatedBy };
+    }
+    return { id, type: "text", frame: "rect", x, y, w: Math.min(8, ANNO_MAX_LEN), h: Math.min(6, ANNO_MAX_LEN), content: "", annotatedBy };
+  }
   return null;
 }
 
@@ -934,14 +978,16 @@ function annoPointerMove(e) {
         shape.x1 = clamped.x1; shape.y1 = clamped.y1;
       }
     }
-  } else if (shape.type === "circle" || shape.type === "number") {
+  } else if (shape.type === "circle" || shape.type === "number" || (shape.type === "text" && shape.frame === "circle")) {
     if (annoDrag.mode === "move") {
       shape.cx = annoClamp01(o.cx + dx); shape.cy = annoClamp01(o.cy + dy);
     } else {
       const r = Math.min(ANNO_MAX_LEN / 2, Math.hypot(p.x - shape.cx, p.y - shape.cy));
-      shape.r = shape.type === "number" ? Math.max(annoMinNumberRadius(shape.value), r) : Math.max(0.1, r);
+      shape.r = shape.type === "number" ? Math.max(annoMinNumberRadius(shape.value), r)
+        : shape.type === "text" ? Math.max(annoMinTextRadius(shape.content), r)
+        : Math.max(0.1, r);
     }
-  } else if (shape.type === "text") {
+  } else if (shape.type === "text") { // frame === "rect"
     if (annoDrag.mode === "move") {
       shape.x = annoClamp01(o.x + dx); shape.y = annoClamp01(o.y + dy);
     } else {
@@ -956,23 +1002,40 @@ function annoPointerMove(e) {
 // guess -- measures the digit(s) at the size renderAnnotations will
 // actually draw them at, so the minimum stays correct regardless of
 // how many digits `value` ends up being (1-12, per the real use case).
-function annoMinNumberRadius(value) {
+// Shared by Number and circle-frame Text -- both render as a haloed
+// ellipse with centered text, so both need their minimum radius
+// measured off the actual string they'll show, at the same font-size
+// they'll actually render at (see renderAnnotations' fontSize = r*1.1
+// below) -- an old, smaller probe font-size undersold the real
+// legible size. Direct report: "much bigger... looks like a dot on
+// first press."
+function annoMinRadiusFor(str) {
   const probe = document.createElementNS(ANNO_NS, "text");
-  // Probed at the same font-size a freshly-placed number actually
-  // renders at (see renderAnnotations' fontSize = r*1.1 below) -- the
-  // old probe used a much smaller font-size than what ever gets drawn,
-  // so its "minimum" undersold the real legible size. Direct report:
-  // "much bigger... looks like a dot on first press."
   probe.setAttribute("font-size", 7);
   probe.setAttribute("font-weight", "700");
   probe.setAttribute("visibility", "hidden");
-  probe.textContent = String(value ?? 1);
+  probe.textContent = str;
   document.getElementById("annotationLayer").appendChild(probe);
   let width = 5;
   try { width = probe.getBBox().width || width; } catch (e) { /* not yet in a laid-out document -- fall back */ }
   probe.remove();
-  // Generous padding around the digit(s), not a tight fit around them.
+  // Generous padding around the content, not a tight fit around it.
   return Math.max(5, width * 0.9 + 2);
+}
+
+function annoMinNumberRadius(value) {
+  return annoMinRadiusFor(String(value ?? 1));
+}
+
+// Empty content (a freshly-placed label, before typing) probes the
+// same "1" Number's own default uses -- direct spec: Text's circle
+// should default to the SAME size as Number's, not a bigger one sized
+// for a worst-case 3-character string (measured "WWW" at ~20 units vs.
+// "1" at ~5 -- four times the radius, nowhere near "same default
+// size"). If real content ends up wider than that once typed,
+// annoSaveTextEdit grows the radius to fit rather than clipping it.
+function annoMinTextRadius(content) {
+  return annoMinRadiusFor(content && content.length ? content : "1");
 }
 
 function annoPointerUp() {
@@ -1006,7 +1069,10 @@ function annoSaveTextEdit() {
   const shape = annotations.find((a) => a.id === annoEditingTextId);
   if (shape) {
     annoSnapshot();
-    shape.content = document.getElementById("annoTextInput").value.slice(0, 3);
+    shape.content = document.getElementById("annoTextInput").value.slice(0, ANNO_TEXT_MAXLEN);
+    // A circle-frame label sized for empty content could otherwise
+    // clip its own text once real characters go in.
+    if (shape.frame === "circle") shape.r = Math.max(shape.r, annoMinTextRadius(shape.content));
     annoLastInteractedId = shape.id;
   }
   document.getElementById("annoTextEditRow").style.display = "none";
@@ -1063,6 +1129,7 @@ document.querySelectorAll("#annoToolbar [data-anno-tool]").forEach((btn) => {
     annoTool = annoTool === tool ? null : tool;
     document.querySelectorAll("#annoToolbar [data-anno-tool]").forEach((b) => b.classList.toggle("active", b.dataset.annoTool === annoTool));
     document.getElementById("annoNextNumberRow").style.display = annoTool === "number" ? "inline-flex" : "none";
+    document.getElementById("annoTextFrameRow").style.display = annoTool === "text" ? "inline-flex" : "none";
     // Real bug, caught live: switching tools (including turning Text
     // off) left the label editor sitting open with no way to close it
     // short of clicking Save. Any tool click closes it -- an
@@ -1077,6 +1144,16 @@ document.querySelectorAll("#annoToolbar [data-anno-tool]").forEach((btn) => {
 
 document.getElementById("annoNextNumberInput").addEventListener("change", (e) => {
   annoNextNumber = parseInt(e.target.value, 10) || 1;
+});
+
+// Which backing shape the NEXT Text label gets -- doesn't retroactively
+// change labels already placed, same as annoNextNumber only affecting
+// the next Number placed, not existing ones.
+document.querySelectorAll("#annoTextFrameRow [data-anno-frame]").forEach((btn) => {
+  btn.addEventListener("click", () => {
+    annoTextFrame = btn.dataset.annoFrame;
+    document.querySelectorAll("#annoTextFrameRow [data-anno-frame]").forEach((b) => b.classList.toggle("active", b.dataset.annoFrame === annoTextFrame));
+  });
 });
 
 annoRenderHelp();
