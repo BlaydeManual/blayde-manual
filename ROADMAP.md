@@ -3213,3 +3213,100 @@ Direct correction to the original flow: "I actually only want them to save in th
 Real, load-bearing finding that justified the redesign, not just a naming change: saving a draft never actually needed a GitHub identity at all -- `submitPhotoPrivate`/`submitPhotoPublic` both independently re-check their own live session at call time and throw a clear error if it's missing, so nothing downstream depended on signing in before that point. The capture screen's old sign-in gate was checked directly against real code before removing it, confirmed as pure UI friction, not a real requirement.
 
 **Backlog, flagged directly, not built:** the project owner connected this change to an older idea -- "Use completely offline with your own repo" -- meaning saved Reviewables could be exported to a local file/matrix a contributor could later re-load (a real, currently-missing function) against their own copy of a vehicle repo, entirely without ever creating a GitHub account. This redesign is a real, direct step toward that (Save for Review is already 100% local/accountless), but the actual export/load mechanism itself is not designed or built -- noted here so it isn't lost, to pick up whenever this gets prioritized.
+
+## Category expansion: design settled, Phase 1 (data foundation) shipped, UI wiring still to come (2026-08-31)
+
+**The problem this replaces:** the site has been vehicle-only from the start, but the actual vision is broader -- Garage, Marina, Hangar, Farm, Home, and Hobby, each covering physical items whose OEM manuals degrade the same way a motorcycle's does. This section is the full design, worked through end to end in one long session, before any UI code was touched.
+
+### The category tier
+
+Six categories: **Garage, Marina, Hangar, Farm, Home, Hobby** -- sits as a new tier above `vehicle_slug`, the same kind of addition `edition_id` was under it. Ordering (for tabs/lists): **Garage &rarr; Marina &rarr; Hangar &rarr; Farm &rarr; Home &rarr; Hobby** -- a narrative order (vehicle domains first, since that's the product's origin, then the two categories that represent the real departure into "manuals for anything you own"), not a usage-frequency order, since there's no real traffic data yet to rank by. Revisit once there is.
+
+**Explicitly declined: renaming Farm to "Industry" to cleanly absorb heavy equipment/heavy trucks.** A whole new category costs far more than a new type -- it needs its own CVD-safe color (see below; Hangar already has no fully clean slot left, a 7th category only makes that worse), so the bar for a new *category* should be higher than for a new *type*, and there's zero real submission volume yet to justify it. If `other` starts accumulating a real cluster of industrial/commercial-transport items with no good home in Garage or Farm, that's the actual signal to revisit -- logged here as a tracked future candidate, not built speculatively.
+
+### Category color, verified by real CVD simulation, not eyeballed
+
+Each category gets its own accent color, deliberately breaking from the site's red/black scheme on menu/utility pages (not the public-facing brand pages). Direct instruction: a "glass tray" background per category (border + tinted glass fill in that category's accent) sits *inside* the site's persistent black/red chrome, never replacing it -- the header/branding stays constant; only the functional content area beneath the active category tab picks up its color.
+
+**Never picked by eye.** Researched real accessibility guidance first: color vision deficiency (protanopia/deuteranopia -- red-green, ~8% of men; tritanopia -- blue-yellow, rarer) can make a palette that passes ordinary contrast checks still collide badly ([MDN](https://developer.mozilla.org/en-US/docs/Web/Accessibility/Guides/Understanding_WCAG/Perceivable/Use_of_color), [WebAIM](https://webaim.org/articles/contrast/)). Known bad pairs: green-blue, green-yellow, green-red, blue-purple, blue-gray ([Level Access](https://www.levelaccess.com/blog/color-blindness-accessibility-what-designers-need-to-know/)). The **Okabe-Ito** palette (orange, sky blue, bluish-green, yellow, blue, vermillion, reddish-purple) is the real research-grade CVD-safe categorical standard, validated under all three deficiency types.
+
+Wrote an actual deuteranopia/protanopia/tritanopia simulator (the Machado-Oliveira-Fernandes 2009 matrices, the same family Coblis/Chrome DevTools use) and ran every candidate color through it against the site's four *existing* status colors (mint/amber/red/steel). This immediately found two real collisions eyeballing missed: the original safety-orange Garage and olive-green Farm looked nearly identical under deuteranopia (both collapse to the same mustard-brown -- green structurally collides with red under red-green CVD, no shade avoids it), and an early Home-blue/Hobby-violet pairing was nearly indistinguishable. Literal Okabe-Ito hex codes were tried directly and **rejected** -- checked against this brand's specific status colors, they collided *worse* than a custom fit (Okabe's Sky Blue vs. this brand's Mint scored 0.098 on a 0-1 linear-RGB tritanopia distance, nearly identical), because Okabe-Ito was validated as a self-contained 8-color set, not against an arbitrary existing palette.
+
+**Final colors** -- each in an Okabe-Ito-*inspired* hue family (same families the research validates), recalibrated in saturation/lightness against this brand's real status colors:
+
+| Category | Hex | Icon (Tabler, MIT license) |
+|---|---|---|
+| Garage | `#e06b1d` | `motorbike` |
+| Marina | `#317be5` | `sailboat` |
+| Hangar | `#c953a0` | `plane` |
+| Farm | `#e2e636` | `tractor` |
+| Home | `#36e6e6` | `home-2` |
+| Hobby | `#a134c5` | `palette` |
+
+**Hangar is the one honest exception.** No hue/saturation/lightness combination that's still tastefully "a color, not a neon sign" avoids colliding with either Steel, Hobby, or Red under at least one CVD type once the other five categories and four status colors already claim their share of the wheel -- confirmed by dozens of constrained-search iterations, not a single guess. `#c953a0` has the mildest residual overlap available. Backstopped by its icon + text label, which is WCAG 1.4.1's actual point (color is never the *only* signal) -- not by a theoretically perfect hue that doesn't exist within tasteful bounds.
+
+**Icons: [Tabler Icons](https://tabler.io/icons), MIT license.** 6,100+ SVGs, free for commercial use, no visible attribution legally required (credited anyway as good practice). Chosen over hand-drawing per direct instruction -- "cutesy, widely-known and accepted" icons a user already recognizes, not bespoke art. Inlined as raw SVG paths (no external font/CDN dependency).
+
+### Manual types: one prescribed list per category, capped and researched, not guessed
+
+**The problem with the old flat `vehicle_class`:** one global list trying to describe a motorcycle, a toaster, and a tractor with equal validity never scales past Garage. Manual Type fixes it by making each category own its own list. This directly continues an already-standing decision -- this same file's "Vehicle-type scope" section already said `vehicle_class` "should be checked against an accepted list at proposal time, not accepted as free text"; Manual Type is that decision, correctly re-scoped per category.
+
+**How many types per category, and why a hard cap:** researched real UX guidance rather than guessing a number. Miller's Law (the actual "7&plusmn;2" study) is about working-memory chunks, not a navigation rule, and is frequently over-applied as dogma -- but the real UX consensus it feeds is genuine: once a flat list passes ~7 items, users lose track of the earlier ones by the time they reach the end. A concrete practitioner rule of thumb for taxonomy: no category should exceed 6 subcategories. Nielsen Norman Group deliberately refuses a hard number for filter categories/values, instead insisting "relevance to users is the ultimate prioritization criterion," curated from real usage, not predicted up front. **Synthesis applied here:** cap at 5 real types + a standing `other` per category (6 total, at the practitioner ceiling), and the *test* for whether something earns its own slot is NN/g's relevance test crossed with the "does this need a meaningfully different mosaic silhouette" question below -- not "does this thing exist."
+
+Applied directly to real, hard boundary cases raised while building this:
+- **Garage's "Truck" is scoped to light trucks/pickups only** (GVWR Class 1-2, e.g. a Nissan Frontier) -- deliberately excludes heavy/commercial trucks (Class 7-8, e.g. a Peterbilt), a different regulatory class *and* a different audience (fleet/DOT mechanics, not this project's hobbyist-DIY-owner target). A heavy truck falls to `other` for now rather than being forced in.
+- **"ATV/UTV" kept over the more taxonomically "correct" umbrella ORV** -- ORV is DMV/park-service terminology; real owners and manufacturers (Polaris, Can-Am, Honda) say "ATV"/"UTV." Recognizability beats precision.
+- **Farm's "Combine" stays its own slot** (not folded into Heavy equipment) -- it's a single, universally-recognized machine, unlike the genuinely fuzzy backhoe/forklift/excavator cluster, which *does* stay merged under `heavy-equipment` until real volume justifies a split.
+- **"Generator" appearing under both Farm and Home is fine, not a conflict** -- a farm standby generator and a home portable one are different physical products that happen to share a common noun; a type label repeating across categories isn't the same problem as one item straddling two classes.
+- **Hobby's seed list was picked against the product's actual value proposition** (replacing bad photos in an *aging* OEM manual), not generic hobby popularity: Sewing machine, Camera, Instrument, Ham radio. Modern RC vehicles and model kits usually ship with decent, often digital-first manuals already -- a weak fit for this specific problem. Vintage gear is where degraded OEM scans are actually common. (Model trains were raised directly as a plausible fit too -- deliberately *not* added speculatively; if real submissions show up, that's exactly what `other` promotion is for.)
+
+**Final lists** (shipped in `manual-types.json`, [registry#2](https://github.com/BlaydeManual/registry/pull/2)):
+
+| Category | Types |
+|---|---|
+| Garage | Motorcycle, Car, Light truck, ATV/UTV, Other |
+| Marina | Outboard boat, Inboard boat, Personal watercraft, Marine engine, Other |
+| Hangar | Fixed-wing, Rotorcraft, Avionics, Ground support, Other |
+| Farm | Tractor, Combine, Heavy equipment, Generator, Other |
+| Home | Appliance, HVAC, Power tool, Furniture, Other |
+| Hobby | Sewing machine, Camera, Instrument, Ham radio, Other |
+
+### "Other," and how something gets out of it
+
+Every category and every manual type keeps an always-valid `other` -- nothing is ever blocked waiting for a type to exist. Getting *out* of `other` is a real, designed mechanism, not hand-waved:
+
+1. A new manual type gets created (real submission volume under `other` justified it).
+2. Org-approval's queue surfaces every `registry.json` entry still tagged `other` -- a human eyeballs it, no matching algorithm. This stays a short, manageable list precisely because promotion only happens once there's already real volume behind it.
+3. Anyone (not just that item's own maintainer) can file a recategorization from the Contributor side -- same "requesting is always Contributor, reviewing is always Maintainer" rule as everything else on this site.
+4. **Real, load-bearing correction made while designing this:** a recategorization is a `registry.json` edit, not a `manifest.json` edit -- category/type describe the whole item, not one photo/procedure, so it targets the *registry* repo, not the vehicle's own repo. It becomes a real PR against `registry.json`: exactly one entry's `category`/`manual_type` changes, nothing else (not `repo_url`, not `source_pdf_sha256`, not `status` -- those would be tampering). The new value must already exist in `manual-types.json`.
+5. **Org-level quorum reviews and merges** -- the same bar as approving a new vehicle, not that item's own repo-scoped maintainers, since category is an org-wide classification, not something scoped to one vehicle's maintainer team.
+
+**Not yet built:** the actual merge-gate for this (`registry.json`-only file-allowlist + single-entry diff validation, mirroring the shape of the existing photo-PR and manifest-edit gates but for the registry repo specifically) is designed above but not implemented. Real next step once the UI wiring below exists to generate these PRs in the first place.
+
+### Naming convention: flexible shape, not a fixed pattern
+
+**The problem:** the existing convention is really `{brand}-{model}-{year}`, and "year" only means something because vehicles are versioned by model year. A Singer sewing machine or a Yaesu ham radio isn't.
+
+**The fix:** keep the *shape* consistent, make the third slot's *meaning* category-flexible:
+
+```
+{brand}-{model}[-{disambiguator}]
+```
+
+- Vehicle-shaped categories (Garage/Farm/Marina/Hangar): `disambiguator` = model year, as today (`suzuki-sv650-1999`).
+- Home/Hobby: `disambiguator` = whatever the manufacturer itself uses to distinguish real variants, when one exists (a sub-model code, e.g. `singer-15-91`, where "91" is Singer's own designation, not a year) -- or omitted entirely when brand+model is already unique (`yaesu-ft-101`).
+
+**Deliberately not schema-enforced.** The disambiguator's meaning isn't machine-validated (no way to know if "91" is a year or a part code without a human), and the model segment stays free text -- real product naming is too messy to regex against, unlike `manual_type`, which is a small, real, prescribed list. What *does* stay consistent: basic slug hygiene (lowercase, hyphen-separated, matching the pattern `edition_id` already validates against), and the existing `__alt2`/`__alt3` collision-suffix convention already used for photo filenames, reused the same way if two genuinely different items ever collide on one slug. Guidance happens via a category-aware placeholder/example in the indexer's "confirm the vehicle" step (Garage shows `suzuki-sv650-1999`, Hobby shows `yaesu-ft-101`), not a hard-rejecting schema.
+
+**Why "representative, not perfect" is the right bar, not a compromise:** the fingerprint (SHA-256 of the actual PDF) is the real identity for lookup -- the slug and display name are purely human-facing, never part of the matching logic itself. This is already true of how `patcher.js` works today (fingerprint match, or an already-patched file's embedded `repo_url`, are the two real resolution paths); naming was never load-bearing for correctness. This is also what makes a **future, not-yet-built third resolution path** viable: OCR the cover/title page of a genuinely new, unindexed scan, extract candidate brand+model text, fuzzy/substring-match it against every registry slug + display name, and surface a short "did you mean one of these already-indexed items?" list before falling through to "index this as new." That only works well because slugs and display names carry real, recognizable brand+model substrings -- exactly what this naming convention already guarantees, for free.
+
+### What's actually shipped vs. what's still designed-only
+
+**Shipped** ([registry#2](https://github.com/BlaydeManual/registry/pull/2)): `manual-types.json` as the real single source of truth; both real registry entries backfilled with `category`/`manual_type`; `vehicle_class` kept alongside (not removed) since `registry-browse.js` still reads it.
+
+**Not yet built, real next steps, roughly in dependency order:**
+1. Indexer's "confirm the vehicle" step gains Category + Manual Type dropdowns, populated from `manual-types.json`, validated before submit (the actual point where free text would otherwise leak in).
+2. `registry-browse.js` and the public main page gain the category-tab UI (hard filter there, unlike the maintainer/contributor side -- see below) -- hero graphic + header text, Browse results, and index/search all scoped to the active tab. Default "All," not a forced choice on first visit.
+3. **Maintainer/Contributor authenticated views use category as a *grouping* tier, never a forced filter** -- direct architecture decision, reasoned through explicitly: a maintainer covering a vehicle in Garage and an appliance in Home needs to see both in one scroll, not flip a global filter back and forth. Same collapsible `<details>` pattern already shipped for vehicle/edition grouping (this session's collapsible-groups work) gets a third tier on top.
+4. The `registry.json`-only recategorization merge-gate (Worker-side), per the design above.
+5. Mosaic template key changes from a flat `vehicle_class` to `category/manual_type` (`templates/garage/motorcycle.json`, `templates/home/appliance.json`) -- avoids a real collision risk (e.g. "Generator" existing in both Farm and Home needing different silhouette treatment), and gets the existing outline-only fallback for any pairing without a template yet, unchanged.
