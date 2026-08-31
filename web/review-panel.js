@@ -594,6 +594,7 @@ function annoHandle(cx, cy, extraAttrs, cursor) {
 }
 
 function renderAnnotations() {
+  annoRenderAttribution();
   const svg = document.getElementById("annotationLayer");
   svg.innerHTML = "";
   annotations.forEach((a) => {
@@ -675,15 +676,20 @@ function renderAnnotations() {
 
 function annoNewShapeFor(tool, x, y) {
   const id = `a${Date.now()}${Math.floor(Math.random() * 1000)}`;
-  if (tool === "arrow" || tool === "line") return { id, type: tool, x0: x, y0: y, x1: x, y1: y };
-  if (tool === "circle") return { id, type: "circle", cx: x, cy: y, r: 0.1 };
+  // Real attribution, not assumed -- same reasoning the photo-credit
+  // tag already applies to a contributor's own photo (patcher.js's
+  // drawCreditTab): who added a specific arrow/circle/number/label is
+  // worth knowing later, the same way whose photo it is already is.
+  const annotatedBy = BlaydeAuth.getSession()?.username || null;
+  if (tool === "arrow" || tool === "line") return { id, type: tool, x0: x, y0: y, x1: x, y1: y, annotatedBy };
+  if (tool === "circle") return { id, type: "circle", cx: x, cy: y, r: 0.1, annotatedBy };
   // Starts at its real minimum size immediately, not 0.1 -- direct
   // report: the very first rendered frame (before any drag movement
   // reaches the clamp in annoPointerMove) showed a near-invisible dot,
   // "looks like a dog[dot] on first press." A number needs to be
   // legible the instant it's placed, drag or no drag.
-  if (tool === "number") return { id, type: "number", cx: x, cy: y, r: annoMinNumberRadius(annoNextNumber), value: annoNextNumber };
-  if (tool === "text") return { id, type: "text", x, y, w: Math.min(8, ANNO_MAX_LEN), h: Math.min(6, ANNO_MAX_LEN), content: "" };
+  if (tool === "number") return { id, type: "number", cx: x, cy: y, r: annoMinNumberRadius(annoNextNumber), value: annoNextNumber, annotatedBy };
+  if (tool === "text") return { id, type: "text", x, y, w: Math.min(8, ANNO_MAX_LEN), h: Math.min(6, ANNO_MAX_LEN), content: "", annotatedBy };
   return null;
 }
 
@@ -885,6 +891,20 @@ const ANNO_TOOL_HELP = {
   text: "Click to place a short label (3 characters max), then use its pencil to edit.",
 };
 
+// Real, visible attribution -- who actually drew what's on this photo,
+// same "who did this" question the contributor's own photo credit
+// already answers. Shown whenever at least one shape carries it,
+// listing each distinct annotator once (usually one maintainer, but
+// more than one could touch the same PR over separate sessions).
+function annoRenderAttribution() {
+  const el = document.getElementById("annoAttribution");
+  if (!el) return;
+  const logins = [...new Set(annotations.map((a) => a.annotatedBy).filter(Boolean))];
+  if (!logins.length) { el.style.display = "none"; return; }
+  el.textContent = `Annotated by: ${logins.map((l) => "@" + l).join(", ")}`;
+  el.style.display = "block";
+}
+
 function annoRenderHelp() {
   const el = document.getElementById("annoHelp");
   if (!el) return;
@@ -1027,11 +1047,16 @@ document.getElementById("acceptBtn").addEventListener("click", async () => {
         // separate, not-yet-built step (patcher.js); this only commits
         // the editor's own data.
         if (annotationsChanged) entry.annotations = annotations;
+        // Real attribution in the commit history itself, not just on
+        // the shapes in manifest.json -- same "who did this" question
+        // a contributor's own photo credit already answers, applied to
+        // whoever drew the arrows/circles/labels on top of it.
+        const annotatedByNote = annotationsChanged ? ` (annotated by @${session.username})` : "";
         await githubApi(`/repos/${owner}/${repo}/contents/${currentPR.edition_id}/manifest.json`, session.token, {
           method: "PUT",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
-            message: `Adjust ${currentPR.procedure_id}'s ${parts} (reviewed in #${currentPR.number})`,
+            message: `Adjust ${currentPR.procedure_id}'s ${parts} (reviewed in #${currentPR.number})${annotatedByNote}`,
             content: utf8ToBase64(JSON.stringify(manifestData, null, 2)),
             sha: manifestFile.sha,
             branch: currentPR.base_branch,
