@@ -263,7 +263,11 @@
      the box to closely match the photo as part of the existing review
      step. ---- */
   #annotationLayer { position: absolute; inset: 0; width: 100%; height: 100%; }
-  #annotationLayer .anno-handle { fill: var(--red); stroke: #fff; stroke-width: 1; cursor: pointer; }
+  /* White fill + red border -- the handle convention Figma/Sketch/
+     Slides all use, confirmed by research. Cursor lives on the
+     wrapping <g> (see annoHandle in review-panel.js), not here, since
+     it varies by what the handle actually does. */
+  #annotationLayer .anno-handle { fill: #fff; stroke: var(--red); stroke-width: 1.1; }
   #annotationLayer .anno-shape { cursor: move; }
   #annoToolbar { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin: 10px 0; }
   #annoToolbar button { margin: 0; padding: 7px 12px; font-size: 0.82rem; background: var(--black-2); color: var(--text); border: 1px solid var(--steel-dark); }
@@ -273,6 +277,15 @@
   #annoNextNumberRow input { width: 50px; padding: 4px 6px; background: #000; color: var(--text); border: 1px solid var(--steel-dark); border-radius: 4px; font-size: 0.82rem; }
   #annoTextEditRow { display: none; align-items: center; gap: 6px; margin: 8px 0; }
   #annoTextEditRow input { padding: 5px 8px; background: #000; color: var(--text); border: 1px solid var(--steel-dark); border-radius: 4px; font-size: 0.85rem; width: 70px; }
+  #annoHelp {
+    background: rgba(200,16,46,0.08); border: 1px solid var(--steel-dark); border-left: 3px solid var(--red);
+    border-radius: 6px; padding: 8px 12px; font-size: 0.8rem; color: var(--steel); margin: 8px 0;
+  }
+  #annoHelp strong { color: var(--text); }
+  #annoHelp kbd {
+    background: var(--black-2); border: 1px solid var(--steel-dark); border-radius: 3px;
+    padding: 1px 5px; font-size: 0.75rem; color: var(--text); font-family: ui-monospace, monospace;
+  }
   .fit-readout b { color: var(--text); }
   .actions { display: flex; gap: 10px; margin-top: 14px; }
 </style>
@@ -335,9 +348,8 @@
         </div>
         <div class="fit-readout" id="fitReadout"></div>
 
+        <div id="annoHelp"></div>
         <div id="annoToolbar">
-          <button type="button" class="secondary" id="annoLabelToggle" title="Switch between icon and word labels">&#9673; / word</button>
-          <span class="anno-sep"></span>
           <button type="button" data-anno-tool="arrow">&#8599; Arrow</button>
           <button type="button" data-anno-tool="line">&#8213; Line</button>
           <button type="button" data-anno-tool="circle">&#9675; Circle</button>
@@ -348,7 +360,7 @@
         <div id="annoTextEditRow">
           <span class="sub" style="margin:0;">Label (3 characters max):</span>
           <input type="text" id="annoTextInput" maxlength="3">
-          <button type="button" class="secondary" id="annoTextDoneBtn">Done</button>
+          <button type="button" class="secondary" id="annoTextDoneBtn">Save</button>
         </div>
 
         <div class="actions">
