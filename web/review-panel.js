@@ -238,9 +238,11 @@ async function renderPRList(approvedRepos) {
             <div>
               <div class="pr-title">${formatProcedureLabel(pr.procedure_id, pr.page, pr.section_heading)}</div>
               <div class="pr-meta">@${pr.author} &middot; Request #${pr.number}</div>
-              <span class="pr-status-badge status-${info.state}">${info.label}</span>
             </div>
-            <button data-pr="${pr.number}">Review</button>
+            <div class="pr-row-actions">
+              <span class="pr-status-badge status-${info.state}">${info.label}</span>
+              <button data-pr="${pr.number}">Review</button>
+            </div>
           `;
           editionWrap.appendChild(row);
         });
