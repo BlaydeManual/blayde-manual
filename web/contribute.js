@@ -413,22 +413,178 @@ function computeTargetLongEdge(ctx) {
   return Math.round(Math.min(FALLBACK_MAX_DIMENSION_PX, Math.max(MIN_DIMENSION_PX, targetPx)));
 }
 
-document.getElementById("photoInput").addEventListener("change", async (e) => {
-  const file = e.target.files[0];
-  const saveBtn = document.getElementById("saveDraftBtn");
-  const consentRow = document.getElementById("consentRow");
-  const ownCheck = document.getElementById("consentOwnPhoto"), licenseCheck = document.getElementById("consentLicense");
-  if (!file) { saveBtn.disabled = true; consentRow.style.display = "none"; return; }
-  selectedPhotoFilename = file.name;
+// ---- crop/rotate editor -- direct request: a contributor's phone
+// photo rarely matches the manual's own bbox aspect ratio, and the
+// only feedback loop before this was the compare view in My
+// Reviewables, which shows the mismatch but gives no way to fix it
+// without leaving the site. Same drag-box visual language as the
+// maintainer portal's compare-wrap/targetBox (review-panel.js), so a
+// contributor and a maintainer see one consistent interaction pattern,
+// not two different ones for what's conceptually the same action. ----
+let originalBitmap = null; // the raw picked file, never resized/rotated -- final crop always renders from this, not the display canvas, so output quality is never capped by whatever size is comfortable to drag
+let selectedPhotoIsPng = false;
+let rotationDeg = 0; // 0/90/180/270, clockwise
+let cropBox = null; // {x0,y0,x1,y1} in the display canvas's own pixel-buffer space
+let cropDrag = null;
+let cropBufferScale = 1; // ratio of the display canvas's pixel buffer to the full-resolution rotated image
 
-  const bitmap = await createImageBitmap(file);
+const CROP_DISPLAY_MAX_PX = 520; // interactive dragging stays smooth regardless of the source photo's real megapixel count
+const MIN_CROP_PX = 24;
+
+// The box defaults to match the manual's own destination shape, not a
+// square or the photo's own aspect -- the whole point is showing the
+// contributor what will actually fit, before they submit rather than
+// after a maintainer points it out.
+function destinationAspectRatio() {
+  if (!context?.pixel_bbox) return null;
+  const [x0, y0, x1, y1] = context.pixel_bbox;
+  const w = x1 - x0, h = y1 - y0;
+  return w > 0 && h > 0 ? w / h : null;
+}
+
+function renderCropCanvas() {
+  const canvas = document.getElementById("cropCanvas");
+  const rotated90 = rotationDeg === 90 || rotationDeg === 270;
+  const bw = originalBitmap.width, bh = originalBitmap.height;
+  const fullW = rotated90 ? bh : bw, fullH = rotated90 ? bw : bh;
+  cropBufferScale = Math.min(1, CROP_DISPLAY_MAX_PX / Math.max(fullW, fullH));
+  canvas.width = Math.round(fullW * cropBufferScale);
+  canvas.height = Math.round(fullH * cropBufferScale);
+  const ctx = canvas.getContext("2d");
+  const dw = bw * cropBufferScale, dh = bh * cropBufferScale;
+  ctx.save();
+  ctx.translate(canvas.width / 2, canvas.height / 2);
+  ctx.rotate((rotationDeg * Math.PI) / 180);
+  ctx.drawImage(originalBitmap, -dw / 2, -dh / 2, dw, dh);
+  ctx.restore();
+}
+
+function resetCropBox() {
+  const canvas = document.getElementById("cropCanvas");
+  const destAspect = destinationAspectRatio();
+  let boxW, boxH;
+  if (destAspect) {
+    // Largest centered box matching the destination's own shape that
+    // still fits inside the (possibly differently-shaped) photo.
+    if (canvas.width / canvas.height > destAspect) { boxH = canvas.height; boxW = boxH * destAspect; }
+    else { boxW = canvas.width; boxH = boxW / destAspect; }
+  } else {
+    boxW = canvas.width; boxH = canvas.height; // no known destination shape -- default to the whole photo, uncropped
+  }
+  const x0 = (canvas.width - boxW) / 2, y0 = (canvas.height - boxH) / 2;
+  cropBox = { x0, y0, x1: x0 + boxW, y1: y0 + boxH };
+  paintCropBox();
+}
+
+function paintCropBox() {
+  // cropBox lives in the canvas's own pixel-BUFFER space; the overlay
+  // div is positioned in whatever CSS pixels the canvas actually
+  // renders at (max-width:100% can shrink it on a narrow phone
+  // screen) -- cssScale() below is what bridges the two, here and in
+  // every mouse handler that touches cropBox.
+  const { sx, sy } = cssScale();
+  const box = document.getElementById("cropBox");
+  box.style.left = (cropBox.x0 / sx) + "px";
+  box.style.top = (cropBox.y0 / sy) + "px";
+  box.style.width = ((cropBox.x1 - cropBox.x0) / sx) + "px";
+  box.style.height = ((cropBox.y1 - cropBox.y0) / sy) + "px";
+}
+
+// Canvas pixel-buffer size vs. its actual on-screen CSS size -- distinct
+// from cropBufferScale above (that's original-photo vs. display-canvas;
+// this is display-canvas vs. however small a phone screen renders it).
+function cssScale() {
+  const canvas = document.getElementById("cropCanvas");
+  const rect = canvas.getBoundingClientRect();
+  return { sx: canvas.width / rect.width, sy: canvas.height / rect.height };
+}
+
+function cropPointFromEvent(e) {
+  const canvas = document.getElementById("cropCanvas");
+  const rect = canvas.getBoundingClientRect();
+  const { sx, sy } = cssScale();
+  return { x: (e.clientX - rect.left) * sx, y: (e.clientY - rect.top) * sy };
+}
+
+document.getElementById("cropBox").addEventListener("mousedown", (e) => {
+  e.preventDefault();
+  const handle = e.target.closest(".handle");
+  const p = cropPointFromEvent(e);
+  cropDrag = { mode: handle ? "resize" : "move", corner: handle?.dataset.corner, startX: p.x, startY: p.y, orig: { ...cropBox } };
+});
+document.addEventListener("mousemove", (e) => {
+  if (!cropDrag) return;
+  const canvas = document.getElementById("cropCanvas");
+  const p = cropPointFromEvent(e);
+  const dx = p.x - cropDrag.startX, dy = p.y - cropDrag.startY;
+  const o = cropDrag.orig;
+  if (cropDrag.mode === "move") {
+    const w = o.x1 - o.x0, h = o.y1 - o.y0;
+    const x0 = Math.max(0, Math.min(o.x0 + dx, canvas.width - w));
+    const y0 = Math.max(0, Math.min(o.y0 + dy, canvas.height - h));
+    cropBox = { x0, y0, x1: x0 + w, y1: y0 + h };
+  } else {
+    let { x0, y0, x1, y1 } = o;
+    const c = cropDrag.corner;
+    if (c === "nw" || c === "sw") x0 = Math.max(0, Math.min(o.x0 + dx, x1 - MIN_CROP_PX));
+    else x1 = Math.min(canvas.width, Math.max(o.x1 + dx, x0 + MIN_CROP_PX));
+    if (c === "nw" || c === "ne") y0 = Math.max(0, Math.min(o.y0 + dy, y1 - MIN_CROP_PX));
+    else y1 = Math.min(canvas.height, Math.max(o.y1 + dy, y0 + MIN_CROP_PX));
+    cropBox = { x0, y0, x1, y1 };
+  }
+  paintCropBox();
+});
+document.addEventListener("mouseup", () => { cropDrag = null; });
+
+document.getElementById("rotateLeftBtn").addEventListener("click", () => {
+  rotationDeg = (rotationDeg + 270) % 360;
+  renderCropCanvas();
+  resetCropBox();
+});
+document.getElementById("rotateRightBtn").addEventListener("click", () => {
+  rotationDeg = (rotationDeg + 90) % 360;
+  renderCropCanvas();
+  resetCropBox();
+});
+document.getElementById("resetCropBtn").addEventListener("click", resetCropBox);
+
+document.getElementById("useCropBtn").addEventListener("click", () => {
+  // Full-resolution rotated render, cropped against THIS, not the
+  // display canvas -- see cropBufferScale's own comment above.
+  const rotated90 = rotationDeg === 90 || rotationDeg === 270;
+  const bw = originalBitmap.width, bh = originalBitmap.height;
+  const fullW = rotated90 ? bh : bw, fullH = rotated90 ? bw : bh;
+  const fullCanvas = document.createElement("canvas");
+  fullCanvas.width = fullW; fullCanvas.height = fullH;
+  const fctx = fullCanvas.getContext("2d");
+  fctx.save();
+  fctx.translate(fullW / 2, fullH / 2);
+  fctx.rotate((rotationDeg * Math.PI) / 180);
+  fctx.drawImage(originalBitmap, -bw / 2, -bh / 2, bw, bh);
+  fctx.restore();
+
+  const s = 1 / cropBufferScale;
+  const cx0 = cropBox.x0 * s, cy0 = cropBox.y0 * s;
+  const cw = Math.round((cropBox.x1 - cropBox.x0) * s), ch = Math.round((cropBox.y1 - cropBox.y0) * s);
+  const cropped = document.createElement("canvas");
+  cropped.width = cw; cropped.height = ch;
+  cropped.getContext("2d").drawImage(fullCanvas, cx0, cy0, cw, ch, 0, 0, cw, ch);
+
+  finalizeSelectedPhoto(cropped);
+});
+
+// Shared tail end of photo selection -- resize to the destination's own
+// target resolution, strip metadata, show the small thumbnail, and open
+// up consent. Runs after crop/rotate is confirmed, operating on the
+// ALREADY-cropped canvas, not the raw picked file.
+function finalizeSelectedPhoto(sourceCanvas) {
   const MAX_DIMENSION_PX = computeTargetLongEdge(context);
-  const scale = Math.min(1, MAX_DIMENSION_PX / Math.max(bitmap.width, bitmap.height));
+  const scale = Math.min(1, MAX_DIMENSION_PX / Math.max(sourceCanvas.width, sourceCanvas.height));
   const canvas = document.createElement("canvas");
-  canvas.width = Math.round(bitmap.width * scale);
-  canvas.height = Math.round(bitmap.height * scale);
-  canvas.getContext("2d").drawImage(bitmap, 0, 0, canvas.width, canvas.height);
-  const outputType = file.type === "image/png" ? "image/png" : "image/jpeg";
+  canvas.width = Math.round(sourceCanvas.width * scale);
+  canvas.height = Math.round(sourceCanvas.height * scale);
+  canvas.getContext("2d").drawImage(sourceCanvas, 0, 0, canvas.width, canvas.height);
+  const outputType = selectedPhotoIsPng ? "image/png" : "image/jpeg";
   // 0.85, not 0.92: Google's own PageSpeed guidance puts 85 as the real
   // diminishing-returns line for JPEG quality -- "with quality larger
   // than 85, the image becomes larger quickly, while the visual
@@ -445,18 +601,47 @@ document.getElementById("photoInput").addEventListener("change", async (e) => {
   }
   selectedPhotoDataUrl = outDataUrl;
 
+  document.getElementById("cropEditor").style.display = "none";
   const thumb = document.getElementById("previewThumb");
   thumb.src = selectedPhotoDataUrl;
   thumb.style.display = "block";
+
+  const consentRow = document.getElementById("consentRow");
   // A new photo means fresh consent, never carried over from whatever
   // was picked (and possibly already attested to) before it -- an
   // unticked box on a new file is the safe default, not an inherited
   // yes from a different photo.
-  ownCheck.checked = false;
-  licenseCheck.checked = false;
+  document.getElementById("consentOwnPhoto").checked = false;
+  document.getElementById("consentLicense").checked = false;
   consentRow.style.display = "block";
   updateSubmitEnabled();
-  log(`${file.name}: re-encoded locally to strip EXIF metadata (GPS, camera model, timestamp) before saving -- happens now, not after this reaches a server.`);
+  log(`${selectedPhotoFilename}: cropped and re-encoded locally to strip EXIF metadata (GPS, camera model, timestamp) before saving -- happens now, not after this reaches a server.`);
+}
+
+document.getElementById("photoInput").addEventListener("change", async (e) => {
+  const file = e.target.files[0];
+  const saveBtn = document.getElementById("saveDraftBtn");
+  const consentRow = document.getElementById("consentRow");
+  if (!file) {
+    saveBtn.disabled = true;
+    consentRow.style.display = "none";
+    document.getElementById("cropEditor").style.display = "none";
+    document.getElementById("previewThumb").style.display = "none";
+    return;
+  }
+  selectedPhotoFilename = file.name;
+  selectedPhotoIsPng = file.type === "image/png";
+  selectedPhotoDataUrl = null;
+  rotationDeg = 0;
+  originalBitmap = await createImageBitmap(file);
+
+  saveBtn.disabled = true;
+  consentRow.style.display = "none";
+  document.getElementById("previewThumb").style.display = "none";
+  document.getElementById("cropEditor").style.display = "block";
+  renderCropCanvas();
+  resetCropBox();
+  updateSubmitEnabled();
 });
 
 // Real consent capture, not just a PR template checkbox nobody's forced

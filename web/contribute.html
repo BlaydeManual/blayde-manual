@@ -77,6 +77,30 @@
 
   .preview-thumb { width: 120px; height: 90px; object-fit: cover; border-radius: 6px; border: 1px solid var(--steel-dark); margin-top: 10px; display: none; }
 
+  /* Crop/rotate editor -- same drag-box visual language as the
+     maintainer portal's compare-wrap/targetBox (review-panel.js), so a
+     contributor and a maintainer see the same interaction pattern
+     wherever a box gets positioned on a photo. */
+  #cropEditor { display: none; margin: 10px 0; }
+  .crop-wrap {
+    position: relative; border: 1px solid var(--steel-dark); border-radius: 6px;
+    overflow: hidden; display: inline-block; max-width: 100%; background: #000;
+  }
+  #cropCanvas { display: block; max-width: 100%; height: auto; }
+  #cropBox {
+    position: absolute; border: 2px dashed var(--red);
+    background: rgba(200,16,46,0.10); cursor: move; box-sizing: border-box;
+  }
+  #cropBox .handle {
+    position: absolute; width: 14px; height: 14px; background: var(--red);
+    border: 2px solid #fff; border-radius: 50%;
+  }
+  #cropBox .handle.nw { top: -7px; left: -7px; cursor: nwse-resize; }
+  #cropBox .handle.ne { top: -7px; right: -7px; cursor: nesw-resize; }
+  #cropBox .handle.sw { bottom: -7px; left: -7px; cursor: nesw-resize; }
+  #cropBox .handle.se { bottom: -7px; right: -7px; cursor: nwse-resize; }
+  #cropEditorActions { margin-top: 8px; display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+
   #uploadsSection { display: none; }
   .vehicle-group { margin-bottom: 12px; }
   .vehicle-group:last-child { margin-bottom: 0; }
@@ -179,6 +203,26 @@
       <h2>Propose a photo for this procedure</h2>
       <label>Pick a photo from your device</label>
       <input type="file" id="photoInput" accept="image/*">
+
+      <div id="cropEditor">
+        <p class="sub" style="margin:8px 0;">Straighten if needed, then drag the box to frame the shot -- matches the space this photo will actually fill.</p>
+        <div class="crop-wrap">
+          <canvas id="cropCanvas"></canvas>
+          <div id="cropBox">
+            <div class="handle nw" data-corner="nw"></div>
+            <div class="handle ne" data-corner="ne"></div>
+            <div class="handle sw" data-corner="sw"></div>
+            <div class="handle se" data-corner="se"></div>
+          </div>
+        </div>
+        <div id="cropEditorActions">
+          <button type="button" class="secondary" id="rotateLeftBtn">&#8634; Rotate left</button>
+          <button type="button" class="secondary" id="rotateRightBtn">&#8635; Rotate right</button>
+          <button type="button" class="secondary" id="resetCropBtn">Reset crop</button>
+          <button type="button" id="useCropBtn">Use this crop</button>
+        </div>
+      </div>
+
       <img id="previewThumb" class="preview-thumb" alt="preview">
       <div id="consentRow" style="display:none; margin:10px 0;">
         <label style="display:flex; align-items:flex-start; gap:8px; font-size:0.82rem; color:var(--steel); margin:6px 0;">
