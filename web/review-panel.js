@@ -152,6 +152,10 @@ async function loadOpenPhotoPRs(repoUrl) {
         composite_width_px: geo.composite_width_px, composite_height_px: geo.composite_height_px,
         page_width_pt: geo.page_width_pt, page_height_pt: geo.page_height_pt,
         base_branch: branch,
+        // Relative (0-100) vector annotations already on this entry, if
+        // any -- carried through so re-opening a PR shows prior
+        // annotation work instead of silently discarding it.
+        original_annotations: entry.annotations || [],
       };
     } catch (e) {
       return null;
@@ -352,6 +356,18 @@ async function openPR(number) {
   pdfDoc = null;
   submittedPhotoImg = null;
   reviewStatus = null;
+  // Deep-cloned, not a reference into currentPR/currentPRs -- dragging
+  // shapes around during review must never mutate the cached list that
+  // renderPRList/loadOpenPhotoPRs already built, the same reasoning
+  // original_bbox vs. box already follows for the crop position.
+  annotations = JSON.parse(JSON.stringify(currentPR.original_annotations || []));
+  annoTool = null;
+  document.querySelectorAll("#annoToolbar [data-anno-tool]").forEach((b) => b.classList.remove("active"));
+  document.getElementById("annoNextNumberRow").style.display = "none";
+  document.getElementById("annoTextEditRow").style.display = "none";
+  annoNextNumber = (annotations.filter((a) => a.type === "number").reduce((max, a) => Math.max(max, a.value || 0), 0)) + 1;
+  document.getElementById("annoNextNumberInput").value = annoNextNumber;
+  renderAnnotations();
   document.getElementById("prLog").textContent = "";
   document.getElementById("reviewArea").classList.add("open");
   document.getElementById("reviewTitle").textContent =
@@ -447,6 +463,293 @@ function resetBox() {
 document.getElementById("resetBoxBtn").addEventListener("click", () => {
   resetBox();
   log("box reset to the original submission bbox");
+});
+
+// ---- annotation editor -- arrows/circles/numbers/lines/short text
+// callouts, stored as relative (0-100) vector shapes on the manifest
+// entry (entry.annotations), not baked into the photo's own pixels.
+// Rendering these into the actual patched PDF output is a deliberate,
+// separate follow-up (patcher.js) -- this is the editor half only.
+//
+// Every shape is drawn with a black-outlined color stroke ("cased"/
+// haloed, the same technique road casings on maps use) so it stays
+// legible over any photo regardless of what's directly behind it --
+// two overlapping strokes, wider black one first, narrower white one
+// on top, rather than relying on a single color to contrast correctly
+// against a background nobody controls.
+let annotations = [];
+let annoTool = null; // 'arrow' | 'line' | 'circle' | 'number' | 'text' | null
+let annoLabelMode = "icon"; // 'icon' | 'word' -- shared toggle, not per-button
+let annoDrag = null;
+let annoNextNumber = 1;
+let annoEditingTextId = null;
+const ANNO_MAX_LEN = 30; // % of the box's own size -- no single shape needs to be bigger than this to be useful
+const ANNO_NS = "http://www.w3.org/2000/svg";
+const ANNO_TOOL_META = {
+  arrow: { icon: "↗", word: "Arrow" },
+  line: { icon: "―", word: "Line" },
+  circle: { icon: "○", word: "Circle" },
+  number: { icon: "①", word: "Number" },
+  text: { icon: "✎", word: "Text" },
+};
+
+function annoLabel(tool) {
+  const m = ANNO_TOOL_META[tool];
+  return annoLabelMode === "word" ? m.word : `${m.icon} ${m.word}`;
+}
+
+function annoPointFromEvent(e) {
+  const svg = document.getElementById("annotationLayer");
+  const rect = svg.getBoundingClientRect();
+  const t = e.touches ? e.touches[0] : e;
+  return { x: ((t.clientX - rect.left) / rect.width) * 100, y: ((t.clientY - rect.top) / rect.height) * 100 };
+}
+
+function annoClamp01(v) { return Math.max(0, Math.min(100, v)); }
+
+// Caps a shape's own extent at ANNO_MAX_LEN without changing its
+// anchor point -- direct spec: "no reason to have any single line
+// bigger than that."
+function annoClampLen(x0, y0, x1, y1) {
+  const dx = x1 - x0, dy = y1 - y0;
+  const len = Math.hypot(dx, dy);
+  if (len <= ANNO_MAX_LEN || len === 0) return { x1, y1 };
+  const s = ANNO_MAX_LEN / len;
+  return { x1: x0 + dx * s, y1: y0 + dy * s };
+}
+
+function annoEl(tag, attrs) {
+  const el = document.createElementNS(ANNO_NS, tag);
+  for (const k in attrs) el.setAttribute(k, attrs[k]);
+  return el;
+}
+
+// The actual halo: identical geometry drawn twice, black wider stroke
+// first, white narrower stroke on top. `extra` lets a caller (the
+// arrowhead) reuse the exact same two-pass pattern for a second piece
+// of geometry that belongs to the same shape.
+function annoHaloed(tag, attrs, groupAttrs) {
+  const g = annoEl("g", groupAttrs || {});
+  g.appendChild(annoEl(tag, { ...attrs, stroke: "#000", "stroke-width": 2.4, fill: attrs.fill === "none" || !attrs.fill ? "none" : "#000" }));
+  g.appendChild(annoEl(tag, { ...attrs, stroke: "#fff", "stroke-width": 1.1, fill: attrs.fill === "none" || !attrs.fill ? "none" : attrs.fill }));
+  return g;
+}
+
+function annoHandle(cx, cy, extraAttrs) {
+  return annoEl("circle", { cx, cy, r: 1.6, class: "anno-handle", ...extraAttrs });
+}
+
+function renderAnnotations() {
+  const svg = document.getElementById("annotationLayer");
+  svg.innerHTML = "";
+  annotations.forEach((a) => {
+    const g = annoEl("g", { class: "anno-shape", "data-anno-id": a.id });
+    // A thick, fully transparent stroke under the visible halo -- makes
+    // a thin line/arrow genuinely clickable instead of requiring a
+    // pixel-perfect hit on its 1-2 unit visible width.
+    if (a.type === "arrow" || a.type === "line") {
+      g.appendChild(annoEl("line", { x1: a.x0, y1: a.y0, x2: a.x1, y2: a.y1, stroke: "transparent", "stroke-width": 6 }));
+      g.appendChild(annoHaloed("line", { x1: a.x0, y1: a.y0, x2: a.x1, y2: a.y1, "stroke-linecap": "round" }));
+      if (a.type === "arrow") {
+        const angle = Math.atan2(a.y0 - a.y1, a.x0 - a.x1);
+        const hl = 3.4, spread = 0.5;
+        const p1x = a.x0 - hl * Math.cos(angle - spread), p1y = a.y0 - hl * Math.sin(angle - spread);
+        const p2x = a.x0 - hl * Math.cos(angle + spread), p2y = a.y0 - hl * Math.sin(angle + spread);
+        g.appendChild(annoHaloed("polyline", { points: `${p1x},${p1y} ${a.x0},${a.y0} ${p2x},${p2y}`, fill: "none", "stroke-linecap": "round", "stroke-linejoin": "round" }));
+      }
+    } else if (a.type === "circle" || a.type === "number") {
+      g.appendChild(annoEl("circle", { cx: a.cx, cy: a.cy, r: a.r, stroke: "transparent", "stroke-width": 6, fill: "none" }));
+      g.appendChild(annoHaloed("circle", { cx: a.cx, cy: a.cy, r: a.r, fill: "none" }));
+      if (a.type === "number") {
+        const fontSize = Math.max(2, a.r * 1.1);
+        g.appendChild(annoEl("text", {
+          x: a.cx, y: a.cy, "font-size": fontSize, "text-anchor": "middle", "dominant-baseline": "central",
+          "font-weight": "700", fill: "#fff", stroke: "#000", "stroke-width": fontSize * 0.12, "paint-order": "stroke fill",
+        })).textContent = a.value;
+      }
+    } else if (a.type === "text") {
+      g.appendChild(annoHaloed("rect", { x: a.x, y: a.y, width: a.w, height: a.h, fill: "none", rx: 0.6 }));
+      const fontSize = Math.max(2.5, a.h * 0.6);
+      g.appendChild(annoEl("text", {
+        x: a.x + a.w / 2, y: a.y + a.h / 2, "font-size": fontSize, "text-anchor": "middle", "dominant-baseline": "central",
+        "font-weight": "700", fill: "#fff", stroke: "#000", "stroke-width": fontSize * 0.12, "paint-order": "stroke fill",
+      })).textContent = a.content || "";
+    }
+    svg.appendChild(g);
+
+    // Move/edit handles only show for whichever tool is currently
+    // active, scoped to shapes of that exact type -- direct spec:
+    // "whenever selected, the move/edit tags show of all components
+    // [the active tool owns], otherwise hide." Not a per-shape click-
+    // to-select state; the active TOOL is what shows or hides them.
+    if (annoTool === a.type) {
+      if (a.type === "arrow" || a.type === "line") {
+        svg.appendChild(annoHandle(a.x0, a.y0, { "data-anno-id": a.id, "data-anno-handle": "p0" }));
+        svg.appendChild(annoHandle(a.x1, a.y1, { "data-anno-id": a.id, "data-anno-handle": "p1" }));
+      } else if (a.type === "circle" || a.type === "number") {
+        svg.appendChild(annoHandle(a.cx + a.r, a.cy, { "data-anno-id": a.id, "data-anno-handle": "radius" }));
+      } else if (a.type === "text") {
+        svg.appendChild(annoHandle(a.x + a.w, a.y + a.h, { "data-anno-id": a.id, "data-anno-handle": "resize" }));
+        const pencil = annoEl("text", {
+          x: a.x, y: a.y - 1.2, "font-size": 4, fill: "var(--red)", "data-anno-id": a.id, "data-anno-handle": "edit", style: "cursor:pointer;",
+        });
+        pencil.textContent = "✎";
+        svg.appendChild(pencil);
+      }
+    }
+  });
+}
+
+function annoNewShapeFor(tool, x, y) {
+  const id = `a${Date.now()}${Math.floor(Math.random() * 1000)}`;
+  if (tool === "arrow" || tool === "line") return { id, type: tool, x0: x, y0: y, x1: x, y1: y };
+  if (tool === "circle") return { id, type: "circle", cx: x, cy: y, r: 0.1 };
+  if (tool === "number") return { id, type: "number", cx: x, cy: y, r: 0.1, value: annoNextNumber };
+  if (tool === "text") return { id, type: "text", x, y, w: Math.min(8, ANNO_MAX_LEN), h: Math.min(6, ANNO_MAX_LEN), content: "" };
+  return null;
+}
+
+document.getElementById("annotationLayer").addEventListener("mousedown", (e) => annoPointerDown(e));
+document.getElementById("annotationLayer").addEventListener("touchstart", (e) => { e.preventDefault(); annoPointerDown(e); }, { passive: false });
+document.addEventListener("mousemove", (e) => annoPointerMove(e));
+document.addEventListener("touchmove", (e) => { if (annoDrag) e.preventDefault(); annoPointerMove(e); }, { passive: false });
+document.addEventListener("mouseup", annoPointerUp);
+document.addEventListener("touchend", annoPointerUp);
+
+function annoPointerDown(e) {
+  const handleId = e.target.dataset?.annoHandle;
+  const shapeId = e.target.dataset?.annoId;
+  const p = annoPointFromEvent(e);
+  if (handleId === "edit") {
+    annoOpenTextEditor(shapeId);
+    return;
+  }
+  if (shapeId) {
+    const shape = annotations.find((a) => a.id === shapeId);
+    if (!shape) return;
+    annoDrag = { mode: handleId ? "handle" : "move", id: shapeId, handle: handleId, startX: p.x, startY: p.y, orig: { ...shape } };
+    return;
+  }
+  if (!annoTool) return; // no tool active -- clicking empty space does nothing
+  const shape = annoNewShapeFor(annoTool, p.x, p.y);
+  annotations.push(shape);
+  annoDrag = { mode: "create", id: shape.id, startX: p.x, startY: p.y, orig: { ...shape } };
+  renderAnnotations();
+}
+
+function annoPointerMove(e) {
+  if (!annoDrag) return;
+  const p = annoPointFromEvent(e);
+  const shape = annotations.find((a) => a.id === annoDrag.id);
+  if (!shape) return;
+  const o = annoDrag.orig;
+  const dx = p.x - annoDrag.startX, dy = p.y - annoDrag.startY;
+
+  if (shape.type === "arrow" || shape.type === "line") {
+    if (annoDrag.mode === "move") {
+      shape.x0 = annoClamp01(o.x0 + dx); shape.y0 = annoClamp01(o.y0 + dy);
+      shape.x1 = annoClamp01(o.x1 + dx); shape.y1 = annoClamp01(o.y1 + dy);
+    } else {
+      // "create" and dragging the tail handle ("p1") both extend the
+      // same endpoint; dragging the head handle ("p0") moves the head
+      // instead -- matches the spec's "first click-down starts the
+      // HEAD, dragging extends the tail" for a fresh arrow, while still
+      // letting either end be adjusted afterward once it exists.
+      if (annoDrag.mode === "handle" && annoDrag.handle === "p0") {
+        shape.x0 = annoClamp01(p.x); shape.y0 = annoClamp01(p.y);
+      } else {
+        const clamped = annoClampLen(shape.x0, shape.y0, annoClamp01(p.x), annoClamp01(p.y));
+        shape.x1 = clamped.x1; shape.y1 = clamped.y1;
+      }
+    }
+  } else if (shape.type === "circle" || shape.type === "number") {
+    if (annoDrag.mode === "move") {
+      shape.cx = annoClamp01(o.cx + dx); shape.cy = annoClamp01(o.cy + dy);
+    } else {
+      const r = Math.min(ANNO_MAX_LEN / 2, Math.hypot(p.x - shape.cx, p.y - shape.cy));
+      shape.r = shape.type === "number" ? Math.max(annoMinNumberRadius(shape.value), r) : Math.max(0.1, r);
+    }
+  } else if (shape.type === "text") {
+    if (annoDrag.mode === "move") {
+      shape.x = annoClamp01(o.x + dx); shape.y = annoClamp01(o.y + dy);
+    } else {
+      shape.w = Math.max(3, Math.min(ANNO_MAX_LEN, o.w + dx));
+      shape.h = Math.max(2.5, Math.min(ANNO_MAX_LEN, o.h + dy));
+    }
+  }
+  renderAnnotations();
+}
+
+// Derived from real font metrics at render time, not a hardcoded pixel
+// guess -- measures the digit(s) at the size renderAnnotations will
+// actually draw them at, so the minimum stays correct regardless of
+// how many digits `value` ends up being (1-12, per the real use case).
+function annoMinNumberRadius(value) {
+  const probe = document.createElementNS(ANNO_NS, "text");
+  probe.setAttribute("font-size", 4);
+  probe.setAttribute("font-weight", "700");
+  probe.setAttribute("visibility", "hidden");
+  probe.textContent = String(value ?? 1);
+  document.getElementById("annotationLayer").appendChild(probe);
+  let width = 3;
+  try { width = probe.getBBox().width || width; } catch (e) { /* not yet in a laid-out document -- fall back */ }
+  probe.remove();
+  return Math.max(2, (width / 1.1) * 0.68 + 0.8);
+}
+
+function annoPointerUp() {
+  if (!annoDrag) return;
+  const wasCreate = annoDrag.mode === "create";
+  const shape = annotations.find((a) => a.id === annoDrag.id);
+  annoDrag = null;
+  if (!shape) return;
+  if (shape.type === "number" && wasCreate) {
+    annoNextNumber += 1;
+    document.getElementById("annoNextNumberInput").value = annoNextNumber;
+  }
+  if (shape.type === "text" && wasCreate) {
+    annoOpenTextEditor(shape.id);
+  }
+  renderAnnotations();
+}
+
+function annoOpenTextEditor(shapeId) {
+  const shape = annotations.find((a) => a.id === shapeId);
+  if (!shape) return;
+  annoEditingTextId = shapeId;
+  const row = document.getElementById("annoTextEditRow");
+  const input = document.getElementById("annoTextInput");
+  input.value = shape.content || "";
+  row.style.display = "flex";
+  input.focus();
+}
+
+document.getElementById("annoTextDoneBtn").addEventListener("click", () => {
+  const shape = annotations.find((a) => a.id === annoEditingTextId);
+  if (shape) shape.content = document.getElementById("annoTextInput").value.slice(0, 3);
+  document.getElementById("annoTextEditRow").style.display = "none";
+  annoEditingTextId = null;
+  renderAnnotations();
+});
+
+document.getElementById("annoLabelToggle").addEventListener("click", () => {
+  annoLabelMode = annoLabelMode === "icon" ? "word" : "icon";
+  document.querySelectorAll("#annoToolbar [data-anno-tool]").forEach((b) => { b.textContent = annoLabel(b.dataset.annoTool); });
+});
+
+document.querySelectorAll("#annoToolbar [data-anno-tool]").forEach((btn) => {
+  btn.textContent = annoLabel(btn.dataset.annoTool);
+  btn.addEventListener("click", () => {
+    const tool = btn.dataset.annoTool;
+    annoTool = annoTool === tool ? null : tool;
+    document.querySelectorAll("#annoToolbar [data-anno-tool]").forEach((b) => b.classList.toggle("active", b.dataset.annoTool === annoTool));
+    document.getElementById("annoNextNumberRow").style.display = annoTool === "number" ? "inline-flex" : "none";
+    renderAnnotations();
+  });
+});
+
+document.getElementById("annoNextNumberInput").addEventListener("change", (e) => {
+  annoNextNumber = parseInt(e.target.value, 10) || 1;
 });
 
 function paintBox() {
@@ -547,18 +850,27 @@ document.getElementById("acceptBtn").addEventListener("click", async () => {
 
     const finalBbox = canvasToBbox(box);
     const bboxChanged = JSON.stringify(finalBbox) !== JSON.stringify(currentPR.original_bbox);
-    if (bboxChanged) {
-      log(`updating ${currentPR.procedure_id}'s photo position in manifest.json (adjusted during review)...`);
+    const annotationsChanged = JSON.stringify(annotations) !== JSON.stringify(currentPR.original_annotations || []);
+    if (bboxChanged || annotationsChanged) {
+      const parts = [bboxChanged && "position", annotationsChanged && "annotations"].filter(Boolean).join(" and ");
+      log(`updating ${currentPR.procedure_id}'s ${parts} in manifest.json (adjusted during review)...`);
       const manifestFile = await githubApi(`/repos/${owner}/${repo}/contents/${currentPR.edition_id}/manifest.json?ref=${currentPR.base_branch}`, session.token);
       const manifestData = JSON.parse(base64ToUtf8(manifestFile.content.replace(/\n/g, "")));
       const entry = manifestData.entries.find((e) => e.procedure_id === currentPR.procedure_id);
       if (entry) {
-        entry.pixel_bbox = finalBbox;
+        if (bboxChanged) entry.pixel_bbox = finalBbox;
+        // Vector shapes only, in relative (0-100) coordinates -- never
+        // baked into the photo's own pixels, so a later re-crop or a
+        // viewer's color preference (see ROADMAP.md) can still apply
+        // cleanly. Rendering these into the actual patched PDF is a
+        // separate, not-yet-built step (patcher.js); this only commits
+        // the editor's own data.
+        if (annotationsChanged) entry.annotations = annotations;
         await githubApi(`/repos/${owner}/${repo}/contents/${currentPR.edition_id}/manifest.json`, session.token, {
           method: "PUT",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
-            message: `Adjust ${currentPR.procedure_id}'s photo position (reviewed in #${currentPR.number})`,
+            message: `Adjust ${currentPR.procedure_id}'s ${parts} (reviewed in #${currentPR.number})`,
             content: utf8ToBase64(JSON.stringify(manifestData, null, 2)),
             sha: manifestFile.sha,
             branch: currentPR.base_branch,
@@ -566,7 +878,7 @@ document.getElementById("acceptBtn").addEventListener("click", async () => {
         });
         log(`manifest.json updated.`);
       } else {
-        log(`WARNING: ${currentPR.procedure_id} not found in manifest.json anymore -- skipped the position update.`);
+        log(`WARNING: ${currentPR.procedure_id} not found in manifest.json anymore -- skipped the position/annotation update.`);
       }
     }
 
