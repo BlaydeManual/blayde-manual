@@ -383,7 +383,9 @@ async function openPR(number) {
   document.getElementById("reviewTitle").textContent =
     `${formatProcedureLabel(currentPR.procedure_id, currentPR.page, currentPR.section_heading)} - Request #${currentPR.number}`;
   document.getElementById("reviewMeta").textContent = `Submitted by @${currentPR.author}`;
-  document.getElementById("compareWrap").style.display = "none";
+  document.getElementById("zoomViewport").style.display = "none";
+  document.getElementById("viewModeRow").style.display = "none";
+  setReviewViewMode("zoomed");
   updateAcceptButtonState();
   renderReviewStatusLine();
   document.getElementById("rejectBtn").disabled = false;
@@ -440,14 +442,82 @@ async function renderPage() {
   const ctx = canvas.getContext("2d");
   await page.render({ canvasContext: ctx, viewport }).promise;
 
-  document.getElementById("compareWrap").style.display = "block";
+  document.getElementById("zoomViewport").style.display = "block";
+  document.getElementById("viewModeRow").style.display = "flex";
   resetBox();
-  log(`rendered page ${currentPR.page} at ${canvas.width}x${canvas.height} -- drag the box or its corners to fit the submitted photo`);
+  log(`rendered page ${currentPR.page} at ${canvas.width}x${canvas.height} -- annotate here, or switch to the full page to adjust the box's position`);
   updateAcceptButtonState();
   document.getElementById("resetBoxBtn").disabled = false;
   // Only useful once the original page is actually rendered underneath
   // -- before that there's nothing real to compare against yet.
   document.getElementById("toggleOriginalBtn").style.display = "inline-block";
+}
+
+// ---- two view modes on the same underlying canvas/box/annotations,
+// direct spec: a big zoomed view (padded around the box, magnified)
+// is the default working view for annotating and judging fit; "View
+// in full page" is a separate mode purely for dragging/resizing the
+// box itself, always showing the new photo (no before/after toggle
+// there -- "no comparison in the full-page view"). Annotations stay
+// visible in both, but only editable in the zoomed view.
+let reviewViewMode = "zoomed";
+
+function setReviewViewMode(mode) {
+  reviewViewMode = mode;
+  const vp = document.getElementById("zoomViewport");
+  vp.classList.toggle("mode-zoomed", mode === "zoomed");
+  vp.classList.toggle("mode-full", mode === "full");
+  document.getElementById("viewFullPageBtn").style.display = mode === "zoomed" ? "inline-block" : "none";
+  document.getElementById("viewZoomedBtn").style.display = mode === "full" ? "inline-block" : "none";
+  document.getElementById("toggleOriginalBtn").style.display = mode === "zoomed" && box ? "inline-block" : "none";
+  document.getElementById("annoToolbar").style.display = mode === "zoomed" ? "flex" : "none";
+  document.getElementById("annoHelp").style.display = mode === "zoomed" ? "block" : "none";
+  document.getElementById("fitReadout").style.display = mode === "full" ? "block" : "none";
+  document.getElementById("resetBoxBtn").style.display = mode === "full" ? "inline-block" : "none";
+  if (mode === "full") {
+    // Full page always shows the real, new content -- no comparison
+    // toggle there -- and no live tool interaction while a shape's
+    // handles wouldn't even be visible (mode-zoomed hides .handle,
+    // not the annotation handles, so this also closes any open text
+    // editor left over from the zoomed view).
+    document.getElementById("submittedPhotoImg").style.opacity = "1";
+    document.getElementById("toggleOriginalBtn").textContent = "Show original page";
+    document.getElementById("toggleOriginalBtn").classList.remove("active");
+    document.querySelectorAll("#annoToolbar [data-anno-tool]").forEach((b) => b.classList.remove("active"));
+    annoTool = null;
+    document.getElementById("annoNextNumberRow").style.display = "none";
+    document.getElementById("annoTextEditRow").style.display = "none";
+    annoEditingTextId = null;
+    renderAnnotations();
+  }
+  applyZoom();
+}
+
+document.getElementById("viewFullPageBtn").addEventListener("click", () => setReviewViewMode("full"));
+document.getElementById("viewZoomedBtn").addEventListener("click", () => setReviewViewMode("zoomed"));
+
+// Scales/translates #compareWrap (not #pageCanvas directly) so the
+// canvas + box + annotation layer all zoom together as one unit --
+// the box's own padding-relative math stays in canvasDisplaySize's
+// pre-transform pixel space (offsetWidth/offsetHeight), so this can
+// run independently of bboxToCanvas/paintBox without circularity.
+function applyZoom() {
+  const compare = document.getElementById("compareWrap");
+  if (reviewViewMode !== "zoomed" || !box) {
+    compare.style.transform = "none";
+    return;
+  }
+  const vp = document.getElementById("zoomViewport");
+  const vpW = vp.clientWidth, vpH = vp.clientHeight;
+  if (!vpW || !vpH) { compare.style.transform = "none"; return; }
+  const boxW = box.x1 - box.x0, boxH = box.y1 - box.y0;
+  if (boxW <= 0 || boxH <= 0) { compare.style.transform = "none"; return; }
+  const PAD = 1.4; // room around the box so surrounding page context is still visible
+  const scale = Math.min(vpW / (boxW * PAD), vpH / (boxH * PAD));
+  const boxCx = (box.x0 + box.x1) / 2, boxCy = (box.y0 + box.y1) / 2;
+  const tx = vpW / 2 - boxCx * scale;
+  const ty = vpH / 2 - boxCy * scale;
+  compare.style.transform = `translate(${tx}px, ${ty}px) scale(${scale})`;
 }
 
 // Direct request: annotating (an arrow, a circled letter) needs to
@@ -470,24 +540,67 @@ document.getElementById("toggleOriginalBtn").addEventListener("click", () => {
 
 // ---- bbox <-> canvas-pixel conversion, same math as patcher.js's
 // scale_x/scale_y (composite_px / page_pt), just going the other
-// direction (composite px -> render canvas px) ----
-function bboxToCanvas(bbox) {
+// direction (composite px -> on-screen canvas px) ----
+//
+// Deliberately uses the canvas's own CSS-RENDERED size
+// (offsetWidth/offsetHeight), not canvas.width/height. Those two only
+// match when the page happens to be wider than the render buffer
+// (pdf.js renders at renderScale=2.0, so a Letter page alone is
+// ~1224px) -- #pageCanvas has max-width:100% and this layout's <main>
+// caps at 960px, so the buffer is shrunk on essentially every real
+// window, not just mobile. #targetBox is positioned in absolute CSS
+// px against .compare-wrap, which is exactly as wide as the SHRUNK
+// canvas -- using the unshrunk buffer size here put the box in the
+// wrong pixel space entirely, worse the wider the actual render was.
+// Real bug, found live: the box rendered nowhere near the photo it
+// was supposed to mark.
+//
+// offsetWidth/offsetHeight, not getBoundingClientRect: .compare-wrap
+// (the canvas's parent) gets a CSS `transform: scale()` applied while
+// the zoomed view is active, and getBoundingClientRect reflects
+// geometry AFTER that transform -- which would make box's own units
+// depend on whether zoom happens to be applied, a circular mess.
+// offsetWidth/offsetHeight are the pre-transform layout size, exactly
+// the reference frame #targetBox's own left/top/width/height (set in
+// paintBox) are actually interpreted in.
+function canvasDisplaySize() {
   const canvas = document.getElementById("pageCanvas");
-  const sx = canvas.width / currentPR.composite_width_px;
-  const sy = canvas.height / currentPR.composite_height_px;
+  return { w: canvas.offsetWidth, h: canvas.offsetHeight };
+}
+
+function bboxToCanvas(bbox) {
+  const { w, h } = canvasDisplaySize();
+  const sx = w / currentPR.composite_width_px;
+  const sy = h / currentPR.composite_height_px;
   const [x0, y0, x1, y1] = bbox;
   return { x0: x0 * sx, y0: y0 * sy, x1: x1 * sx, y1: y1 * sy };
 }
 
 function canvasToBbox(rect) {
-  const canvas = document.getElementById("pageCanvas");
-  const sx = currentPR.composite_width_px / canvas.width;
-  const sy = currentPR.composite_height_px / canvas.height;
+  const { w, h } = canvasDisplaySize();
+  const sx = currentPR.composite_width_px / w;
+  const sy = currentPR.composite_height_px / h;
   return [rect.x0 * sx, rect.y0 * sy, rect.x1 * sx, rect.y1 * sy].map(v => Math.round(v));
 }
 
+// Keeps the box correct if the window resizes mid-review -- since box
+// lives in display-CSS-px, a resize that shrinks/grows the (already
+// shrunk) canvas would otherwise leave it pointing at stale
+// coordinates, the same failure mode this whole fix targets.
+window.addEventListener("resize", () => {
+  if (!box) return;
+  const { w, h } = canvasDisplaySize();
+  if (!lastDisplaySize || w === lastDisplaySize.w && h === lastDisplaySize.h) { lastDisplaySize = { w, h }; return; }
+  const sx = w / lastDisplaySize.w, sy = h / lastDisplaySize.h;
+  box = { x0: box.x0 * sx, y0: box.y0 * sy, x1: box.x1 * sx, y1: box.y1 * sy };
+  lastDisplaySize = { w, h };
+  paintBox();
+});
+let lastDisplaySize = null;
+
 function resetBox() {
   box = bboxToCanvas(currentPR.original_bbox);
+  lastDisplaySize = canvasDisplaySize();
   paintBox();
 }
 
@@ -970,6 +1083,7 @@ function paintBox() {
   el.style.height = (box.y1 - box.y0) + "px";
   if (submittedPhotoImg) document.getElementById("submittedPhotoImg").src = submittedPhotoImg;
   updateFitReadout();
+  applyZoom();
 }
 
 function updateFitReadout() {
@@ -986,7 +1100,10 @@ function updateFitReadout() {
 // generate_review.py's crop editor ----
 const wrap = document.getElementById("compareWrap");
 wrap.addEventListener("mousedown", (e) => {
-  if (!box) return;
+  // Box position/size only adjusts in the full-page view -- direct
+  // spec: the zoomed view is for annotating and judging fit, not
+  // repositioning, and #zoomViewport.mode-zoomed hides the handles.
+  if (!box || reviewViewMode !== "full") return;
   const rect = wrap.getBoundingClientRect();
   const x = e.clientX - rect.left, y = e.clientY - rect.top;
   const handle = e.target.closest(".handle");
