@@ -499,23 +499,26 @@ function cssScale() {
   return { sx: canvas.width / rect.width, sy: canvas.height / rect.height };
 }
 
-function cropPointFromEvent(e) {
+function cropPointFromClient(clientX, clientY) {
   const canvas = document.getElementById("cropCanvas");
   const rect = canvas.getBoundingClientRect();
   const { sx, sy } = cssScale();
-  return { x: (e.clientX - rect.left) * sx, y: (e.clientY - rect.top) * sy };
+  return { x: (clientX - rect.left) * sx, y: (clientY - rect.top) * sy };
 }
 
-document.getElementById("cropBox").addEventListener("mousedown", (e) => {
-  e.preventDefault();
-  const handle = e.target.closest(".handle");
-  const p = cropPointFromEvent(e);
+// Shared by both mouse and touch input -- real report: on a phone, the
+// crop box couldn't be dragged at all, because only mouse events were
+// ever wired up here. A touch-drag with no touch listeners just looks
+// like a page-scroll gesture to the browser, which wins by default.
+function startCropDrag(clientX, clientY, targetEl) {
+  const handle = targetEl.closest(".handle");
+  const p = cropPointFromClient(clientX, clientY);
   cropDrag = { mode: handle ? "resize" : "move", corner: handle?.dataset.corner, startX: p.x, startY: p.y, orig: { ...cropBox } };
-});
-document.addEventListener("mousemove", (e) => {
+}
+function moveCropDrag(clientX, clientY) {
   if (!cropDrag) return;
   const canvas = document.getElementById("cropCanvas");
-  const p = cropPointFromEvent(e);
+  const p = cropPointFromClient(clientX, clientY);
   const dx = p.x - cropDrag.startX, dy = p.y - cropDrag.startY;
   const o = cropDrag.orig;
   if (cropDrag.mode === "move") {
@@ -533,8 +536,33 @@ document.addEventListener("mousemove", (e) => {
     cropBox = { x0, y0, x1, y1 };
   }
   paintCropBox();
+}
+function endCropDrag() { cropDrag = null; }
+
+document.getElementById("cropBox").addEventListener("mousedown", (e) => {
+  e.preventDefault();
+  startCropDrag(e.clientX, e.clientY, e.target);
 });
-document.addEventListener("mouseup", () => { cropDrag = null; });
+document.addEventListener("mousemove", (e) => moveCropDrag(e.clientX, e.clientY));
+document.addEventListener("mouseup", endCropDrag);
+
+// touch-action:none on #cropBox/.handle (see contribute.html) already
+// stops the browser's own default touch handling on them, so these can
+// stay passive; the document-level touchmove below is the one that
+// needs {passive:false} + preventDefault, since without it the page
+// would still scroll out from under an active drag once the finger
+// moves past the box's own edges.
+document.getElementById("cropBox").addEventListener("touchstart", (e) => {
+  const t = e.touches[0];
+  startCropDrag(t.clientX, t.clientY, e.target);
+}, { passive: true });
+document.addEventListener("touchmove", (e) => {
+  if (!cropDrag) return;
+  e.preventDefault();
+  const t = e.touches[0];
+  moveCropDrag(t.clientX, t.clientY);
+}, { passive: false });
+document.addEventListener("touchend", endCropDrag);
 
 document.getElementById("rotateLeftBtn").addEventListener("click", () => {
   rotationDeg = (rotationDeg + 270) % 360;
