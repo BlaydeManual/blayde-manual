@@ -90,10 +90,18 @@
   #cropBox {
     position: absolute; border: 2px dashed var(--red);
     background: rgba(200,16,46,0.10); cursor: move; box-sizing: border-box;
+    /* Without this, a touch-drag on the box is indistinguishable from a
+       page-scroll gesture to the browser, which wins by default -- real
+       report: dragging the crop box on a phone just scrolled the page
+       instead. This tells the browser not to apply its own default
+       touch handling (pan/zoom) here at all, so the touchmove handlers
+       below are the only thing that responds. */
+    touch-action: none;
   }
   #cropBox .handle {
     position: absolute; width: 14px; height: 14px; background: var(--red);
     border: 2px solid #fff; border-radius: 50%;
+    touch-action: none; /* same reasoning as #cropBox -- doesn't inherit from the parent */
   }
   #cropBox .handle.nw { top: -7px; left: -7px; cursor: nwse-resize; }
   #cropBox .handle.ne { top: -7px; right: -7px; cursor: nesw-resize; }
