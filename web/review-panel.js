@@ -205,10 +205,16 @@ async function renderPRList(approvedRepos) {
     // edition's own list.
     const prs = currentPRs.filter((pr) => pr.repo_url === repoUrl).sort((a, b) => a.page - b.page);
     if (!prs.length) continue;
-    const group = document.createElement("div");
+    // <details>, not a plain div -- direct request: with real volume
+    // (dozens of photos across several manuals), a flat unfoldable list
+    // is what doesn't scale, so each tier collapses independently. Open
+    // by default so nothing hides on first load; the count in the
+    // summary stays informative even collapsed.
+    const group = document.createElement("details");
+    group.open = true;
     group.style.marginBottom = "16px";
     const vehicleSlug = await vehicleSlugForRepo(repoUrl);
-    group.innerHTML = `<h3 class="vehicle-bar">${vehicleSlug}</h3>`;
+    group.innerHTML = `<summary class="vehicle-bar">${vehicleSlug} (${prs.length})</summary>`;
 
     const byEdition = new Map();
     prs.forEach((pr) => {
@@ -217,10 +223,13 @@ async function renderPRList(approvedRepos) {
       byEdition.get(key).push(pr);
     });
     byEdition.forEach((editionPrs, editionId) => {
-      const editionHeading = document.createElement("h4");
+      const editionGroup = document.createElement("details");
+      editionGroup.open = true;
+      const editionHeading = document.createElement("summary");
       editionHeading.className = "edition-bar";
-      editionHeading.textContent = editionId;
-      group.appendChild(editionHeading);
+      editionHeading.textContent = `${editionId} (${editionPrs.length})`;
+      editionGroup.appendChild(editionHeading);
+      group.appendChild(editionGroup);
       const editionWrap = document.createElement("div");
       // Page order within two tiers, not one flat page order -- direct
       // spec: rows waiting on someone else (not actionable for you)
@@ -246,7 +255,7 @@ async function renderPRList(approvedRepos) {
           `;
           editionWrap.appendChild(row);
         });
-      group.appendChild(editionWrap);
+      editionGroup.appendChild(editionWrap);
     });
     wrap.appendChild(group);
   }

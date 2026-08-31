@@ -71,9 +71,15 @@ async function renderVehicleTeams() {
     // own push-or-better filter, which is exactly what /manage-collaborator
     // itself requires server-side -- no separate client-side gate needed,
     // unlike the old admin-only design.
-    const card = document.createElement("div");
+    // <details>, not a plain div -- direct request: collapsible per
+    // level, same as the Review Photo Requests list, so a maintainer
+    // covering several unrelated repos can collapse the ones they're
+    // not actively managing right now instead of scrolling past them.
+    // Open by default so nothing hides on first load.
+    const card = document.createElement("details");
+    card.open = true;
     card.className = "card";
-    card.innerHTML = `<h3 class="vehicle-bar">${vehicleSlug}</h3>
+    card.innerHTML = `<summary class="vehicle-bar">${vehicleSlug}</summary>
       <p class="sub" style="margin:0 0 10px;">Covers ${editions.length} edition${editions.length === 1 ? "" : "s"}: ${editions.join(", ")}</p>
       <div class="roster"><p class="sub" style="margin:0;">Loading roster&hellip;</p></div>
       <div style="display:flex; gap:8px; margin-top:12px;">
