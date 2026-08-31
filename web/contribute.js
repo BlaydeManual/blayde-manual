@@ -1056,37 +1056,27 @@ function outcomeFor(upload) {
 // grows across every procedure/vehicle someone's ever contributed to,
 // not just the one the QR pointed at this time), sorted by page within
 // each group so it reads in manual order, not submission order. ----
-function renderUploads() {
-  const section = document.getElementById("uploadsSection");
-  const list = document.getElementById("uploadsList");
-  const empty = document.getElementById("uploadsEmpty");
-  // openCompare() below reparents the one shared #compareArea node to
-  // sit right after whichever row's View was clicked -- a descendant of
-  // `list` (inside that row's own <details> group), not a direct child
-  // of it, so a plain parentElement === list check misses it. Real bug,
-  // caught live: rebuilding `list` via innerHTML="" on any later render
-  // (saving a second draft, deleting one, anything) then deletes
-  // #compareArea along with it -- not just hides it, actually removes it
-  // from the document -- so every View click afterward silently no-ops
-  // forever (openCompare's getElementById returns null, throws before
-  // ever showing anything). Moving it back out to its original parent
-  // before the rebuild keeps it alive across renders; openCompare
-  // re-parents it again next time it's actually needed.
-  const compareAreaEl = document.getElementById("compareArea");
-  if (compareAreaEl && list.contains(compareAreaEl)) section.insertBefore(compareAreaEl, list.nextSibling);
-  // Arriving via a QR code, browsing past uploads never required
-  // signing in again (see the top-of-file comment) -- but arriving via
-  // the landing page's sign-in gate and seeing "My uploads" appear
-  // BEFORE actually signing in reads as broken, since the gate just
-  // told you sign-in was required to get here. Once signed in, both
-  // paths behave the same.
-  const canShow = signedIn || (hasProcedureContext && uploads.length > 0);
-  section.style.display = canShow ? "block" : "none";
-  empty.style.display = uploads.length ? "none" : "block";
-  list.innerHTML = "";
+// Which of the three visibility buckets an upload belongs in. Derived,
+// not stored -- forkOwner is only ever set by the Private path
+// (submitPhotoPrivate), and stays set once a Private draft's PR is
+// later opened (openPrForUpload never clears it), so its presence
+// alone distinguishes "submitted via Private" from "submitted via
+// Public" without needing a new field.
+function visibilityBucketFor(u) {
+  if (u.status === "draft") return "draft";
+  if (u.forkOwner) return "private";
+  return "public";
+}
 
+// Builds the existing vehicle -> edition -> row tree for one visibility
+// bucket's uploads, appending it into `container`. Extracted out of
+// renderUploads so the same tree structure can render three times (one
+// per colored section) instead of once -- direct request: pull public
+// and private submissions into a list, not lump every status together
+// undifferentiated the way this used to.
+function renderUploadGroup(uploadList, container, maintainRowShown) {
   const byVehicle = new Map();
-  uploads.forEach((u) => {
+  uploadList.forEach((u) => {
     const key = u.vehicleSlug || u.repoUrl;
     if (!byVehicle.has(key)) byVehicle.set(key, []);
     byVehicle.get(key).push(u);
@@ -1156,14 +1146,78 @@ function renderUploads() {
       });
     });
 
-    const maintainRow = document.createElement("div");
-    maintainRow.className = "maintain-request-row";
-    maintainRow.innerHTML = hasRequestedMaintain(vehicleKey)
-      ? `<span class="sub" style="margin:0; color:var(--mint);">Requested to help maintain -- the current maintainer(s) and org team have been notified.</span>`
-      : `<button class="secondary" data-maintain="${vehicleKey}">Request to help maintain this vehicle</button>`;
-    details.appendChild(maintainRow);
+    // A vehicle can appear in more than one visibility section (a
+    // public photo and a private draft for the same vehicle, say) --
+    // the maintain-request offer only needs to show once per vehicle
+    // overall, not once per section it happens to appear in.
+    if (!maintainRowShown.has(vehicleKey)) {
+      maintainRowShown.add(vehicleKey);
+      const maintainRow = document.createElement("div");
+      maintainRow.className = "maintain-request-row";
+      maintainRow.innerHTML = hasRequestedMaintain(vehicleKey)
+        ? `<span class="sub" style="margin:0; color:var(--mint);">Requested to help maintain -- the current maintainer(s) and org team have been notified.</span>`
+        : `<button class="secondary" data-maintain="${vehicleKey}">Request to help maintain this vehicle</button>`;
+      details.appendChild(maintainRow);
+    }
 
-    list.appendChild(details);
+    container.appendChild(details);
+  });
+}
+
+function renderUploads() {
+  const section = document.getElementById("uploadsSection");
+  const list = document.getElementById("uploadsList");
+  const empty = document.getElementById("uploadsEmpty");
+  // openCompare() below reparents the one shared #compareArea node to
+  // sit right after whichever row's View was clicked -- a descendant of
+  // `list` (inside that row's own <details> group), not a direct child
+  // of it, so a plain parentElement === list check misses it. Real bug,
+  // caught live: rebuilding `list` via innerHTML="" on any later render
+  // (saving a second draft, deleting one, anything) then deletes
+  // #compareArea along with it -- not just hides it, actually removes it
+  // from the document -- so every View click afterward silently no-ops
+  // forever (openCompare's getElementById returns null, throws before
+  // ever showing anything). Moving it back out to its original parent
+  // before the rebuild keeps it alive across renders; openCompare
+  // re-parents it again next time it's actually needed.
+  const compareAreaEl = document.getElementById("compareArea");
+  if (compareAreaEl && list.contains(compareAreaEl)) section.insertBefore(compareAreaEl, list.nextSibling);
+  // Arriving via a QR code, browsing past uploads never required
+  // signing in again (see the top-of-file comment) -- but arriving via
+  // the landing page's sign-in gate and seeing "My uploads" appear
+  // BEFORE actually signing in reads as broken, since the gate just
+  // told you sign-in was required to get here. Once signed in, both
+  // paths behave the same.
+  const canShow = signedIn || (hasProcedureContext && uploads.length > 0);
+  section.style.display = canShow ? "block" : "none";
+  empty.style.display = uploads.length ? "none" : "block";
+  list.innerHTML = "";
+
+  const byBucket = { public: [], private: [], draft: [] };
+  uploads.forEach((u) => byBucket[visibilityBucketFor(u)].push(u));
+
+  // Local, not module-level -- renderUploads() runs once at load time
+  // (see the bottom of this file) before a top-level const declared
+  // later in the file would be initialized, so this has to be created
+  // fresh on every call rather than hoisted-and-shared.
+  const visibilitySections = [
+    { key: "public", cls: "is-public", icon: "🌍", title: "Public", desc: "Already a real pull request -- visible to reviewers now, no personal copy kept." },
+    { key: "private", cls: "is-private", icon: "🔒", title: "Private", desc: "Pushed to your own fork -- nothing proposed to reviewers until you open the pull request yourself." },
+    { key: "draft", cls: "is-draft", icon: "📝", title: "Drafts", desc: "Only ever lived on this device -- not submitted anywhere yet." },
+  ];
+
+  const maintainRowShown = new Set();
+  visibilitySections.forEach(({ key, cls, icon, title, desc }) => {
+    const bucketUploads = byBucket[key];
+    if (!bucketUploads.length) return;
+    const wrap = document.createElement("div");
+    wrap.className = `visibility-section ${cls}`;
+    wrap.innerHTML = `
+      <div class="visibility-section-title">${icon} ${title} <span class="sub" style="margin:0; font-weight:400;">(${bucketUploads.length})</span></div>
+      <p class="visibility-section-desc">${desc}</p>
+    `;
+    renderUploadGroup(bucketUploads, wrap, maintainRowShown);
+    list.appendChild(wrap);
   });
 
   list.querySelectorAll("[data-view]").forEach((btn) => {
