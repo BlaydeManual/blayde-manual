@@ -284,6 +284,16 @@
     padding: 8px 0; border-bottom: 1px solid var(--steel-dark); font-size: 0.95rem;
   }
   .issue-pending-row:last-child { border-bottom: none; }
+
+  /* ---- tab nav, same pattern as the Maintainer Portal's ---- */
+  #tabNav { display: flex; gap: 8px; margin-bottom: 18px; flex-wrap: wrap; }
+  #tabNav button {
+    margin: 0; background: var(--black-2); color: var(--steel);
+    border: 1px solid var(--steel-dark); padding: 8px 14px; font-size: 0.92rem;
+  }
+  #tabNav button.active { background: var(--red); color: #fff; border-color: var(--red); }
+  .tab-panel { display: none; }
+  .tab-panel.active { display: block; }
 </style>
 </head>
 <body>
@@ -351,6 +361,13 @@
     </div>
   </div>
 
+  <div id="tabNav">
+    <button class="tab-btn active" data-tab="reviewables">My Reviewables</button>
+    <button class="tab-btn" data-tab="recategorize">Recategorize</button>
+    <button class="tab-btn" data-tab="issue">Photo Location Fix</button>
+  </div>
+
+  <div class="tab-panel active" id="tab-reviewables">
   <div class="card" id="uploadsSection">
     <h2>My Reviewables</h2>
     <p class="sub" style="margin:0 0 8px;">Blayde Manual recommends using the blaydemanual.com interface for all submissions rather than GitHub directly. Each of your contributions will be grouped below:</p>
@@ -387,7 +404,9 @@
       </div>
     </div>
   </div>
+  </div>
 
+  <div class="tab-panel" id="tab-recategorize">
   <div class="card" id="recategorizeSection">
     <h2>Propose a recategorization</h2>
     <p class="sub" style="margin:0 0 8px;">See something filed under the wrong category or manual type -- or just tagged "Other"? Anyone can propose a fix; an org-level maintainer reviews and merges it, the same bar as approving a new manual.</p>
@@ -412,10 +431,17 @@
     </div>
     <div id="recatLog"></div>
   </div>
+  </div>
 
+  <div class="tab-panel" id="tab-issue">
   <div class="card" id="issueSection">
     <h2>Propose a photo location fix</h2>
     <p class="sub" style="margin:0 0 8px;">See a box in the wrong spot, sized wrong, or a real photo opportunity the manual's own index missed entirely? Propose a fix; a maintainer of that manual reviews and merges it, the same bar as approving a photo.</p>
+
+    <div id="issueRequestsCard" style="display:none; margin-bottom:14px;">
+      <p class="sub" style="margin:0 0 8px; font-weight:700;">Your proposed fixes</p>
+      <div id="issueRequestsList"></div>
+    </div>
 
     <label>Which manual?</label>
     <div style="display:flex; gap:8px; margin-bottom:6px; flex-wrap:wrap;">
@@ -459,9 +485,11 @@
       <p class="sub" style="margin:0 0 8px; font-weight:700;">Changes ready to propose</p>
       <div id="issuePendingList"></div>
       <button id="issueSubmitAllBtn" style="margin-top:10px;">Propose these changes</button>
+      <p class="sub" style="margin:8px 0 0;">Each change becomes its own separate pull request, reviewed independently -- marking several boxes never bundles them into one.</p>
     </div>
 
     <div id="issueLog" style="font-family:ui-monospace,monospace; font-size: 0.86rem; color:#9fe1cb; white-space:pre-wrap; margin-top:10px;"></div>
+  </div>
   </div>
 </main>
 

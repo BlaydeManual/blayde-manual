@@ -1931,3 +1931,16 @@ document.getElementById("recatSubmitBtn").addEventListener("click", async () => 
   populateRecatCategoryOptions();
   await populateRecatEntrySelect().catch((e) => recatLog(`Couldn't load the registry: ${e.message}`));
 })();
+
+// Same tab pattern as the Maintainer Portal (maintainer-portal.js's
+// activateTab) -- three real actions (My Reviewables, Recategorize,
+// Photo Location Fix) that used to be one long scroll of stacked cards.
+function activateContributeTab(tabName) {
+  document.querySelectorAll(".tab-btn").forEach((b) => b.classList.remove("active"));
+  document.querySelectorAll(".tab-panel").forEach((p) => p.classList.remove("active"));
+  document.querySelector(`.tab-btn[data-tab="${tabName}"]`).classList.add("active");
+  document.getElementById(`tab-${tabName}`).classList.add("active");
+}
+document.querySelectorAll("#tabNav .tab-btn").forEach((btn) => {
+  btn.addEventListener("click", () => activateContributeTab(btn.dataset.tab));
+});

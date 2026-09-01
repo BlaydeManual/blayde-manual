@@ -25,6 +25,24 @@ let pendingIssues = []; // {kind, procedure_id, page, bbox, section_heading}
 let issueRegistryEntries = []; // real approved registry.json rows, populated once
 const ISSUE_ENTRY_RENDER_CAP = 100;
 
+// Local record of this browser's own proposals -- not the source of
+// truth for whether one exists or was acted on (the real PR is), just
+// enough to show a persistent "you proposed these" list with live
+// status, same "don't let a submission disappear the moment you look
+// away" reasoning as My Reviewables.
+const MANIFEST_FIX_REQUESTS_KEY = "blayde_manifest_fix_requests_v1";
+function loadManifestFixRequests() {
+  try {
+    const raw = localStorage.getItem(MANIFEST_FIX_REQUESTS_KEY);
+    if (raw) return JSON.parse(raw);
+  } catch (e) { /* best-effort */ }
+  return [];
+}
+function saveManifestFixRequests() {
+  try { localStorage.setItem(MANIFEST_FIX_REQUESTS_KEY, JSON.stringify(manifestFixRequests)); } catch (e) { /* best-effort */ }
+}
+let manifestFixRequests = loadManifestFixRequests();
+
 function issueLog(msg) {
   const el = document.getElementById("issueLog");
   el.textContent += msg + "\n";
@@ -103,10 +121,16 @@ function renderIssueEntryOptions() {
 document.getElementById("issueFilterCategory").addEventListener("change", renderIssueEntryOptions);
 document.getElementById("issueSearchInput").addEventListener("input", renderIssueEntryOptions);
 
+let issueVehicleLabel = null;
+
 document.getElementById("issueEntrySelect").addEventListener("change", (e) => {
   const entry = issueRegistryEntries[parseInt(e.target.value, 10)];
   issueRepoUrl = entry.repo_url;
   issueEditionId = entry.edition_id;
+  // Captured now, not looked up later from repoUrl+editionId -- a
+  // proposed-fixes row needs to keep reading correctly even if the
+  // registry entry it came from is later recategorized or removed.
+  issueVehicleLabel = `${entry.vehicle_display_name || entry.vehicle_slug} (${entry.edition_id})${entry.category ? ` -- ${recatCategoryLabel(entry.category)}${entry.manual_type ? "/" + entry.manual_type : ""}` : ""}`;
   document.getElementById("issuePickerArea").style.display = "block";
 });
 
@@ -503,23 +527,83 @@ async function submitManifestChange(repoUrl, editionId, issue) {
 document.getElementById("issueSubmitAllBtn").addEventListener("click", async () => {
   const btn = document.getElementById("issueSubmitAllBtn");
   btn.disabled = true;
-  const { editionId } = currentIssueSelection();
+  const { repoUrl, editionId } = currentIssueSelection();
   const toSubmit = pendingIssues.slice();
   let opened = 0;
+  const failures = [];
   for (const issue of toSubmit) {
     try {
-      const pr = await submitManifestChange(issueRepoUrl, editionId, issue);
+      const pr = await submitManifestChange(repoUrl, editionId, issue);
       issueLog(`Proposed: ${pr.url}`);
+      manifestFixRequests.push({
+        kind: issue.kind, procedureId: issue.procedure_id, sectionHeading: issue.section_heading,
+        vehicleLabel: issueVehicleLabel, repoUrl, editionId, prNumber: pr.number, prUrl: pr.url,
+        proposedAt: new Date().toISOString().slice(0, 10),
+      });
       pendingIssues = pendingIssues.filter((i) => i !== issue);
       opened++;
     } catch (e) {
+      failures.push(issue.section_heading);
       issueLog(`Couldn't propose "${issue.section_heading}": ${e.message}`);
     }
   }
+  saveManifestFixRequests();
   renderPendingIssues();
   renderIssueOverlays();
+  renderManifestFixRequests();
   btn.disabled = false;
-  if (opened) issueLog(`${opened} change(s) proposed as real pull requests -- a maintainer of this manual will review them.`);
+  if (opened) {
+    // Direct request: the full-page editor is done its job once
+    // everything queued is actually proposed -- closing it (rather
+    // than leaving it open with only a scrollable text log to notice)
+    // matches how a successful photo submission elsewhere on this page
+    // collapses its own editor and confirms with a toast, not just a
+    // log line easy to miss.
+    document.getElementById("issueEditorArea").style.display = "none";
+    showToast(`${opened} change${opened === 1 ? "" : "s"} proposed${failures.length ? `, ${failures.length} failed` : ""}. A maintainer of this manual will review ${opened === 1 ? "it" : "them"}.`);
+  }
 });
 
+// Reuses fetchPrReviewStatus/reviewStatusText from contribute.js (same
+// page, loaded first) rather than a second copy -- same live approval/
+// changes-requested/checks feedback My Reviewables already shows for
+// photo PRs, applied here to manifest-fix proposals.
+const manifestFixStatusCache = new Map();
+
+function renderManifestFixRequests() {
+  const card = document.getElementById("issueRequestsCard");
+  const list = document.getElementById("issueRequestsList");
+  if (!manifestFixRequests.length) { card.style.display = "none"; return; }
+  card.style.display = "block";
+  list.innerHTML = "";
+  manifestFixRequests.slice().reverse().forEach((req) => {
+    const key = `${req.repoUrl}#${req.prNumber}`;
+    const row = document.createElement("div");
+    row.className = "issue-pending-row";
+    // Older local records predate vehicleLabel -- falls back to
+    // repoUrl+editionId rather than rendering blank.
+    const vehicleLabel = req.vehicleLabel || `${req.repoUrl} (${req.editionId})`;
+    row.innerHTML = `
+      <div>
+        <div style="font-weight:700;">${vehicleLabel}</div>
+        <div class="sub">${req.sectionHeading} <span>(${req.kind})</span></div>
+        <div class="sub"><a href="${req.prUrl}" target="_blank" rel="noopener" class="pr-link">Request #${req.prNumber}</a></div>
+        <div class="sub review-status-line" id="manifestfixstatus-${key.replace(/[^a-zA-Z0-9]/g, "")}">${reviewStatusText(manifestFixStatusCache.get(key))}</div>
+      </div>
+    `;
+    list.appendChild(row);
+  });
+  manifestFixRequests
+    .filter((req) => !manifestFixStatusCache.has(`${req.repoUrl}#${req.prNumber}`))
+    .forEach((req) => {
+      const key = `${req.repoUrl}#${req.prNumber}`;
+      fetchPrReviewStatus(req.repoUrl, req.prNumber).then((status) => {
+        manifestFixStatusCache.set(key, status);
+        const el = document.getElementById(`manifestfixstatus-${key.replace(/[^a-zA-Z0-9]/g, "")}`);
+        if (el) el.innerHTML = reviewStatusText(status);
+      });
+    });
+}
+
 populateIssueEntrySelect().catch((e) => issueLog(`Couldn't load the registry: ${e.message}`));
+renderManifestFixRequests();
