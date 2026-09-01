@@ -278,7 +278,7 @@
 
 <div class="qa">
   <h3>Was AI used in making this?</h3>
-  <p>Yes, openly. This project was built with Claude (an AI assistant) doing the coding, research, and drafting, guided by a human who made every real call: what to build, which license to use, which tradeoffs to accept, and what to reject or correct along the way. Nothing about that is hidden. There's a full ledger of it in the project repo (<code>ledgers/TheBlayde_AILedger.md</code>), including the places the human caught real mistakes the AI made. If other contributors keep their own ledgers of their AI-assisted work someday, that's the folder where they'd live too, one per contributor.</p>
+  <p>Yes, openly. This project was built with Claude (an AI assistant) doing the coding, research, and drafting, guided by a human who made every real call: what to build, which license to use, which tradeoffs to accept, and what to reject or correct along the way. Nothing about that is hidden. There's a full public ledger of it (<code>ledgers/TheBlayde_AILedger.md</code>), including the places the human caught real mistakes the AI made. If other contributors keep their own ledgers of their AI-assisted work someday, that's the folder where they'd live too, one per contributor.</p>
 </div>
 
 <div class="qa">
@@ -290,22 +290,22 @@
 
 <div class="qa highlight">
   <h3>If I contribute a photo, do I still own it?</h3>
-  <p>Yes, always, no matter where a copy of it ends up. Contributing a photo licenses it (CC-BY 4.0: anyone can use it, they just have to credit you). It doesn't transfer ownership to anyone: not to that item's repo, not to the project, not ever.</p>
+  <p>Yes, always, no matter where a copy of it ends up. Contributing a photo licenses it (CC-BY 4.0: anyone can use it, they just have to credit you). It doesn't transfer ownership to anyone: not to Blayde Manual, not to anyone else, not ever.</p>
 </div>
 
 <div class="qa">
   <h3>Can I revoke a photo I contributed?</h3>
-  <p>Not retroactively, and that's by design, not an oversight. CC-BY 4.0 is deliberately irrevocable once granted. If it could be pulled back at will, nobody could safely build on it, and every manual already patched with your photo would be sitting on legally shaky ground. What you <em>can</em> do: ask a maintainer to remove it from the active <code>images/</code> folder, and it stops being offered to anyone from that point forward. That request itself is still a direct ask today, not yet a one-click automated flow, but the removal it leads to is completely real. It just can't reach back into copies other people already generated before the removal.</p>
+  <p>Not retroactively, and that's by design, not an oversight. CC-BY 4.0 is deliberately irrevocable once granted. If it could be pulled back at will, nobody could safely build on it, and every manual already patched with your photo would be sitting on legally shaky ground. What you <em>can</em> do: ask a maintainer to take it down, and it stops being offered to anyone from that point forward. That request itself is still a direct ask today, not yet a one-click automated flow, but the removal it leads to is completely real. It just can't reach back into copies other people already generated before the removal.</p>
 </div>
 
 <div class="qa">
   <h3>Do I get credit?</h3>
-  <p>Yes, and visibly, not buried in a commit log. Every photo you contribute gets a small "photo: @you" credit printed directly under it, every time someone enhances their own legal copy with the Blayde Manual overlay.</p>
+  <p>Yes, and visibly, not buried somewhere only a developer would look. Every photo you contribute gets a small "photo: @you" credit printed directly under it, every time someone enhances their own legal copy with the Blayde Manual overlay.</p>
 </div>
 
 <div class="qa">
   <h3>Where do photos physically live?</h3>
-  <p>As normal files in a folder called <code>images/</code> inside that item's own repo, nothing fancier than that. No separate photo service, no database. See the diagram below.</p>
+  <p>As ordinary image files stored alongside that item's manual, nothing fancier than that. No separate photo service, no database. See the diagram below.</p>
 </div>
 
 <div class="qa">
@@ -315,14 +315,14 @@
 
 <div class="diagram-block">
   <svg viewBox="0 0 900 700" xmlns="http://www.w3.org/2000/svg" role="img">
-<title>Blayde Manual org structure, approvals, and photo ownership</title>
-<desc>Five org maintainers exist as a pool; any one of them approves a new item joining the registry, and different admins approve different items, across any of the six categories (Garage, Marina, Hangar, Farm, Home, Hobby). Once an item's repo exists, it has its own separate pool of maintainers who approve that item's own photo contributions, requiring two of them to approve each photo (a real, GitHub-enforced rule, distinct from the single-approver rule for onboarding a new item), and each item's maintainer pool is its own size, not a fixed number. An item can have more than one manual edition, each fully independent. Every contributed photo stays copyrighted by its contributor, licensed CC-BY 4.0, no matter which repo holds a copy of it.</desc>
+<title>Blayde Manual team structure, approvals, and photo ownership</title>
+<desc>Five Blayde Manual team members share approval duty; any one of them can approve a new item joining the project, and different team members approve different items, across any of the six categories (Garage, Marina, Hangar, Farm, Home, Hobby). Once an item joins the project, it has its own separate group of maintainers who approve that item's own photo contributions, requiring two of them to agree on each photo, distinct from the single approval needed to add a new item. Each item's maintainer group is its own size, not a fixed number. An item can have more than one manual edition, each fully independent. Every contributed photo stays copyrighted by its contributor, licensed CC-BY 4.0, no matter where a copy of it lives.</desc>
 
 <rect x="0" y="0" width="900" height="700" fill="#ffffff"/>
 
 <rect x="40" y="16" width="820" height="124" rx="10" fill="#0c0d0f"/>
-<text x="450" y="46" text-anchor="middle" font-family="Helvetica, Arial, sans-serif" font-size="22" font-weight="700" fill="#ffffff">BLAYDE MANUAL <tspan fill="#c8102e">// ORG</tspan></text>
-<text x="450" y="66" text-anchor="middle" font-family="Helvetica, Arial, sans-serif" font-size="12.5" fill="#b9bec6">5 org maintainers, as a pool; any 1 of them approves a new item joining the registry, in any category</text>
+<text x="450" y="46" text-anchor="middle" font-family="Helvetica, Arial, sans-serif" font-size="22" font-weight="700" fill="#ffffff">BLAYDE MANUAL <tspan fill="#c8102e">// TEAM</tspan></text>
+<text x="450" y="66" text-anchor="middle" font-family="Helvetica, Arial, sans-serif" font-size="12.5" fill="#b9bec6">5 team members share approval duty; any 1 of them can approve a new item, in any category</text>
 
 <g font-family="Helvetica, Arial, sans-serif">
   <circle cx="330" cy="106" r="13" fill="#4a4f57"/>
@@ -350,26 +350,26 @@
   <text x="267" y="207" text-anchor="middle" font-family="Helvetica, Arial, sans-serif" font-size="9" font-weight="700" fill="#ffffff">2 EDITIONS</text>
   <text x="180" y="226" text-anchor="middle" font-family="Helvetica, Arial, sans-serif" font-size="15" font-weight="700" fill="#0c0d0f">Suzuki SV650</text>
   <text x="180" y="244" text-anchor="middle" font-family="Helvetica, Arial, sans-serif" font-size="11" fill="#5f5e5a">OEM manual · Haynes manual</text>
-  <text x="180" y="261" text-anchor="middle" font-family="Helvetica, Arial, sans-serif" font-size="11" fill="#5f5e5a">its own repo, dedicated maintainers</text>
-  <text x="180" y="279" text-anchor="middle" font-family="Helvetica, Arial, sans-serif" font-size="11.5" font-weight="700" fill="#c8102e">onboarding approved by: K</text>
+  <text x="180" y="261" text-anchor="middle" font-family="Helvetica, Arial, sans-serif" font-size="11" fill="#5f5e5a">own page, dedicated maintainers</text>
+  <text x="180" y="279" text-anchor="middle" font-family="Helvetica, Arial, sans-serif" font-size="11.5" font-weight="700" fill="#c8102e">approved by: K</text>
 </g>
 
 <g>
   <rect x="330" y="186" width="240" height="102" rx="8" fill="#ffffff" stroke="#4a4f57" stroke-width="1.5"/>
   <rect x="330" y="186" width="240" height="6" rx="3" fill="#c8102e"/>
-  <text x="450" y="218" text-anchor="middle" font-family="Helvetica, Arial, sans-serif" font-size="15" font-weight="700" fill="#0c0d0f">KitchenAid K45SS repo</text>
+  <text x="450" y="218" text-anchor="middle" font-family="Helvetica, Arial, sans-serif" font-size="15" font-weight="700" fill="#0c0d0f">KitchenAid K45SS</text>
   <text x="450" y="238" text-anchor="middle" font-family="Helvetica, Arial, sans-serif" font-size="11" fill="#5f5e5a">Home / Appliance</text>
   <text x="450" y="255" text-anchor="middle" font-family="Helvetica, Arial, sans-serif" font-size="11" fill="#5f5e5a">dedicated contributors, own pace</text>
-  <text x="450" y="279" text-anchor="middle" font-family="Helvetica, Arial, sans-serif" font-size="11.5" font-weight="700" fill="#c8102e">onboarding approved by: D</text>
+  <text x="450" y="279" text-anchor="middle" font-family="Helvetica, Arial, sans-serif" font-size="11.5" font-weight="700" fill="#c8102e">approved by: D</text>
 </g>
 
 <g>
   <rect x="600" y="186" width="240" height="102" rx="8" fill="#ffffff" stroke="#4a4f57" stroke-width="1.5"/>
   <rect x="600" y="186" width="240" height="6" rx="3" fill="#c8102e"/>
-  <text x="720" y="218" text-anchor="middle" font-family="Helvetica, Arial, sans-serif" font-size="15" font-weight="700" fill="#0c0d0f">Yaesu FT-101 repo</text>
+  <text x="720" y="218" text-anchor="middle" font-family="Helvetica, Arial, sans-serif" font-size="15" font-weight="700" fill="#0c0d0f">Yaesu FT-101</text>
   <text x="720" y="238" text-anchor="middle" font-family="Helvetica, Arial, sans-serif" font-size="11" fill="#5f5e5a">Hobby / Ham radio</text>
   <text x="720" y="255" text-anchor="middle" font-family="Helvetica, Arial, sans-serif" font-size="11" fill="#5f5e5a">dedicated contributors, own pace</text>
-  <text x="720" y="279" text-anchor="middle" font-family="Helvetica, Arial, sans-serif" font-size="11.5" font-weight="700" fill="#c8102e">onboarding approved by: M</text>
+  <text x="720" y="279" text-anchor="middle" font-family="Helvetica, Arial, sans-serif" font-size="11.5" font-weight="700" fill="#c8102e">approved by: M</text>
 </g>
 
 <line x1="180" y1="296" x2="180" y2="336" stroke="#8a8f98" stroke-width="1.5"/>
@@ -378,13 +378,13 @@
 
 <g>
   <rect x="80" y="336" width="200" height="112" rx="6" fill="#f1efe8" stroke="#b4b2a9" stroke-width="1"/>
-  <text x="180" y="354" text-anchor="middle" font-family="Helvetica, Arial, sans-serif" font-size="11" font-weight="700" fill="#444441">images/</text>
+  <text x="180" y="354" text-anchor="middle" font-family="Helvetica, Arial, sans-serif" font-size="11" font-weight="700" fill="#444441">Photos</text>
   <rect x="96" y="362" width="72" height="30" rx="4" fill="#4a4f57"/>
   <text x="132" y="381" text-anchor="middle" font-family="Helvetica, Arial, sans-serif" font-size="9" fill="#ffffff">@gsxr_greg</text>
   <rect x="176" y="362" width="88" height="30" rx="4" fill="#4a4f57"/>
   <text x="220" y="381" text-anchor="middle" font-family="Helvetica, Arial, sans-serif" font-size="9" fill="#ffffff">@haynes_hank</text>
   <line x1="92" y1="400" x2="268" y2="400" stroke="#b4b2a9" stroke-width="1"/>
-  <text x="180" y="414" text-anchor="middle" font-family="Helvetica, Arial, sans-serif" font-size="9.5" font-weight="700" fill="#444441">maintainers (this repo only)</text>
+  <text x="180" y="414" text-anchor="middle" font-family="Helvetica, Arial, sans-serif" font-size="9.5" font-weight="700" fill="#444441">maintainers (this item only)</text>
   <circle cx="140" cy="432" r="7" fill="#c8102e"/>
   <circle cx="160" cy="432" r="7" fill="#c8102e"/>
   <circle cx="180" cy="432" r="7" fill="#d3d1c7"/>
@@ -395,13 +395,13 @@
 
 <g>
   <rect x="350" y="336" width="200" height="112" rx="6" fill="#f1efe8" stroke="#b4b2a9" stroke-width="1"/>
-  <text x="450" y="354" text-anchor="middle" font-family="Helvetica, Arial, sans-serif" font-size="11" font-weight="700" fill="#444441">images/</text>
+  <text x="450" y="354" text-anchor="middle" font-family="Helvetica, Arial, sans-serif" font-size="11" font-weight="700" fill="#444441">Photos</text>
   <rect x="366" y="362" width="80" height="30" rx="4" fill="#4a4f57"/>
   <text x="406" y="381" text-anchor="middle" font-family="Helvetica, Arial, sans-serif" font-size="9" fill="#ffffff">@kitchen_kim</text>
   <rect x="454" y="362" width="80" height="30" rx="4" fill="#4a4f57"/>
   <text x="494" y="381" text-anchor="middle" font-family="Helvetica, Arial, sans-serif" font-size="9" fill="#ffffff">@mixer_mike</text>
   <line x1="366" y1="400" x2="534" y2="400" stroke="#b4b2a9" stroke-width="1"/>
-  <text x="450" y="414" text-anchor="middle" font-family="Helvetica, Arial, sans-serif" font-size="9.5" font-weight="700" fill="#444441">maintainers (this repo only)</text>
+  <text x="450" y="414" text-anchor="middle" font-family="Helvetica, Arial, sans-serif" font-size="9.5" font-weight="700" fill="#444441">maintainers (this item only)</text>
   <rect x="413" y="425" width="14" height="14" rx="2" fill="#c8102e"/>
   <rect x="433" y="425" width="14" height="14" rx="2" fill="#c8102e"/>
   <rect x="453" y="425" width="14" height="14" rx="2" fill="#d3d1c7"/>
@@ -411,13 +411,13 @@
 
 <g>
   <rect x="620" y="336" width="200" height="112" rx="6" fill="#f1efe8" stroke="#b4b2a9" stroke-width="1"/>
-  <text x="720" y="354" text-anchor="middle" font-family="Helvetica, Arial, sans-serif" font-size="11" font-weight="700" fill="#444441">images/</text>
+  <text x="720" y="354" text-anchor="middle" font-family="Helvetica, Arial, sans-serif" font-size="11" font-weight="700" fill="#444441">Photos</text>
   <rect x="636" y="362" width="82" height="30" rx="4" fill="#4a4f57"/>
   <text x="677" y="381" text-anchor="middle" font-family="Helvetica, Arial, sans-serif" font-size="9" fill="#ffffff">@ft101_fan</text>
   <rect x="722" y="362" width="82" height="30" rx="4" fill="#4a4f57"/>
   <text x="763" y="381" text-anchor="middle" font-family="Helvetica, Arial, sans-serif" font-size="9" fill="#ffffff">@radio_rita</text>
   <line x1="636" y1="400" x2="804" y2="400" stroke="#b4b2a9" stroke-width="1"/>
-  <text x="720" y="414" text-anchor="middle" font-family="Helvetica, Arial, sans-serif" font-size="9.5" font-weight="700" fill="#444441">maintainers (this repo only)</text>
+  <text x="720" y="414" text-anchor="middle" font-family="Helvetica, Arial, sans-serif" font-size="9.5" font-weight="700" fill="#444441">maintainers (this item only)</text>
   <polygon points="690,424 698,438 682,438" fill="#c8102e"/>
   <polygon points="720,424 728,438 712,438" fill="#c8102e"/>
   <polygon points="750,424 758,438 742,438" fill="#d3d1c7"/>
@@ -431,26 +431,26 @@
 <rect x="60" y="510" width="780" height="130" rx="10" fill="#fcebeb" stroke="#c8102e" stroke-width="1.5"/>
 <text x="450" y="542" text-anchor="middle" font-family="Helvetica, Arial, sans-serif" font-size="17" font-weight="700" fill="#791f1f">You always keep the copyright on your own photo</text>
 <text x="450" y="570" text-anchor="middle" font-family="Helvetica, Arial, sans-serif" font-size="12.5" fill="#501313">
-  Every repo above just holds a licensed copy (CC-BY 4.0, credit required, nothing exclusive).
+  Every listing above just holds a licensed copy (CC-BY 4.0, credit required, nothing exclusive).
 </text>
 <text x="450" y="590" text-anchor="middle" font-family="Helvetica, Arial, sans-serif" font-size="12.5" fill="#501313">
-  Ownership never transfers to the item's repo, the org, or anyone else (not when it's forked,
+  Ownership never transfers to Blayde Manual or anyone else, not ever.
 </text>
 <text x="450" y="610" text-anchor="middle" font-family="Helvetica, Arial, sans-serif" font-size="12.5" fill="#501313">
-  not when an item's repo moves into the org, not ever). It's still yours, wherever a copy lives.
+  It's still yours, wherever a copy lives.
 </text>
 
-<text x="450" y="662" text-anchor="middle" font-family="Helvetica, Arial, sans-serif" font-size="10.5" fill="#8a8f98">Different admins, no fixed committee, the org pool never bottlenecks on the same 1 person. Each item's maintainer pool is its own size, too.</text>
-<text x="450" y="682" text-anchor="middle" font-family="Helvetica, Arial, sans-serif" font-size="10.5" fill="#8a8f98">An item can have more than one manual edition (OEM, or a well-known aftermarket edition like Haynes for a vehicle), each fully independent. See CONTRIBUTING.md and LICENSE.md.</text>
+<text x="450" y="662" text-anchor="middle" font-family="Helvetica, Arial, sans-serif" font-size="10.5" fill="#8a8f98">Different team members review different items, so no one person becomes a bottleneck. Each item's maintainer group is its own size, too.</text>
+<text x="450" y="682" text-anchor="middle" font-family="Helvetica, Arial, sans-serif" font-size="10.5" fill="#8a8f98">An item can have more than one manual edition (OEM, or a well-known aftermarket edition like Haynes for a vehicle), each fully independent.</text>
 </svg>
-  <figcaption>Each item (a vehicle, an appliance, a hobby tool, anything with a manual) is its own independent repo, with its own community. No matter which repo holds a copy of your photo, it's still yours.</figcaption>
+  <figcaption>Each item (a vehicle, an appliance, a hobby tool, anything with a manual) is its own independent project, with its own community. No matter where a copy of your photo lives, it's still yours.</figcaption>
 </div>
 
 <div class="section-title">Contributing</div>
 
 <div class="qa">
   <h3>Do I have to share my photos publicly?</h3>
-  <p>No, not if you save a photo as a draft instead of submitting it. Saving a draft is entirely local to this device, stored in this browser's own storage, not tied to a GitHub account, and not shared, until you separately choose to submit it. Signing in only happens at that later Submit step, never before. <em>Patching</em> your own manual with photos the community has already approved works the same way, genuinely device-only, no account needed at all. One thing isn't built yet: exporting a saved draft to a different device or browser without an account. Today, local-only drafts live in this one browser, on this one device, until you sign in to submit them for real.</p>
+  <p>No, not if you save it as a draft instead of submitting it. A draft stays entirely on this device until you choose to submit it: nothing leaves your browser, and no account is needed. Signing in only happens at that later step, never before. <em>Patching</em> your own manual with already-approved photos works the same way, fully on your device, no account needed at all. The one thing not built yet: taking a saved draft to a different device without an account.</p>
 </div>
 
 <div class="qa">
@@ -467,23 +467,23 @@
 
 <div class="qa">
   <h3>Does a small team have to approve every single photo?</h3>
-  <p>No. That wouldn't scale, and it's not how it works. A small org-level team reviews manual <em>submissions</em>: is the source verifiable, does the indexing look real, did someone give it an honest pass. That's true whether it's a brand-new item or another manual joining one that already exists, in any category. What differs is what happens next, not the review itself: a new item gets its own repo, while another manual for an existing item joins that repo instead. Either way, day-to-day <em>photo</em> review is never the org's job. That's always each item's own dedicated group of maintainers, at whatever pace that community sets.</p>
+  <p>No. That wouldn't scale, and it's not how it works. A small Blayde Manual team reviews new <em>submissions</em>: is the source real, does the indexing look right, did someone give it an honest pass. That's true whether it's a brand-new item or another manual joining one that already exists, in any category. Day-to-day <em>photo</em> review is never Blayde Manual's job. That's always each item's own dedicated group of maintainers, at whatever pace that community sets.</p>
 </div>
 
 <div class="qa">
   <h3>Does approval need everyone to agree?</h3>
-  <p>No. Onboarding a new item into the registry just needs one real org admin to review and approve it, not unanimous consent from all five, and not always the same one, which keeps things moving without any single person becoming a bottleneck. Day-to-day photo approval on an item's own repo is different and does require two of that item's own maintainers to agree (a real, GitHub-enforced rule), since that's a higher-volume, ongoing job rather than a one-time onboarding decision.</p>
+  <p>No. Adding a new item just needs one Blayde Manual team member to review and approve it, not unanimous agreement from all five, and not always the same one, which keeps things moving without anyone becoming a bottleneck. Day-to-day photo approval on an item is different: it takes two of that item's own maintainers to agree, since that's an ongoing job rather than a one-time decision.</p>
 </div>
 
 <div class="qa">
   <h3>What if my item has more than one manual, like a factory manual and a Haynes manual?</h3>
-  <p>Both can exist, and both live in the same repo, maintained by the same team, since they're different books about the identical item, so the community reviewing them is the same community. The photo coordinates can't be shared between the two scans, but that's just separate folders inside one repo, not separate repos or separate maintainer teams.</p>
-  <p>That's different from a real, different version of the same model. For a vehicle, that means model years: an SV650 from 1999 and one from 2005 might share a name, but they're mechanically different bikes (different parts, different procedures), not two books about the same one. For a Home or Hobby item, there's usually no "model year" at all. The equivalent is a real manufacturer variant code when one exists (a Singer 15-91 is a genuinely different sewing machine from a plain Singer 15), or nothing at all when the brand and model are already unique on their own (a Yaesu FT-101 doesn't need anything else added). Either way, a real different version stays a fully separate repo with its own maintainer team, the same as any two unrelated items would.</p>
+  <p>Both can exist as part of the same item, maintained by the same team, since they're different books about the identical item, so the community reviewing them is the same community. The two scans don't share photo coordinates, but that's just kept separate within the one item, not treated as two separate items.</p>
+  <p>That's different from a real, different version of the same model. For a vehicle, that means model years: an SV650 from 1999 and one from 2005 might share a name, but they're mechanically different bikes (different parts, different procedures), not two books about the same one. For a Home or Hobby item, there's usually no "model year" at all. The equivalent is a real manufacturer variant code when one exists (a Singer 15-91 is a genuinely different sewing machine from a plain Singer 15), or nothing at all when the brand and model are already unique on their own (a Yaesu FT-101 doesn't need anything else added). Either way, a real different version becomes its own separate item, with its own maintainer team, the same as any two unrelated items would.</p>
 </div>
 
 <div class="qa">
-  <h3>If I submit a brand new item, does that repo belong to me?</h3>
-  <p>No, not even briefly. You never own it at all. Submitting doesn't create a repo under your own account that later gets handed over. The moment you submit, Blayde Manual's own credential creates a new repo directly under the org, <em>private</em>, so nobody but an org approver can see it yet. You have no write access to it while it's private, and there's nothing sitting under your account to lose track of. Once an org approver reviews and approves it, that same repo flips to public and you're added as its first real maintainer at that point, the same role anyone else who earns it gets, never ownership. That's deliberate: the project's survival shouldn't depend on any one person's account staying active forever.</p>
+  <h3>If I submit a brand new item, does it belong to me?</h3>
+  <p>No, not even briefly. The moment you submit, it's created under Blayde Manual's own account, kept private so nobody but a team member can see it yet. Once a Blayde Manual team member reviews and approves, the manual goes public and you're the first real maintainer! This comes with the same privileges any later maintainer has. Invite your friends! That's deliberate: the project's survival shouldn't depend on any one person's account staying active forever.</p>
 </div>
 
 <div class="section-title" id="for-maintainers">For Maintainers</div>
@@ -491,12 +491,12 @@
 <div class="qa highlight">
   <h3>What's actually expected of me as a maintainer?</h3>
   <p>One thing: look at a submitted photo and decide if it's a good, honest, in-focus contribution for that procedure. That's the whole job.</p>
-  <p>A short list of things that are explicitly <em>not</em> on you, so you never end up worrying about them: how big the repo gets, scaling to more contributors or more items across the project, whether the project succeeds, and the legal/copyright architecture (already solved once, at the project level). All of that is the Blayde Manual team's concern, not a repo maintainer's.</p>
+  <p>A short list of things that are explicitly <em>not</em> on you, so you never end up worrying about them: how big the project gets, scaling to more contributors or more items overall, whether the project succeeds, and the legal/copyright architecture (already solved once, at the project level). All of that is the Blayde Manual team's concern, not a maintainer's.</p>
 </div>
 
 <div class="qa">
   <h3>What if I go quiet, or can't keep up?</h3>
-  <p>Try to find someone to hand things off to if you're stepping back. If you can't, don't worry about it. An item with no active maintainer still works exactly the same for anyone patching their own copy, no matter what, and that part's already true today. A visible "passive" label on the registry, so contributors can see at a glance an item could use a new maintainer, is a real planned feature, not built yet.</p>
+  <p>Try to find someone to hand things off to if you're stepping back. If you can't, don't worry about it. An item with no active maintainer still works exactly the same for anyone patching their own copy, no matter what, and that part's already true today. A visible "passive" label, so contributors can see at a glance an item could use a new maintainer, is a real planned feature, not built yet.</p>
 </div>
 
 <div class="qa">
@@ -513,7 +513,7 @@
 
 <div class="qa">
   <h3>What do I actually need to get started? Do I have to sign up for anything?</h3>
-  <p>Depends what you're doing. To just <em>use</em> Blayde Manual, patching your own legally-owned PDF with whatever real photos the community has already approved, you don't need an account of any kind. The repos are public and readable by anyone.</p>
+  <p>Depends what you're doing. To just <em>use</em> Blayde Manual, patching your own legally-owned PDF with whatever real photos the community has already approved, you don't need an account of any kind. Everything is public and readable by anyone.</p>
   <p>To <em>contribute</em> a photo, yes, you do need a free GitHub account, since that's how your credit and your license grant are attached to what you submit. There's no cost involved either way, GitHub accounts are free, but contributing does require that one piece of setup that just using it doesn't.</p>
 </div>
 
@@ -531,7 +531,7 @@
 
 <div class="qa">
   <h3>Won't storing photos for hundreds of items get expensive or slow?</h3>
-  <p>No. Each item is its own separate, independently-sized repo, not one giant shared one. Storage limits apply per-repo, not across the whole project, so adding a 500th item never makes an existing one closer to any kind of limit.</p>
+  <p>No. Each item is stored separately and sized independently, not lumped into one giant shared pool. Storage limits apply per item, not across the whole project, so adding a 500th item never makes an existing one closer to any kind of limit.</p>
 </div>
 
 <div class="qa">
