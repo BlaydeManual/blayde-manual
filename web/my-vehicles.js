@@ -71,7 +71,11 @@ async function renderVehicleTeams() {
     reposByCategory.get(key).push(entry);
   });
   const orderedCategoryKeys = [...CATEGORY_ORDER.filter((c) => reposByCategory.has(c)), ...(reposByCategory.has(null) ? [null] : [])];
-  const showCategoryHeadings = orderedCategoryKeys.length > 1;
+  // Always shown, even with just one category -- see review-panel.js's
+  // matching comment: the color/icon system should flow through
+  // consistently, not pop in only once a maintainer crosses a second
+  // category.
+  const showCategoryHeadings = orderedCategoryKeys.length > 0;
 
   for (const categoryKey of orderedCategoryKeys) {
     const reposInCategory = reposByCategory.get(categoryKey);
