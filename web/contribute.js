@@ -109,7 +109,7 @@ async function resolveRepoUrl() {
 
 let signedIn = false;
 let currentUsername = null;
-let pendingMaintainRequest = null; // vehicle key -- deferred-sign-in pattern for "help maintain"
+let pendingMaintainRequest = null; // {vehicleKey, repoUrl} -- deferred-sign-in pattern for "help maintain"
 // Real bug, caught live: two identical pull requests opened for the
 // same photo from one click, because nothing stopped a second click
 // (or a second call through the deferred-sign-in path) from starting
@@ -193,14 +193,11 @@ function saveUploads() {
   try { localStorage.setItem(UPLOADS_STORAGE_KEY, JSON.stringify(uploads)); } catch (e) { /* best-effort */ }
 }
 
-// Mock stand-in for the real mechanism designed in ROADMAP.md's
-// maintainer-succession entry: a visible request aimed at the current
-// maintainer(s) and the org quorum, timed out against the same
-// active/quiet signal my-vehicles.js already computes. The real
-// version needs a live repo (a scheduled GitHub Action, run centrally
-// from the org's own registry repo) to actually evaluate the grace
-// period -- this is the UI half only, same convention as every other
-// mocked action on this page.
+// Purely a local "don't let this browser spam the same request twice"
+// guard -- NOT the source of truth for whether a request exists or was
+// acted on. The real request is the GitHub issue submitMaintainRequest
+// opens; my-vehicles.js's renderJoinRequests reads real open issues
+// directly, independent of this.
 function loadMaintainerRequests() {
   try {
     const raw = localStorage.getItem(MAINTAINER_REQUESTS_KEY);
@@ -212,7 +209,7 @@ function saveMaintainerRequests() {
   try { localStorage.setItem(MAINTAINER_REQUESTS_KEY, JSON.stringify(maintainerRequests)); } catch (e) { /* best-effort */ }
 }
 function hasRequestedMaintain(vehicleKey) {
-  return maintainerRequests.some((r) => r.vehicleKey === vehicleKey && r.requestedBy === currentUsername);
+  return maintainerRequests.find((r) => r.vehicleKey === vehicleKey && r.requestedBy === currentUsername) || null;
 }
 
 // The "gitless" answer to "can I revoke a photo I contributed" (see
@@ -778,24 +775,59 @@ document.getElementById("promptSignInBtn").addEventListener("click", async () =>
   if (!(await performSignIn())) return;
   document.getElementById("signInPrompt").style.display = "none";
   updateRecatVisibility();
-  if (pendingMaintainRequest) { performMaintainRequest(pendingMaintainRequest); pendingMaintainRequest = null; }
+  if (pendingMaintainRequest) { performMaintainRequest(pendingMaintainRequest.vehicleKey, pendingMaintainRequest.repoUrl); pendingMaintainRequest = null; }
 });
 
-function requestToMaintain(vehicleKey) {
+function requestToMaintain(vehicleKey, repoUrl) {
   if (!signedIn) {
-    pendingMaintainRequest = vehicleKey;
+    pendingMaintainRequest = { vehicleKey, repoUrl };
     document.getElementById("signInPrompt").style.display = "block";
     return;
   }
-  performMaintainRequest(vehicleKey);
+  performMaintainRequest(vehicleKey, repoUrl);
 }
 
-function performMaintainRequest(vehicleKey) {
-  if (hasRequestedMaintain(vehicleKey)) return;
-  maintainerRequests.push({ vehicleKey, requestedBy: currentUsername, requestedAt: new Date().toISOString().slice(0, 10) });
-  saveMaintainerRequests();
-  log(`[mock] requested to help maintain ${vehicleKey} -- notifies the current maintainer(s) and the org quorum. If there's no response within the grace period, it escalates automatically.`);
+async function performMaintainRequest(vehicleKey, repoUrl) {
+  if (hasRequestedMaintain(vehicleKey) || !repoUrl) return;
+  log(`Asking to join as a maintainer on ${vehicleKey}...`);
+  try {
+    const issue = await submitMaintainRequest(repoUrl);
+    maintainerRequests.push({
+      vehicleKey, repoUrl, requestedBy: currentUsername,
+      requestedAt: new Date().toISOString().slice(0, 10), issueUrl: issue.url,
+    });
+    saveMaintainerRequests();
+    log(`Request sent: ${issue.url}`);
+  } catch (e) {
+    log(`Couldn't send the request: ${e.message}`);
+  }
   renderUploads();
+}
+
+// Opens a real GitHub issue on the vehicle's own repo, using this
+// contributor's own token -- same trust level as any public-repo issue,
+// no privileged Worker call needed. The marker (same pattern as
+// syncRealSubmissions' Public-path search) is what lets
+// my-vehicles.js's renderJoinRequests find these reliably without
+// depending on a label existing on every vehicle repo, which would
+// require write access this contributor doesn't have yet.
+async function submitMaintainRequest(repoUrl) {
+  const session = BlaydeAuth.getSession();
+  if (!session) throw new Error("Not signed in.");
+  const [owner, repo] = ownerRepo(repoUrl);
+  const body = [
+    `@${currentUsername} would like to help maintain this manual.`,
+    ``,
+    `Submitted from the Contributor Portal. Accepting this doesn't grant anything on its own -- a current maintainer needs to use the Maintainer Portal's My Vehicles tab to actually invite \`${currentUsername}\`, which is the real step that grants access.`,
+    ``,
+    `<!-- blaydemaintainerrequest -->`,
+  ].join("\n");
+  const issue = await githubApi(`/repos/${owner}/${repo}/issues`, session.token, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ title: `Request to join as a maintainer: @${currentUsername}`, body }),
+  });
+  return { number: issue.number, url: issue.html_url };
 }
 
 // Only ever called with "draft" now -- direct correction: nobody
@@ -1390,14 +1422,15 @@ function renderUploadGroup(uploadList, container, maintainRowShown, categoryByVe
       maintainRowShown.add(vehicleKey);
       const maintainRow = document.createElement("div");
       maintainRow.className = "maintain-request-row";
-      // Real, confirmed bug fixed here: this used to claim "the current
-      // maintainer(s) and org team have been notified" -- performMaintainRequest
-      // only ever wrote to this browser's own localStorage, so nobody was
-      // ever actually notified. Corrected to say what's actually true
-      // until this has a real notification path (see ROADMAP.md).
-      maintainRow.innerHTML = hasRequestedMaintain(vehicleKey)
-        ? `<span class="sub" style="margin:0; color:var(--mint);">Noted here on this device. There's no automated notification yet -- reach out directly if you don't hear back.</span>`
-        : `<button class="secondary" data-maintain="${vehicleKey}">Request to help maintain this vehicle</button>`;
+      // Opens a real GitHub issue on the vehicle's own repo
+      // (submitMaintainRequest, this contributor's own token), which the
+      // Maintainer Portal's My Vehicles tab reads directly and can act
+      // on with a real Invite/Decline (see my-vehicles.js's
+      // renderJoinRequests).
+      const localRecord = hasRequestedMaintain(vehicleKey);
+      maintainRow.innerHTML = localRecord
+        ? `<span class="sub" style="margin:0; color:var(--mint);">Request sent${localRecord.issueUrl ? ` -- <a href="${localRecord.issueUrl}" target="_blank" rel="noopener" class="pr-link">view it</a>` : ""}. The current maintainers will see it in the Maintainer Portal.</span>`
+        : `<button class="secondary" data-maintain="${vehicleKey}" data-repo="${group[0]?.repoUrl || ""}">Ask to join as a maintainer</button>`;
       details.appendChild(maintainRow);
     }
 
@@ -1492,7 +1525,7 @@ async function renderUploads() {
     btn.addEventListener("click", () => openCompare(btn.dataset.view, btn));
   });
   list.querySelectorAll("[data-maintain]").forEach((btn) => {
-    btn.addEventListener("click", () => requestToMaintain(btn.dataset.maintain));
+    btn.addEventListener("click", () => requestToMaintain(btn.dataset.maintain, btn.dataset.repo));
   });
   list.querySelectorAll("[data-remove]").forEach((btn) => {
     btn.addEventListener("click", () => requestRemoval(btn.dataset.remove));

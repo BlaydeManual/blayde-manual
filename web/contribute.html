@@ -191,11 +191,9 @@
   .upload-status { font-size: 0.78rem; font-weight: 700; padding: 2px 7px; border-radius: 4px; margin-left: 6px; }
   .upload-status.draft { background: rgba(138,143,152,0.15); color: var(--steel); }
   .upload-status.forked { background: rgba(255,204,102,0.15); color: #ffcc66; }
-  /* Was the exact same mint as .accepted, just a lower alpha -- too
-     close to tell apart at a glance, and "pending" reading as "already
-     done" is the wrong signal. Reuses the same blue the Public section
-     above already uses for "out in the world" -- fitting, since
-     submitted specifically means already a real, public, pending PR. */
+  /* Reuses the same blue the Public section above uses for "out in the
+     world" -- fitting, since submitted specifically means already a
+     real, public, pending PR, distinct from accepted's mint. */
   .upload-status.submitted { background: rgba(91,155,247,0.15); color: #5b9bf7; }
   .upload-status.accepted { background: rgba(159,225,203,0.18); color: var(--mint); }
   .upload-status.rejected { background: rgba(200,16,46,0.14); color: #ff6b6b; }
