@@ -79,6 +79,12 @@
      Portal, then land on My uploads instead of a procedure card. */
   #landingSignIn { display: none; }
 
+  /* Recategorization opens a real PR under the signed-in contributor's
+     own account -- showing the form to a signed-out visitor invites
+     them to fill it out before hitting a sign-in wall at Submit, so it
+     stays hidden until contribute.js confirms a real session. */
+  #recategorizeSection { display: none; }
+
   .preview-thumb { width: 120px; height: 90px; object-fit: cover; border-radius: 6px; border: 1px solid var(--steel-dark); margin-top: 10px; display: none; }
 
   /* Crop/rotate editor -- same drag-box visual language as the
