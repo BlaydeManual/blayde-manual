@@ -22,7 +22,7 @@
     --red: #c8102e;
     --red-dark: #791f1f;
     /* Soft dark halo behind red text, only where it sits on the dark
-       header band -- see web/index.html for the full reasoning (real
+       header band. See web/index.html for the full reasoning (real
        optical effect, not just style). Everywhere else on this page
        red text sits on the white body background, where this halo
        would look muddy, not helpful, so it's applied selectively, not
@@ -263,7 +263,7 @@
 
 <div class="qa">
   <h3>What is this, actually?</h3>
-  <p>Old manuals for anything you own -- a motorcycle, a boat, a plane, a tractor, a home appliance, a sewing machine, a ham radio -- often have terrible photos: low-resolution scans that get worse every time someone re-scans them. This project replaces those photos with real ones, taken by real owners doing the actual work, and patches them back into your own copy of the manual.</p>
+  <p>Old manuals for anything you own, such as a motorcycle, a boat, a plane, a tractor, a home appliance, a sewing machine, or a ham radio, often have terrible photos: low-resolution scans that get worse every time someone re-scans them. This project replaces those photos with real ones, taken by real owners doing the actual work, and patches them back into your own copy of the manual.</p>
 </div>
 
 <div class="qa">
@@ -310,7 +310,7 @@
 
 <div class="qa">
   <h3>Does my photo carry my phone's GPS location or other hidden data?</h3>
-  <p>No. Cameras and phones embed a surprising amount into a photo file beyond the picture itself -- GPS coordinates, camera make/model, timestamps, editing history. None of that is published: your photo is stripped down to just the pixels before it's submitted, and checked again automatically before it can be merged. If either check finds anything beyond the image itself, the photo is rejected, not silently cleaned and published anyway.</p>
+  <p>No. Cameras and phones embed a surprising amount into a photo file beyond the picture itself: GPS coordinates, camera make and model, timestamps, and editing history. None of that is published. Your photo is stripped down to just the pixels before it's submitted, and checked again automatically before it can be merged. If either check finds anything beyond the image itself, the photo is rejected, not silently cleaned and published anyway.</p>
 </div>
 
 <div class="diagram-block">
@@ -322,7 +322,7 @@
 
 <rect x="40" y="16" width="820" height="124" rx="10" fill="#0c0d0f"/>
 <text x="450" y="46" text-anchor="middle" font-family="Helvetica, Arial, sans-serif" font-size="22" font-weight="700" fill="#ffffff">BLAYDE MANUAL <tspan fill="#c8102e">// ORG</tspan></text>
-<text x="450" y="66" text-anchor="middle" font-family="Helvetica, Arial, sans-serif" font-size="12.5" fill="#b9bec6">5 org maintainers, as a pool, any 1 of them approves a new item joining the registry -- any category</text>
+<text x="450" y="66" text-anchor="middle" font-family="Helvetica, Arial, sans-serif" font-size="12.5" fill="#b9bec6">5 org maintainers, as a pool; any 1 of them approves a new item joining the registry, in any category</text>
 
 <g font-family="Helvetica, Arial, sans-serif">
   <circle cx="330" cy="106" r="13" fill="#4a4f57"/>
@@ -443,14 +443,14 @@
 <text x="450" y="662" text-anchor="middle" font-family="Helvetica, Arial, sans-serif" font-size="10.5" fill="#8a8f98">Different admins, no fixed committee, the org pool never bottlenecks on the same 1 person. Each item's maintainer pool is its own size, too.</text>
 <text x="450" y="682" text-anchor="middle" font-family="Helvetica, Arial, sans-serif" font-size="10.5" fill="#8a8f98">An item can have more than one manual edition (OEM, or a well-known aftermarket edition like Haynes for a vehicle), each fully independent. See CONTRIBUTING.md and LICENSE.md.</text>
 </svg>
-  <figcaption>Each item -- a vehicle, an appliance, a hobby tool, anything with a manual -- is its own independent repo, with its own community. No matter which repo holds a copy of your photo, it's still yours.</figcaption>
+  <figcaption>Each item (a vehicle, an appliance, a hobby tool, anything with a manual) is its own independent repo, with its own community. No matter which repo holds a copy of your photo, it's still yours.</figcaption>
 </div>
 
 <div class="section-title">Contributing</div>
 
 <div class="qa">
   <h3>Do I have to share my photos publicly?</h3>
-  <p>No, not if you save a photo as a draft instead of submitting it -- saving a draft is entirely local to this device (this browser's own storage), not tied to a GitHub account at all, not shared, until you separately choose to submit it. Signing in only happens at that later Submit step, never before. <em>Patching</em> your own manual with photos the community's already approved is the same story, genuinely device-only, no account needed at all. What isn't built yet: exporting a saved draft to take to a different device or browser without an account -- today's local-only drafts live in this one browser, on this one device, until you sign in to submit them for real.</p>
+  <p>No, not if you save a photo as a draft instead of submitting it. Saving a draft is entirely local to this device, stored in this browser's own storage, not tied to a GitHub account, and not shared, until you separately choose to submit it. Signing in only happens at that later Submit step, never before. <em>Patching</em> your own manual with photos the community has already approved works the same way, genuinely device-only, no account needed at all. One thing isn't built yet: exporting a saved draft to a different device or browser without an account. Today, local-only drafts live in this one browser, on this one device, until you sign in to submit them for real.</p>
 </div>
 
 <div class="qa">
@@ -467,23 +467,23 @@
 
 <div class="qa">
   <h3>Does a small team have to approve every single photo?</h3>
-  <p>No. That wouldn't scale, and it's not how it works. A small org-level team reviews manual <em>submissions</em> -- is the source verifiable, does the indexing look real, did someone give it an honest pass -- whether that's a brand-new item or another manual joining one that already exists, in any category. What differs is what happens next, not the review itself: a new item gets its own repo; another manual for an existing item joins that repo instead. Either way, day-to-day <em>photo</em> review is never the org's job -- that's always each item's own dedicated group of maintainers, at whatever pace that community sets.</p>
+  <p>No. That wouldn't scale, and it's not how it works. A small org-level team reviews manual <em>submissions</em>: is the source verifiable, does the indexing look real, did someone give it an honest pass. That's true whether it's a brand-new item or another manual joining one that already exists, in any category. What differs is what happens next, not the review itself: a new item gets its own repo, while another manual for an existing item joins that repo instead. Either way, day-to-day <em>photo</em> review is never the org's job. That's always each item's own dedicated group of maintainers, at whatever pace that community sets.</p>
 </div>
 
 <div class="qa">
   <h3>Does approval need everyone to agree?</h3>
-  <p>No. Onboarding a new item into the registry just needs one real org admin to review and approve it, not unanimous consent from all five, and not always the same one -- that keeps things moving without any single person becoming a bottleneck. Day-to-day photo approval on an item's own repo is different and does require two of that item's own maintainers to agree (a real, GitHub-enforced rule), since that's a higher-volume, ongoing job rather than a one-time onboarding decision.</p>
+  <p>No. Onboarding a new item into the registry just needs one real org admin to review and approve it, not unanimous consent from all five, and not always the same one, which keeps things moving without any single person becoming a bottleneck. Day-to-day photo approval on an item's own repo is different and does require two of that item's own maintainers to agree (a real, GitHub-enforced rule), since that's a higher-volume, ongoing job rather than a one-time onboarding decision.</p>
 </div>
 
 <div class="qa">
   <h3>What if my item has more than one manual, like a factory manual and a Haynes manual?</h3>
-  <p>Both can exist, and both live in the same repo, maintained by the same team -- they're different books about the identical item, so the community reviewing them is the same community. The photo coordinates can't be shared between the two scans, but that's just separate folders inside one repo, not separate repos or separate maintainer teams.</p>
-  <p>That's different from a real, different version of the same model -- for a vehicle, that means model years: an SV650 from 1999 and one from 2005 might share a name, but they're mechanically different bikes (different parts, different procedures), not two books about the same one. For a Home or Hobby item, there's usually no "model year" at all -- the equivalent is a real manufacturer variant code when one exists (a Singer 15-91 is a genuinely different sewing machine from a plain Singer 15), or nothing at all when the brand and model are already unique on their own (a Yaesu FT-101 doesn't need anything else added). Either way, a real different version stays a fully separate repo with its own maintainer team, the same as any two unrelated items would.</p>
+  <p>Both can exist, and both live in the same repo, maintained by the same team, since they're different books about the identical item, so the community reviewing them is the same community. The photo coordinates can't be shared between the two scans, but that's just separate folders inside one repo, not separate repos or separate maintainer teams.</p>
+  <p>That's different from a real, different version of the same model. For a vehicle, that means model years: an SV650 from 1999 and one from 2005 might share a name, but they're mechanically different bikes (different parts, different procedures), not two books about the same one. For a Home or Hobby item, there's usually no "model year" at all. The equivalent is a real manufacturer variant code when one exists (a Singer 15-91 is a genuinely different sewing machine from a plain Singer 15), or nothing at all when the brand and model are already unique on their own (a Yaesu FT-101 doesn't need anything else added). Either way, a real different version stays a fully separate repo with its own maintainer team, the same as any two unrelated items would.</p>
 </div>
 
 <div class="qa">
   <h3>If I submit a brand new item, does that repo belong to me?</h3>
-  <p>No, not even briefly -- you never own it at all. Submitting doesn't create a repo under your own account that later gets handed over; the moment you submit, Blayde Manual's own credential creates a new repo directly under the org, <em>private</em>, so nobody but an org approver can see it yet. You have no write access to it while it's private, and there's nothing sitting under your account to lose track of. Once an org approver reviews and approves it, that same repo flips to public and you're added as its first real maintainer at that point -- the same role anyone else who earns it gets, never ownership. That's deliberate: the project's survival shouldn't depend on any one person's account staying active forever.</p>
+  <p>No, not even briefly. You never own it at all. Submitting doesn't create a repo under your own account that later gets handed over. The moment you submit, Blayde Manual's own credential creates a new repo directly under the org, <em>private</em>, so nobody but an org approver can see it yet. You have no write access to it while it's private, and there's nothing sitting under your account to lose track of. Once an org approver reviews and approves it, that same repo flips to public and you're added as its first real maintainer at that point, the same role anyone else who earns it gets, never ownership. That's deliberate: the project's survival shouldn't depend on any one person's account staying active forever.</p>
 </div>
 
 <div class="section-title" id="for-maintainers">For Maintainers</div>
@@ -496,7 +496,7 @@
 
 <div class="qa">
   <h3>What if I go quiet, or can't keep up?</h3>
-  <p>Try to find someone to hand things off to if you're stepping back. If you can't, don't worry about it. An item with no active maintainer still works exactly the same for anyone patching their own copy, no matter what -- that part's already true today. A visible "passive" label on the registry, so contributors can see at a glance an item could use a new maintainer, is a real planned feature, not built yet.</p>
+  <p>Try to find someone to hand things off to if you're stepping back. If you can't, don't worry about it. An item with no active maintainer still works exactly the same for anyone patching their own copy, no matter what, and that part's already true today. A visible "passive" label on the registry, so contributors can see at a glance an item could use a new maintainer, is a real planned feature, not built yet.</p>
 </div>
 
 <div class="qa">
@@ -536,7 +536,7 @@
 
 <div class="qa">
   <h3>How do you tell items apart? Is there some official database?</h3>
-  <p>No official database, on purpose. A rigid database would risk excluding exactly the older, rarer items this project is for. Brand, model, and (for a vehicle) year range are taken from what the manual itself says, with a real person checking it makes sense before it's approved -- a Home or Hobby item usually doesn't have a "year range" at all, so that part just doesn't apply, the same person-checks-it-makes-sense process still does.</p>
+  <p>No official database, on purpose. A rigid database would risk excluding exactly the older, rarer items this project is for. Brand, model, and (for a vehicle) year range are taken from what the manual itself says, with a real person checking it makes sense before it's approved. A Home or Hobby item usually doesn't have a "year range" at all, so that part just doesn't apply, but the same person-checks-it-makes-sense process still does.</p>
 </div>
 
 </main>
