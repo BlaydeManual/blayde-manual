@@ -579,7 +579,7 @@ async function handlePendingVehicles(request, env) {
 const VEHICLE_SCAFFOLD_REPO = "vehicle-scaffold";
 
 // README.md, CONTRIBUTING.md, and the edition images/ folder's own
-// README carry a {{VEHICLE_DISPLAY_NAME}} and/or {{EDITION_ID}}
+// README carry a {{ITEM_DISPLAY_NAME}} and/or {{EDITION_ID}}
 // placeholder -- every other scaffold file is copied through byte-for-
 // byte, since re-encoding a binary file (LICENSE, checker.py) through a
 // decode/replace/re-encode round trip for files that don't even have a
@@ -603,7 +603,7 @@ async function applyVehicleScaffold(repoName, vehicleDisplayName, editionId, bra
 
     if (SCAFFOLD_TEMPLATE_FILES.has(entry.path)) {
       const text = base64ToUtf8(content)
-        .replaceAll("{{VEHICLE_DISPLAY_NAME}}", vehicleDisplayName)
+        .replaceAll("{{ITEM_DISPLAY_NAME}}", vehicleDisplayName)
         .replaceAll("{{EDITION_ID}}", editionId);
       content = utf8ToBase64(text);
     }

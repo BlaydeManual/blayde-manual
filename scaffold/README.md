@@ -1,13 +1,13 @@
-# {{VEHICLE_DISPLAY_NAME}} -- Blayde Manual
+# {{ITEM_DISPLAY_NAME}} -- Blayde Manual
 
 **Just want an updated manual, not the GitHub side of things?** Go to
-**[blaydemanual.com](https://blaydemanual.com)** instead -- pick your
-vehicle, patch your own PDF, no account or git knowledge needed. This
+**[blaydemanual.com](https://blaydemanual.com)** instead -- find yours,
+patch your own PDF, no account or git knowledge needed. This
 repo is the real data behind that site, useful if you want to see the
 source, browse contributor history, or open a PR by hand.
 
-A community-maintained, ever-improving version of the {{VEHICLE_DISPLAY_NAME}}
-service manual. The original manual's own photos are old, low-resolution
+A community-maintained, ever-improving version of the {{ITEM_DISPLAY_NAME}}
+manual. The original manual's own photos are old, low-resolution
 scans that have gotten worse with every re-scan over the years -- this
 project replaces them with real photos from people actually doing the
 work, one procedure at a time, credited by name.
@@ -20,7 +20,7 @@ project's `LEGAL.md` for the full reasoning behind how this repo is built.
 
 ## Get an updated manual
 
-1. Get your own copy of the {{VEHICLE_DISPLAY_NAME}} service manual PDF
+1. Get your own copy of the {{ITEM_DISPLAY_NAME}} manual PDF
    (this repo never contains the original manual itself -- see below).
 2. Run the patcher against your copy + this repo's approved photos to get
    a manual with the current photos merged in.
@@ -39,10 +39,10 @@ convention, photo requirements, and how review works.
 ## What this repo actually contains
 
 Organized by edition -- one folder per version of the manual (`oem/`,
-`haynes/`, etc.). One vehicle can have several editions, all maintained
+`haynes/`, etc.). One item can have several editions, all maintained
 by the same community, but each edition's coordinates are its own: a
 bbox calibrated against one scan can't be reused against a different
-book, even for the same vehicle. Each edition folder has:
+book, even for the same item. Each edition folder has:
 - `manifest.json` -- structure only: page numbers, section headings, and
   where each figure belongs. No copyrighted content from the original
   manual, ever -- see [LEGAL.md](https://github.com/BlaydeManual/blayde-manual/blob/main/LEGAL.md)
