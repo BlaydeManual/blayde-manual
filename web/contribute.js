@@ -1369,7 +1369,7 @@ function renderUploadGroup(uploadList, container, maintainRowShown, categoryByVe
             <button class="secondary" data-view="${u.id}">View</button>
             ${u.status === "draft" ? `<button data-submit="${u.id}">Submit</button>` : ""}
             ${u.status === "draft" ? `<button class="secondary" data-delete="${u.id}">Delete</button>` : ""}
-            ${u.status === "forked" ? `<button data-openpr="${u.id}">Open pull request</button>` : ""}
+            ${u.status === "forked" ? `<button data-openpr="${u.id}">Submit for review</button>` : ""}
             ${u.status !== "draft" && u.status !== "forked" ? (
               hasRequestedRemoval(u.id)
                 ? `<span class="sub" style="margin:0 0 0 6px; color:var(--mint);">Removal requested</span>`
@@ -1390,8 +1390,13 @@ function renderUploadGroup(uploadList, container, maintainRowShown, categoryByVe
       maintainRowShown.add(vehicleKey);
       const maintainRow = document.createElement("div");
       maintainRow.className = "maintain-request-row";
+      // Real, confirmed bug fixed here: this used to claim "the current
+      // maintainer(s) and org team have been notified" -- performMaintainRequest
+      // only ever wrote to this browser's own localStorage, so nobody was
+      // ever actually notified. Corrected to say what's actually true
+      // until this has a real notification path (see ROADMAP.md).
       maintainRow.innerHTML = hasRequestedMaintain(vehicleKey)
-        ? `<span class="sub" style="margin:0; color:var(--mint);">Requested to help maintain -- the current maintainer(s) and org team have been notified.</span>`
+        ? `<span class="sub" style="margin:0; color:var(--mint);">Noted here on this device. There's no automated notification yet -- reach out directly if you don't hear back.</span>`
         : `<button class="secondary" data-maintain="${vehicleKey}">Request to help maintain this vehicle</button>`;
       details.appendChild(maintainRow);
     }
@@ -1465,8 +1470,8 @@ async function renderUploads() {
   // fresh on every call rather than hoisted-and-shared.
   const visibilitySections = [
     { key: "public", cls: "is-public", icon: "🌍", title: "Public", desc: "Public-facing submission requests. Status shown below for each one. No personal copy kept." },
-    { key: "private", cls: "is-private", icon: "🔒", title: "Private", desc: "Pushed to your own fork -- nothing proposed to reviewers until you open the pull request yourself." },
-    { key: "draft", cls: "is-draft", icon: "📝", title: "Drafts", desc: "Only ever lived on this device -- not submitted anywhere yet." },
+    { key: "private", cls: "is-private", icon: "🔒", title: "Private", desc: "Saved to your own personal copy. Nothing proposed to reviewers until you choose to submit it." },
+    { key: "draft", cls: "is-draft", icon: "📝", title: "Drafts", desc: "Only ever lived on this device. Not submitted anywhere yet." },
   ];
 
   const maintainRowShown = new Set();
