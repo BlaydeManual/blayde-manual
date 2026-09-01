@@ -46,6 +46,8 @@ function drawHeroConnectors() {
   const githubClear = toLocal(anchorPagePoint('anchor-github-clear'));
   const pyramidRect = document.getElementById('pyramid').getBoundingClientRect();
   const pyramidLeft = pyramidRect.left - overlayRect.left;
+  const newCardRect = document.getElementById('newCard').getBoundingClientRect();
+  const newCardLeft = newCardRect.left - overlayRect.left;
 
   svg.setAttribute('viewBox', `0 0 ${overlayRect.width} ${overlayRect.height}`);
   backSvg.setAttribute('viewBox', `0 0 ${overlayRect.width} ${overlayRect.height}`);
@@ -74,6 +76,23 @@ function drawHeroConnectors() {
   const enhancePath = isRow
     ? `M ${blaydeOut.x} ${blaydeOut.y} C ${blaydeOut.x + 60} ${blaydeOut.y + 10}, ${newIn.x - 70} ${newIn.y}, ${newIn.x} ${newIn.y}`
     : `M ${blaydeOut.x} ${blaydeOut.y} C ${enhanceWayX} ${blaydeOut.y}, ${enhanceWayX} ${githubClear.y - enhanceBend}, ${enhanceWayX} ${githubClear.y} C ${enhanceWayX} ${githubClear.y + enhanceBend}, ${newIn.x} ${newIn.y - 70}, ${newIn.x} ${newIn.y}`;
+  // The visible arrow's own curve bends hard to route around GitHub
+  // (column layout) or just to arrive cleanly (row layout) -- riding
+  // ENHANCE's label directly on it put the label right on the curve's
+  // steepest stretch, measured live at ~33-34deg off horizontal versus
+  // SCAN's ~17deg on its own straight beam, and it visibly read as far
+  // less legible than SCAN despite being the same font/size/weight.
+  // Confirmed live (getPointAtLength sampling across the whole curve)
+  // before touching this: nowhere along the actual curve stays as flat
+  // as a straight line does, since the curve is deliberately bent for
+  // the ARROW's own routing needs, not the label's readability. Same
+  // fix CONTRIBUTE already uses below for a different problem (upside-
+  // down direction) applied here for a different one (steepness): the
+  // label rides its own straight, invisible line between the same two
+  // endpoints, independent of however bent the visible arrow needs to
+  // be -- a straight line has one constant angle its whole length, so
+  // there's no steep stretch to land on regardless of viewport size.
+  const enhanceTextPath = `M ${blaydeOut.x} ${blaydeOut.y} L ${newIn.x} ${newIn.y}`;
 
   // Tractor-beam cone: a quadrilateral from a wide end (w1, at the photo)
   // to a narrower end (w2, at the convergence point), so the two long
@@ -96,8 +115,22 @@ function drawHeroConnectors() {
   // arrive cleanly. In column layout specifically, the curve is pushed
   // out past the pyramid's own LEFT edge (not just Community's), so it
   // clears GitHub's box underneath instead of cutting across it.
+  //
+  // Real bug, confirmed live: newOut sits on the lower photo's LEFT
+  // edge, which is still ~80px inside New Manual's own outer (rotated)
+  // bounding box, not right at its boundary. The old row-layout C1 --
+  // horizontal midpoint, but +45 BELOW newOut -- pulled the curve
+  // further down into the card before it swept back up toward
+  // Community, so a real stretch of the curve (measured: a third of
+  // its sampled points) drew directly over the card artwork instead of
+  // emerging cleanly beside it. Anchoring C1 a fixed clearance past the
+  // card's own real left edge (newCardLeft, computed the same way
+  // pyramidLeft already is), at newOut's own height instead of below
+  // it, makes the initial tangent point straight out of the card
+  // immediately -- robust across viewport sizes since it's measured
+  // from the card's real edge, not a fixed offset from newOut itself.
   const contributeC1 = isRow
-    ? { x: (newOut.x + communityIn.x) / 2, y: newOut.y + 45 }
+    ? { x: newCardLeft - 40, y: newOut.y }
     : { x: pyramidLeft - 70, y: newOut.y - 30 };
   const contributeC2 = isRow
     ? { x: (newOut.x + communityIn.x) / 2, y: communityIn.y - 15 }
@@ -119,6 +152,57 @@ function drawHeroConnectors() {
     : contributePath;
   const contributeTextOffset = contributeNeedsReversal ? '55%' : '45%';
 
+  // Real bug, confirmed live via point-in-bbox sampling: newOut sits
+  // ~80px inside New Manual's own outer (rotated) bounding box, not at
+  // its edge -- unavoidable, since the anchor is deliberately the lower
+  // photo's own left edge, not the card's. No reshaping of the visible
+  // curve alone can avoid SOME travel through that 80px before it
+  // actually clears the card (confirmed: point count inside stayed the
+  // same after the contributeC1 fix above -- that fix only cleaned up
+  // the DIRECTION of travel, not the unavoidable distance). SCAN already
+  // solves this exact structural situation for Old Manual: the stroked
+  // beam only overlaps the card for its own short entry stretch, drawn
+  // on the BACK layer so it tucks under the card instead of drawing on
+  // top of it. Same fix here -- split the visible curve exactly where
+  // it crosses New Manual's real left edge (De Casteljau subdivision,
+  // exact, not approximated), draw the inside stretch on the back layer
+  // (tucks under, no arrowhead), and only the outside stretch -- the
+  // vast majority of the path, plus the real arrowhead landing on
+  // Community -- on the front layer as before. Row layout only: column
+  // layout's Contribute path doesn't cross back through either card.
+  function lerp(a, b, t) { return { x: a.x + (b.x - a.x) * t, y: a.y + (b.y - a.y) * t }; }
+  function cubicAt(p0, p1, p2, p3, t) {
+    const mt = 1 - t;
+    return {
+      x: mt * mt * mt * p0.x + 3 * mt * mt * t * p1.x + 3 * mt * t * t * p2.x + t * t * t * p3.x,
+      y: mt * mt * mt * p0.y + 3 * mt * mt * t * p1.y + 3 * mt * t * t * p2.y + t * t * t * p3.y,
+    };
+  }
+  // Bisection, not a closed-form root: the cubic's x(t) is monotonic
+  // here (confirmed against real sampled data before writing this), so
+  // a simple binary search converges exactly without needing to solve
+  // the cubic directly.
+  function findExitT(p0, p1, p2, p3, boundaryX) {
+    let lo = 0, hi = 1;
+    for (let i = 0; i < 30; i++) {
+      const mid = (lo + hi) / 2;
+      if (cubicAt(p0, p1, p2, p3, mid).x > boundaryX) lo = mid; else hi = mid;
+    }
+    return (lo + hi) / 2;
+  }
+  let contributeBackSegment = null;
+  let contributeFrontPath = contributePath;
+  if (isRow) {
+    const exitT = findExitT(newOut, contributeC1, contributeC2, communityIn, newCardLeft);
+    // Standard De Casteljau split at t: two new cubics whose union is
+    // exactly the original curve, no approximation.
+    const p01 = lerp(newOut, contributeC1, exitT), p12 = lerp(contributeC1, contributeC2, exitT), p23 = lerp(contributeC2, communityIn, exitT);
+    const p012 = lerp(p01, p12, exitT), p123 = lerp(p12, p23, exitT);
+    const splitPoint = lerp(p012, p123, exitT);
+    contributeBackSegment = `M ${newOut.x} ${newOut.y} C ${p01.x} ${p01.y}, ${p012.x} ${p012.y}, ${splitPoint.x} ${splitPoint.y}`;
+    contributeFrontPath = `M ${splitPoint.x} ${splitPoint.y} C ${p123.x} ${p123.y}, ${p23.x} ${p23.y}, ${communityIn.x} ${communityIn.y}`;
+  }
+
   // ---- back layer: only the scan beams -- sits BEHIND the manual cards
   // (see .connector-overlay-back's z-index in style.css), so the short
   // stretch of beam that would otherwise overlap Old Manual's paper tucks
@@ -130,6 +214,11 @@ function drawHeroConnectors() {
     <defs>
       <filter id="beamGlow" x="-100%" y="-100%" width="300%" height="300%"><feGaussianBlur stdDeviation="5" result="b"/><feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge></filter>
       <path id="beam1Center" d="M ${photo1.x} ${photo1.y} L ${blaydeIn.x} ${blaydeIn.y}"/>
+      <!-- Own copies of Contribute's gradient/glow -- url() references
+           only resolve within the same SVG document, so the front
+           layer's <defs> aren't reachable from here. -->
+      <linearGradient id="contributeGradBack" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#c7fff0"/><stop offset="1" stop-color="#4fb89e"/></linearGradient>
+      <filter id="glowBack" x="-80%" y="-80%" width="260%" height="260%"><feGaussianBlur stdDeviation="3.5" result="b"/><feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge></filter>
     </defs>
     <g class="beam-pulse">
       <polygon points="${beam1.points}" fill="#c8102e" fill-opacity="0.22"/>
@@ -144,6 +233,12 @@ function drawHeroConnectors() {
     <text font-size="14" font-weight="700" letter-spacing="0.06em" fill="#ff8a95">
       <textPath href="#beam1Center" startOffset="72%">SCAN</textPath>
     </text>
+    <!-- Contribute's own short entry stretch -- the part still inside
+         New Manual's bounding box -- tucks under the card the same way
+         Scan's beams already do, instead of drawing on top of it. No
+         arrowhead here; that only ever belongs on the front-layer
+         segment where the arrow actually lands on Community. -->
+    ${contributeBackSegment ? `<path d="${contributeBackSegment}" fill="none" stroke="url(#contributeGradBack)" stroke-width="2.5" filter="url(#glowBack)"/>` : ''}
   `;
 
   // ---- front layer: enhance + contribute, unchanged z-order (on top) ----
@@ -156,17 +251,28 @@ function drawHeroConnectors() {
       <filter id="glow" x="-80%" y="-80%" width="260%" height="260%"><feGaussianBlur stdDeviation="3.5" result="b"/><feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge></filter>
     </defs>
 
-    <!-- ENHANCE: thicker, redder, urgent -- its own label rides the curve -->
+    <!-- ENHANCE: thicker, redder, urgent -- the visible arrow rides its
+         own bent routing curve, but the label rides a separate, invisible
+         STRAIGHT line between the same two endpoints (see enhanceTextPath
+         above) so it stays at one constant, legible angle regardless of
+         how hard the visible arrow needs to bend. -->
     <path id="enhancePathEl" d="${enhancePath}" fill="none" stroke="url(#enhanceGrad)" stroke-width="4" stroke-linecap="round" filter="url(#glow)" marker-end="url(#arrowEnhance)"/>
+    <path id="enhanceTextPathEl" d="${enhanceTextPath}" fill="none" stroke="none"/>
     <text font-size="14" font-weight="700" letter-spacing="0.04em" fill="#ffd0d6">
-      <textPath href="#enhancePathEl" startOffset="42%">ENHANCE</textPath>
+      <textPath href="#enhanceTextPathEl" startOffset="42%">ENHANCE</textPath>
     </text>
     <!-- CONTRIBUTE: alive, ongoing -- a small dot actually travels the
          path on a loop, real SVG animation, not a static arrow. The label
          rides a separate, invisible path (contributeTextPath) that traces
          the same curve but always left-to-right, so it never renders
-         upside down regardless of which way the visible arrow points. -->
-    <path id="contributePathEl" d="${contributePath}" fill="none" stroke="url(#contributeGrad)" stroke-width="2.5" filter="url(#glow)" marker-end="url(#arrowContribute)"/>
+         upside down regardless of which way the visible arrow points.
+         The visible stroke only covers contributeFrontPath -- the part
+         already outside New Manual's card -- its own short entry
+         stretch is drawn separately on the back layer above, tucked
+         under the card instead of drawn over it. The arrowhead
+         (marker-end) only ever needed to live on this front segment
+         anyway, since it lands on Community, not inside New Manual. -->
+    <path id="contributePathEl" d="${contributeFrontPath}" fill="none" stroke="url(#contributeGrad)" stroke-width="2.5" filter="url(#glow)" marker-end="url(#arrowContribute)"/>
     <path id="contributeTextPathEl" d="${contributeTextPath}" fill="none" stroke="none"/>
     <circle r="4" fill="#eafff8">
       <animateMotion dur="2.6s" repeatCount="indefinite" path="${contributePath}"/>
