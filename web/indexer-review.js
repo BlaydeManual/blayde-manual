@@ -86,20 +86,21 @@ function startReview(manifest, savedChunkIdx) {
   document.getElementById("editionIdRequiredError").style.display = "none";
   document.getElementById("sourceUrlConfirm").value = manifest.source_markers?.source_identifier || "";
   document.getElementById("sourceUrlError").style.display = "none";
-  populateCategoryOptions().then(() => {
-    // The manifest's own saved category wins if this review session
-    // already has one (a resumed session, or re-indexing an existing
-    // vehicle) -- the ?category= URL param only fills in for a
-    // genuinely fresh manifest, carrying through whichever tab someone
-    // picked on index.html rather than asking again. Not re-validated
-    // here against manual-types.json a second time -- populateCategoryOptions()
-    // just rebuilt #categoryConfirm's real option list, so setting an
-    // invalid value below simply fails to match any <option> and the
-    // select stays on its placeholder, same as leaving it untouched.
-    const category = manifest.category || prefillCategoryFromUrl || "";
-    document.getElementById("categoryConfirm").value = category;
-    populateManualTypeOptions(category, manifest.manual_type);
-  });
+  // Category/Manual Type are asked at the TOP of this tab now, before a
+  // PDF can even be picked (see indexer-ui.js's updateIndexReadiness) --
+  // #categoryConfirm/#manualTypeConfirm already hold a real choice by
+  // the time indexing finishes, so this only needs to SYNC reviewManifest
+  // from whatever's already selected. The one exception: a resumed
+  // session (manifest.category already set from a previous save)
+  // overrides the top-level selects, in case this browser's since been
+  // used to start indexing something else in a different category.
+  if (manifest.category) {
+    document.getElementById("categoryConfirm").value = manifest.category;
+    populateManualTypeOptions(manifest.category, manifest.manual_type);
+  }
+  reviewManifest.category = manifest.category || document.getElementById("categoryConfirm").value || "";
+  reviewManifest.manual_type = manifest.manual_type || document.getElementById("manualTypeConfirm").value || "";
+  updateReviewCategoryRecap();
   document.getElementById("categoryRequiredError").style.display = "none";
   document.getElementById("manualTypeRequiredError").style.display = "none";
   document.getElementById("submitError").style.display = "none";
@@ -109,6 +110,37 @@ function startReview(manifest, savedChunkIdx) {
   updateSubmitSignInUI();
   renderReviewGallery();
   saveReviewStateNow(); // persist immediately -- don't wait for a first edit
+}
+
+// A short, real-looking slug example per category -- the naming-
+// convention paragraph explains the flexible shape in words, this
+// makes it concrete. Vehicle-shaped categories keep the model-year
+// disambiguator; Home/Hobby show the "no year, real variant code or
+// nothing at all" cases ROADMAP.md's naming-convention design settled
+// on (Singer's own "15-91" designation vs. Yaesu needing no
+// disambiguator at all since brand+model is already unique).
+const CATEGORY_SLUG_EXAMPLES = {
+  garage: "suzuki-sv650-1999",
+  marina: "mercury-40hp-2015",
+  hangar: "cessna-172-1975",
+  farm: "johndeere-4020-1965",
+  home: "kitchenaid-k45ss",
+  hobby: "yaesu-ft-101",
+};
+
+// Shows what was actually chosen at the top of this tab -- the review
+// step doesn't re-ask, but shouldn't hide the choice either.
+function updateReviewCategoryRecap() {
+  const recap = document.getElementById("reviewCategoryRecap");
+  if (!recap) return;
+  const categoryId = reviewManifest?.category;
+  const category = manualTypesCache?.categories.find((c) => c.id === categoryId);
+  const type = category?.types.find((t) => t.id === reviewManifest?.manual_type);
+  recap.textContent = category
+    ? `Category: ${category.label}${type ? ` / ${type.label}` : ""}`
+    : "";
+  const exampleEl = document.getElementById("slugExampleText");
+  if (exampleEl) exampleEl.textContent = CATEGORY_SLUG_EXAMPLES[categoryId] || CATEGORY_SLUG_EXAMPLES.garage;
 }
 
 // Same non-guessable field as edition_id/source_url -- OCR can guess
@@ -166,20 +198,44 @@ function populateManualTypeOptions(categoryId, selectedTypeId) {
   }
 }
 
+// No early-return on !reviewManifest here -- category/manual type are
+// asked BEFORE indexing starts now, when reviewManifest doesn't exist
+// yet. The cascade/UI updates always run; only the reviewManifest sync
+// (once a review session is actually in progress) and saveReviewStateNow
+// are conditional on one existing.
 document.getElementById("categoryConfirm").addEventListener("change", (e) => {
-  if (!reviewManifest) return;
-  reviewManifest.category = e.target.value;
-  reviewManifest.manual_type = ""; // a new category invalidates whatever type was picked under the old one
   populateManualTypeOptions(e.target.value);
   if (e.target.value) document.getElementById("categoryRequiredError").style.display = "none";
-  saveReviewStateNow();
+  if (reviewManifest) {
+    reviewManifest.category = e.target.value;
+    reviewManifest.manual_type = ""; // a new category invalidates whatever type was picked under the old one
+    updateReviewCategoryRecap();
+    saveReviewStateNow();
+  }
+  updateIndexReadiness?.();
 });
 
 document.getElementById("manualTypeConfirm").addEventListener("change", (e) => {
-  if (!reviewManifest) return;
-  reviewManifest.manual_type = e.target.value;
   if (e.target.value) document.getElementById("manualTypeRequiredError").style.display = "none";
-  saveReviewStateNow();
+  if (reviewManifest) {
+    reviewManifest.manual_type = e.target.value;
+    updateReviewCategoryRecap();
+    saveReviewStateNow();
+  }
+  updateIndexReadiness?.();
+});
+
+// Populates the Category select and applies index.html's ?category=
+// hand-off (if present) at page load -- BEFORE any PDF is picked, not
+// only once indexing finishes. This is the real "asked first" behavior:
+// updateIndexReadiness() (indexer-ui.js) keeps the PDF picker itself
+// disabled until both selects here hold a real value.
+populateCategoryOptions().then(() => {
+  if (prefillCategoryFromUrl) {
+    document.getElementById("categoryConfirm").value = prefillCategoryFromUrl;
+    populateManualTypeOptions(prefillCategoryFromUrl);
+  }
+  updateIndexReadiness?.();
 });
 
 // Re-derives contributed_photo_path for every entry whenever the
@@ -204,7 +260,7 @@ async function checkSimilarVehicleSlugs(slug) {
   const result = await findSimilarVehicleSlugs(slug, CANONICAL_REGISTRY_URL);
   if (!result.checked || !result.similar.length) { note.style.display = "none"; return; }
   const list = result.similar.map((v) => v.vehicle_slug).join(", ");
-  note.textContent = `Already registered for this vehicle, different release year: ${list}. If this is really the same generation, match one of those exactly instead. If it's genuinely a different generation (a later manual saying this one's coverage actually ends here), this is correct as-is.`;
+  note.textContent = `Already registered under a similar slug, different disambiguator: ${list}. If this is really the same item (the same generation, for a vehicle), match one of those exactly instead. If it's genuinely different -- a later model year, or a real manufacturer variant -- this is correct as-is.`;
   note.style.display = "block";
 }
 
@@ -647,7 +703,7 @@ function renderModalOverlays() {
       document.getElementById("editionIdRequiredError").style.display = "block";
       document.getElementById("editionIdConfirm").scrollIntoView({ behavior: "smooth", block: "center" });
       document.getElementById("editionIdConfirm").focus();
-      appendLog(`[submit] blocked -- give this edition a short label (OEM, Haynes, etc.) before submitting.`);
+      appendLog(`[submit] blocked -- give this edition a short label (OEM, or the publisher's name) before submitting.`);
       return;
     }
     await checkEditionIdCollision();

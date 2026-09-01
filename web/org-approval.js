@@ -141,7 +141,7 @@ async function openPendingVehicle(idx) {
   const existingWrap = document.getElementById("orgExistingEditions");
   if (existing.length) {
     document.getElementById("orgExistingEditionsSummary").textContent =
-      `This vehicle already has ${existing.length} document${existing.length === 1 ? "" : "s"}. Does "${entry.manifest.edition_id}" actually fit, or is it the same as one of these?`;
+      `This item already has ${existing.length} document${existing.length === 1 ? "" : "s"}. Does "${entry.manifest.edition_id}" actually fit, or is it the same as one of these?`;
     document.getElementById("orgExistingEditionsList").innerHTML = existing
       .map((v) => `&middot; <b style="color:var(--text);">${v.edition_id}</b> -- ${v.repo_url}`)
       .join("<br>");
@@ -301,7 +301,7 @@ document.getElementById("orgApproveBtn").addEventListener("click", async () => {
     // the review pane on a real approval, replace it with a summary,
     // instead of leaving the just-approved gallery sitting on screen.
     document.getElementById("orgReviewArea").style.display = "none";
-    showToast("Approved! Vehicle repo is now public.");
+    showToast("Approved! Repo is now public.");
     const summaryCard = document.getElementById("orgApproveSummaryCard");
     // branchProtectionApplied surfaced explicitly, not assumed -- this
     // repo requires a second real maintainer before ANY photo PR can

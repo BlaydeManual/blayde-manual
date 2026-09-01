@@ -42,6 +42,25 @@ function updateConcurrencyLabel() {
 concurrencyInput.addEventListener("input", updateConcurrencyLabel);
 updateConcurrencyLabel();
 
+// Category/Manual Type are asked FIRST now, before a PDF can even be
+// picked -- direct instruction: the choice should drive the rest of
+// this form, not get bolted on after a 20-minute indexing run already
+// finished. #categoryConfirm/#manualTypeConfirm live in indexer-
+// review.js (same elements the review step later reads/writes), but
+// gating the PDF picker and the run button on them belongs here,
+// alongside the rest of this file's own readiness state.
+function categoryAndTypeChosen() {
+  return !!(document.getElementById("categoryConfirm").value && document.getElementById("manualTypeConfirm").value);
+}
+
+function updateIndexReadiness() {
+  document.getElementById("pdfInput").disabled = !categoryAndTypeChosen();
+  // Re-run the existing resume-state gate now that the category/type
+  // condition may have changed -- harmless no-op if no PDF is selected
+  // yet (checkResumeState's own first line handles that).
+  checkResumeState();
+}
+
 document.getElementById("pdfInput").addEventListener("change", async (e) => {
   const file = e.target.files[0];
   if (!file) return;
@@ -94,7 +113,7 @@ async function checkResumeState() {
 
   if (!job) {
     card.style.display = "none";
-    runBtn.disabled = false;
+    runBtn.disabled = !categoryAndTypeChosen();
     runBtn.textContent = "Index it";
     return;
   }
@@ -259,7 +278,7 @@ async function runIndexing(resume) {
     appendLog(`DONE in ${secs}s -- ${manifest.entries.length} entries across ${Object.keys(manifest.page_geometry).length} page(s)`);
     appendLog(`It's up to the community to keep going. Thank you for contributing.`);
 
-    appendLog(`Reading the manual's own cover page to guess the vehicle...`);
+    appendLog(`Reading the manual's own cover page to guess what this is...`);
     const slugGuess = await suggestVehicleSlug(selectedPdfDoc, selectedPdfFilename);
     finalizeVehicleSlug(manifest, slugGuess);
 
