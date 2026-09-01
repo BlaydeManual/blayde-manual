@@ -4,18 +4,18 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Blayde Manual: Maintainer Portal</title>
-<meta name="description" content="Review photo submissions, approve new vehicles, and help maintain a community-run vehicle service manual. Anyone can become a maintainer.">
+<meta name="description" content="Review photo submissions, approve new manuals, and help maintain a community-run manual. Anyone can become a maintainer.">
 <link rel="canonical" href="https://blaydemanual.com/maintainer.html">
 <link rel="icon" type="image/svg+xml" href="favicon.svg">
 <meta property="og:type" content="website">
 <meta property="og:site_name" content="Blayde Manual">
 <meta property="og:title" content="Blayde Manual: Maintainer Portal">
-<meta property="og:description" content="Review photo submissions, approve new vehicles, and help maintain a community-run vehicle service manual.">
+<meta property="og:description" content="Review photo submissions, approve new manuals, and help maintain a community-run manual.">
 <meta property="og:url" content="https://blaydemanual.com/maintainer.html">
 <meta property="og:image" content="https://blaydemanual.com/images/hero-after.jpg">
 <meta name="twitter:card" content="summary_large_image">
 <meta name="twitter:title" content="Blayde Manual: Maintainer Portal">
-<meta name="twitter:description" content="Review photo submissions, approve new vehicles, and help maintain a community-run vehicle service manual.">
+<meta name="twitter:description" content="Review photo submissions, approve new manuals, and help maintain a community-run manual.">
 <meta name="twitter:image" content="https://blaydemanual.com/images/hero-after.jpg">
 <style>
   :root {
@@ -490,21 +490,21 @@
       </div>
     </div>
 
-    <!-- ============ My Vehicles (my-vehicles.js) ============ -->
+    <!-- ============ My Manuals (my-vehicles.js) ============ -->
     <div class="tab-panel" id="tab-vehicles">
-      <p class="sub" style="margin:0 0 6px;">Every vehicle you maintain, who else is on it, and how active they've been -- just for the vehicles you're actually on.</p>
+      <p class="sub" style="margin:0 0 6px;">Every manual you maintain, who else is on it, and how active they've been -- just for the ones you're actually on.</p>
       <div id="vehicleTeams"></div>
     </div>
 
-    <!-- ============ Approve New Vehicles (ORG -- org-approval.js) ============ -->
+    <!-- ============ Approve New Manuals (ORG -- org-approval.js) ============ -->
     <div class="tab-panel" id="tab-approve">
-      <p class="sub" style="margin:0 0 6px;">Visible to every maintainer -- useful to check before you start indexing a vehicle that's already in the queue. Approve/reject only work if you're a real org admin (checked server-side, not just in this page).</p>
+      <p class="sub" style="margin:0 0 6px;">Visible to every maintainer -- useful to check before you start indexing a manual that's already in the queue. Approve/reject only work if you're a real org admin (checked server-side, not just in this page).</p>
       <div id="orgAppSignInPrompt" style="display:none; background:#000; border:1px solid var(--steel-dark); border-radius:6px; padding:14px; margin-bottom:14px;">
-        <p style="margin:0 0 10px; font-size: 0.92rem; color:var(--steel);">Viewing and approving pending vehicles reads private repos under BlaydeManual, so this needs the GitHub App sign-in -- a separate one from the page's regular sign-in.</p>
-        <button id="orgAppSignInBtn">Sign in to view pending vehicles</button>
+        <p style="margin:0 0 10px; font-size: 0.92rem; color:var(--steel);">Viewing and approving pending manuals reads private repos under BlaydeManual, so this needs the GitHub App sign-in -- a separate one from the page's regular sign-in.</p>
+        <button id="orgAppSignInBtn">Sign in to view pending manuals</button>
       </div>
       <div class="card" id="pendingListCard" style="display:none;">
-        <h2 style="font-size: 1.05rem; margin:0 0 4px;">Pending new vehicles</h2>
+        <h2 style="font-size: 1.05rem; margin:0 0 4px;">Pending new manuals</h2>
         <div id="pendingList"></div>
       </div>
 
@@ -516,7 +516,7 @@
         <p class="sub" style="margin:0 0 10px;">Submitter's source: <a id="orgSourceLink" href="#" target="_blank" rel="noopener" style="color:#9fe1cb;"></a></p>
 
         <div class="card" id="orgExistingEditions" style="display:none; background:#000; margin-bottom:14px;">
-          <h2 style="font-size: 0.95rem; margin:0 0 6px; color:#ffcc66;">This vehicle already has a repo</h2>
+          <h2 style="font-size: 0.95rem; margin:0 0 6px; color:#ffcc66;">This item already has a repo</h2>
           <p class="sub" id="orgExistingEditionsSummary" style="margin:0 0 8px;"></p>
           <div id="orgExistingEditionsList"></div>
         </div>
@@ -604,11 +604,23 @@
       <div id="issueLog" style="font-family:ui-monospace,monospace; font-size: 0.86rem; color:#9fe1cb; white-space:pre-wrap; margin-top:10px;"></div>
     </div>
 
-    <!-- ============ Index a New Vehicle (indexer-core.js / indexer-ui.js / indexer-review.js) ============ -->
+    <!-- ============ Index a New Manual (indexer-core.js / indexer-ui.js / indexer-review.js) ============ -->
     <div class="tab-panel" id="tab-index">
       <div class="card">
+        <h2 style="font-size: 1.05rem; margin:0 0 4px;">What kind of manual is this?</h2>
+        <p class="sub" style="margin:0 0 6px;">Which part of the site this belongs under, and what specific type within it. Asked first because it shapes the rest of this form -- required before you can pick a PDF.</p>
+        <select id="categoryConfirm" required style="margin-bottom:4px;">
+          <option value="" disabled selected>Choose one...</option>
+        </select>
+        <p class="sub" id="categoryRequiredError" style="display:none; color:#ff6b6b; margin:0 0 10px;">Required before you can index.</p>
+
+        <select id="manualTypeConfirm" required disabled style="margin-bottom:4px;">
+          <option value="" disabled selected>Choose a category first...</option>
+        </select>
+        <p class="sub" id="manualTypeRequiredError" style="display:none; color:#ff6b6b; margin:0 0 14px;">Required before you can index. If nothing fits, pick Other -- it's always valid, and gets a real type once enough real submissions justify one.</p>
+
         <label>PDF Manual</label>
-        <input type="file" id="pdfInput" accept="application/pdf">
+        <input type="file" id="pdfInput" accept="application/pdf" disabled>
         <p class="sub" style="margin:6px 0 0;">This is a one-time step for this manual and won't run again once it's done. It indexes the full document, which can take up to 20 minutes for a large one. You can switch to another tab while it keeps working in the background. If you close this tab or the browser by accident, just come back and re-select the same PDF to pick up where it left off.</p>
 
         <div id="resumeCard" style="display:none; background:#000; border:1px solid var(--steel-dark); border-radius:6px; padding:12px; margin-top:10px; font-size: 0.92rem;"></div>
@@ -631,27 +643,14 @@
         </div>
 
         <div id="reviewSection">
-          <h2 style="font-size: 1.05rem; margin:18px 0 4px;">Confirm the vehicle</h2>
-          <p class="sub" style="margin:0 0 6px;">This value is guessed from scanning the manual's own cover page and falls back to the filename if that doesn't work. This should match the Blayde Manual naming convention: <code>make-model-year</code> (e.g. <code>suzuki-sv650-1999</code>), where the year is the first year for that specific generation or manual. A later manual for the same model (e.g. <code>suzuki-sv650-2003</code>) implies the next generation began and will create a new vehicle.</p>
+          <h2 style="font-size: 1.05rem; margin:18px 0 4px;">Confirm the manual</h2>
+          <p class="sub" id="reviewCategoryRecap" style="margin:0 0 10px;"></p>
+          <p class="sub" style="margin:0 0 6px;">This value is guessed from scanning the manual's own cover page and falls back to the filename if that doesn't work. It should match the Blayde Manual naming convention: <code>brand-model[-disambiguator]</code>. For a vehicle (Garage/Marina/Hangar/Farm), the disambiguator is the model year, e.g. <code id="slugExampleText">suzuki-sv650-1999</code> -- a later manual for the same model (e.g. <code>suzuki-sv650-2003</code>) implies the next generation began and will create a new entry. For a Home or Hobby item, the disambiguator is whatever the manufacturer itself uses to tell real variants apart, if one exists (e.g. <code>singer-15-91</code>), or left off entirely when brand+model is already unique (e.g. <code>yaesu-ft-101</code>).</p>
           <input type="text" id="vehicleSlugConfirm" style="margin-bottom:6px;">
           <p class="sub" id="vehicleSlugSimilarNote" style="display:none; color:#ffcc66; margin:0 0 14px;"></p>
 
-          <h2 style="font-size: 1.05rem; margin:18px 0 4px;">Category</h2>
-          <p class="sub" style="margin:0 0 6px;">Which part of the site this belongs under. Required.</p>
-          <select id="categoryConfirm" required style="margin-bottom:4px;">
-            <option value="" disabled selected>Choose one...</option>
-          </select>
-          <p class="sub" id="categoryRequiredError" style="display:none; color:#ff6b6b; margin:0 0 14px;">Required before you can submit.</p>
-
-          <h2 style="font-size: 1.05rem; margin:18px 0 4px;">Manual type</h2>
-          <p class="sub" style="margin:0 0 6px;">Powers the browse page's type filter within that category. Choose a category first. If nothing fits, pick Other -- it's always valid, and gets a real type once enough real submissions justify one.</p>
-          <select id="manualTypeConfirm" required disabled style="margin-bottom:4px;">
-            <option value="" disabled selected>Choose a category first...</option>
-          </select>
-          <p class="sub" id="manualTypeRequiredError" style="display:none; color:#ff6b6b; margin:0 0 14px;">Required before you can submit.</p>
-
           <h2 style="font-size: 1.05rem; margin:18px 0 4px;">What kind of manual is this?</h2>
-          <p class="sub" style="margin:0 0 6px;">A short label for this edition, such as OEM, Haynes, or Chilton. If this vehicle already has a repo, this joins it as a new edition alongside whatever's already there. Required.</p>
+          <p class="sub" style="margin:0 0 6px;">A short label for this edition -- <code>OEM</code> if it's the manufacturer's own manual, or the publisher's name for a well-known aftermarket edition (Haynes and Chilton, for vehicles). If this item already has a repo, this joins it as a new edition alongside whatever's already there. Required.</p>
           <input type="text" id="editionIdConfirm" placeholder="OEM" required style="margin-bottom:6px;">
           <p class="sub" id="editionIdRequiredError" style="display:none; color:#ff6b6b; margin:0 0 4px;">Required before you can submit.</p>
           <p class="sub" id="editionIdError" style="display:none; color:#ff6b6b; margin:0 0 14px;"></p>
