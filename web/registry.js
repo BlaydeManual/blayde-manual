@@ -304,7 +304,14 @@ async function listRepoImages(repoUrl, editionId, branch) {
     throw new Error(`GitHub contents API error (${resp.status})`);
   }
   const entries = await resp.json();
-  return entries.filter(e => e.type === "file");
+  // Every images/ folder carries a standing README.md placeholder
+  // (patcher.js only ever embeds .jpg/.jpeg/.png -- see embedJpg/
+  // embedPng below) -- filtering by type === "file" alone counted it as
+  // an "available photo", a real, confirmed bug: it inflated the
+  // "N photo(s) available" count in patcher.js's log by one on every
+  // single vehicle, and wasted a fetch + MAX_PHOTO_BYTES check on a
+  // file that could never actually patch into anything.
+  return entries.filter(e => e.type === "file" && /\.(jpe?g|png)$/i.test(e.name));
 }
 
 // A contributed photo this large is not a real submission -- checker.py
