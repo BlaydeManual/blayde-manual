@@ -1176,15 +1176,48 @@ function visibilityBucketFor(u) {
 // per colored section) instead of once -- direct request: pull public
 // and private submissions into a list, not lump every status together
 // undifferentiated the way this used to.
-function renderUploadGroup(uploadList, container, maintainRowShown) {
-  const byVehicle = new Map();
+// categoryByVehicleKey: Map from the same key renderUploadGroup groups
+// vehicles by (u.vehicleSlug || u.repoUrl) to its registry category id
+// (or null) -- prefetched once per renderUploads() call, not looked up
+// per-row, since it's the same handful of registry lookups review-
+// panel.js/my-vehicles.js already do for their own category tier.
+function renderUploadGroup(uploadList, container, maintainRowShown, categoryByVehicleKey) {
+  const byCategory = new Map();
   uploadList.forEach((u) => {
-    const key = u.vehicleSlug || u.repoUrl;
-    if (!byVehicle.has(key)) byVehicle.set(key, []);
-    byVehicle.get(key).push(u);
+    const vehicleKey = u.vehicleSlug || u.repoUrl;
+    const key = categoryByVehicleKey.get(vehicleKey) || null;
+    if (!byCategory.has(key)) byCategory.set(key, []);
+    byCategory.get(key).push(u);
   });
+  const orderedCategoryKeys = [...CATEGORY_ORDER.filter((c) => byCategory.has(c)), ...(byCategory.has(null) ? [null] : [])];
+  const showCategoryHeadings = orderedCategoryKeys.length > 1;
 
-  byVehicle.forEach((group, vehicleKey) => {
+  orderedCategoryKeys.forEach((categoryKey) => {
+    const categoryUploads = byCategory.get(categoryKey);
+    let categoryContainer = container;
+    if (showCategoryHeadings) {
+      const categoryGroup = document.createElement("details");
+      categoryGroup.open = true;
+      categoryGroup.className = "category-group";
+      if (categoryKey) categoryGroup.style.setProperty("--accent", CATEGORY_STYLE[categoryKey].accent);
+      const label = categoryKey ? categoryKey[0].toUpperCase() + categoryKey.slice(1) : "Uncategorized";
+      const icon = categoryKey ? categoryIconSvg(categoryKey) : "";
+      const heading = document.createElement("summary");
+      heading.className = "category-bar";
+      heading.innerHTML = `${icon}${label} (${categoryUploads.length})`;
+      categoryGroup.appendChild(heading);
+      container.appendChild(categoryGroup);
+      categoryContainer = categoryGroup;
+    }
+
+    const byVehicle = new Map();
+    categoryUploads.forEach((u) => {
+      const key = u.vehicleSlug || u.repoUrl;
+      if (!byVehicle.has(key)) byVehicle.set(key, []);
+      byVehicle.get(key).push(u);
+    });
+
+    byVehicle.forEach((group, vehicleKey) => {
     group.sort((a, b) => (a.page || 0) - (b.page || 0));
     const details = document.createElement("details");
     details.open = true;
@@ -1271,11 +1304,12 @@ function renderUploadGroup(uploadList, container, maintainRowShown) {
       details.appendChild(maintainRow);
     }
 
-    container.appendChild(details);
+    categoryContainer.appendChild(details);
+    });
   });
 }
 
-function renderUploads() {
+async function renderUploads() {
   const section = document.getElementById("uploadsSection");
   const list = document.getElementById("uploadsList");
   const empty = document.getElementById("uploadsEmpty");
@@ -1315,6 +1349,24 @@ function renderUploads() {
   const byBucket = { public: [], private: [], draft: [] };
   allUploads.forEach((u) => byBucket[visibilityBucketFor(u)].push(u));
 
+  // Category as a grouping tier, never a filter -- same reasoning as
+  // review-panel.js/my-vehicles.js's categoryForRepo: a contributor
+  // covering a vehicle in Garage and an appliance in Home needs both
+  // in one scroll. Looked up by vehicleSlug (falling back to repoUrl,
+  // matching renderUploadGroup's own grouping key) since a draft
+  // upload may not have a repoUrl yet.
+  const registryData = await loadRegistry(CANONICAL_REGISTRY_URL).catch(() => ({ vehicles: [] }));
+  const norm = (u) => (u || "").replace(/\/$/, "").toLowerCase();
+  const categoryByVehicleKey = new Map();
+  allUploads.forEach((u) => {
+    const key = u.vehicleSlug || u.repoUrl;
+    if (categoryByVehicleKey.has(key)) return;
+    const entry = (registryData.vehicles || []).find(
+      (v) => v.vehicle_slug === u.vehicleSlug || (u.repoUrl && norm(v.repo_url) === norm(u.repoUrl))
+    );
+    categoryByVehicleKey.set(key, entry?.category || null);
+  });
+
   // Local, not module-level -- renderUploads() runs once at load time
   // (see the bottom of this file) before a top-level const declared
   // later in the file would be initialized, so this has to be created
@@ -1335,7 +1387,7 @@ function renderUploads() {
       <div class="visibility-section-title">${icon} ${title} <span class="sub" style="margin:0; font-weight:400;">(${bucketUploads.length})</span></div>
       <p class="visibility-section-desc">${desc}</p>
     `;
-    renderUploadGroup(bucketUploads, wrap, maintainRowShown);
+    renderUploadGroup(bucketUploads, wrap, maintainRowShown, categoryByVehicleKey);
     list.appendChild(wrap);
   });
 

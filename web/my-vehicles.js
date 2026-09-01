@@ -56,55 +56,90 @@ async function renderVehicleTeams() {
     wrap.innerHTML = `<p class="sub">No maintained repos passed the registry check.</p>`;
     return;
   }
-  for (const { repoUrl, permissions } of maintainedRepos) {
-    // This vehicle no longer implies one manual (see ROADMAP.md's
-    // multi-manual correction) -- the roster below is correctly still
-    // one per repo (maintainer authority is vehicle-wide), but it's
-    // worth naming which editions that authority actually covers.
-    const norm = (u) => (u || "").replace(/\/$/, "").toLowerCase();
-    const registryData = await loadRegistry(CANONICAL_REGISTRY_URL_FOR_REVIEW).catch(() => ({ vehicles: [] }));
-    const editions = (registryData.vehicles || [])
-      .filter((v) => norm(v.repo_url) === norm(repoUrl))
-      .map((v) => v.edition_id);
-    const vehicleSlug = await vehicleSlugForRepo(repoUrl);
-    // Anything reaching this point already passed discoverMaintainedRepos()'s
-    // own push-or-better filter, which is exactly what /manage-collaborator
-    // itself requires server-side -- no separate client-side gate needed,
-    // unlike the old admin-only design.
-    // <details>, not a plain div -- direct request: collapsible per
-    // level, same as the Review Photo Requests list, so a maintainer
-    // covering several unrelated repos can collapse the ones they're
-    // not actively managing right now instead of scrolling past them.
-    // Open by default so nothing hides on first load.
-    const card = document.createElement("details");
-    card.open = true;
-    card.className = "card";
-    card.innerHTML = `<summary class="vehicle-bar">${vehicleSlug}</summary>
-      <p class="sub" style="margin:0 0 10px;">Covers ${editions.length} edition${editions.length === 1 ? "" : "s"}: ${editions.join(", ")}</p>
-      <div class="roster"><p class="sub" style="margin:0;">Loading roster&hellip;</p></div>
-      <div style="display:flex; gap:8px; margin-top:12px;">
-        <input type="text" class="invite-input" placeholder="GitHub handle to invite" style="flex:1; width:auto; margin:0;">
-        <button class="invite-btn" style="margin:0; flex-shrink:0;">Invite</button>
-      </div>
-      <p class="sub invite-status" style="margin:6px 0 0;"></p>`;
-    const rosterEl = card.querySelector(".roster");
-    renderRoster(rosterEl, repoUrl);
-    const statusEl = card.querySelector(".invite-status");
-    card.querySelector(".invite-btn").addEventListener("click", async () => {
-      const input = card.querySelector(".invite-input");
-      const handle = input.value.trim().replace(/^@/, "");
-      if (!handle) return;
-      statusEl.textContent = `Inviting @${handle}…`;
-      try {
-        await inviteCollaborator(repoUrl, handle);
-        statusEl.textContent = "";
-        input.value = "";
-        renderRoster(rosterEl, repoUrl);
-      } catch (e) {
-        statusEl.textContent = `Couldn't invite @${handle}: ${e.message}`;
-      }
-    });
-    wrap.appendChild(card);
+
+  // Category as a grouping tier, never a filter -- same reasoning as
+  // review-panel.js's categoryForRepo: a maintainer covering a vehicle
+  // in Garage and an appliance in Home needs both in one scroll.
+  const categoryByRepo = new Map();
+  await Promise.all(maintainedRepos.map(async ({ repoUrl }) => {
+    categoryByRepo.set(repoUrl, await categoryForRepo(repoUrl));
+  }));
+  const reposByCategory = new Map();
+  maintainedRepos.forEach((entry) => {
+    const key = categoryByRepo.get(entry.repoUrl) || null;
+    if (!reposByCategory.has(key)) reposByCategory.set(key, []);
+    reposByCategory.get(key).push(entry);
+  });
+  const orderedCategoryKeys = [...CATEGORY_ORDER.filter((c) => reposByCategory.has(c)), ...(reposByCategory.has(null) ? [null] : [])];
+  const showCategoryHeadings = orderedCategoryKeys.length > 1;
+
+  for (const categoryKey of orderedCategoryKeys) {
+    const reposInCategory = reposByCategory.get(categoryKey);
+    let categoryWrap = wrap;
+    if (showCategoryHeadings) {
+      const categoryGroup = document.createElement("details");
+      categoryGroup.open = true;
+      categoryGroup.className = "category-group";
+      if (categoryKey) categoryGroup.style.setProperty("--accent", CATEGORY_STYLE[categoryKey].accent);
+      const label = categoryKey ? categoryKey[0].toUpperCase() + categoryKey.slice(1) : "Uncategorized";
+      const icon = categoryKey ? categoryIconSvg(categoryKey) : "";
+      const heading = document.createElement("summary");
+      heading.className = "category-bar";
+      heading.innerHTML = `${icon}${label} (${reposInCategory.length})`;
+      categoryGroup.appendChild(heading);
+      wrap.appendChild(categoryGroup);
+      categoryWrap = categoryGroup;
+    }
+    for (const { repoUrl, permissions } of reposInCategory) {
+      // This vehicle no longer implies one manual (see ROADMAP.md's
+      // multi-manual correction) -- the roster below is correctly still
+      // one per repo (maintainer authority is vehicle-wide), but it's
+      // worth naming which editions that authority actually covers.
+      const norm = (u) => (u || "").replace(/\/$/, "").toLowerCase();
+      const registryData = await loadRegistry(CANONICAL_REGISTRY_URL_FOR_REVIEW).catch(() => ({ vehicles: [] }));
+      const editions = (registryData.vehicles || [])
+        .filter((v) => norm(v.repo_url) === norm(repoUrl))
+        .map((v) => v.edition_id);
+      const vehicleSlug = await vehicleSlugForRepo(repoUrl);
+      // Anything reaching this point already passed discoverMaintainedRepos()'s
+      // own push-or-better filter, which is exactly what /manage-collaborator
+      // itself requires server-side -- no separate client-side gate needed,
+      // unlike the old admin-only design.
+      // <details>, not a plain div -- direct request: collapsible per
+      // level, same as the Review Photo Requests list, so a maintainer
+      // covering several unrelated repos can collapse the ones they're
+      // not actively managing right now instead of scrolling past them.
+      // Open by default so nothing hides on first load.
+      const card = document.createElement("details");
+      card.open = true;
+      card.className = "card";
+      card.innerHTML = `<summary class="vehicle-bar">${vehicleSlug}</summary>
+        <p class="sub" style="margin:0 0 10px;">Covers ${editions.length} edition${editions.length === 1 ? "" : "s"}: ${editions.join(", ")}</p>
+        <div class="roster"><p class="sub" style="margin:0;">Loading roster&hellip;</p></div>
+        <div style="display:flex; gap:8px; margin-top:12px;">
+          <input type="text" class="invite-input" placeholder="GitHub handle to invite" style="flex:1; width:auto; margin:0;">
+          <button class="invite-btn" style="margin:0; flex-shrink:0;">Invite</button>
+        </div>
+        <p class="sub invite-status" style="margin:6px 0 0;"></p>`;
+      const rosterEl = card.querySelector(".roster");
+      renderRoster(rosterEl, repoUrl);
+      const statusEl = card.querySelector(".invite-status");
+      card.querySelector(".invite-btn").addEventListener("click", async () => {
+        const input = card.querySelector(".invite-input");
+        const handle = input.value.trim().replace(/^@/, "");
+        if (!handle) return;
+        statusEl.textContent = `Inviting @${handle}…`;
+        try {
+          await inviteCollaborator(repoUrl, handle);
+          statusEl.textContent = "";
+          input.value = "";
+          renderRoster(rosterEl, repoUrl);
+        } catch (e) {
+          statusEl.textContent = `Couldn't invite @${handle}: ${e.message}`;
+        }
+      });
+      categoryWrap.appendChild(card);
+    }
   }
 }
 

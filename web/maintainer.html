@@ -103,6 +103,24 @@
     padding: 1px 5px; border-radius: 3px; margin-right: 6px; vertical-align: 1px;
   }
   .scope-badge.org { background: #5f1d3a; color: #ff9fc8; }
+  /* One tier ABOVE .vehicle-bar -- category as a grouping tier, never a
+     forced filter, on the maintainer/contributor side (see ROADMAP.md's
+     "Category expansion" section: a maintainer covering a vehicle in
+     Garage and an appliance in Home needs both in one scroll). Tinted
+     with that category's own accent (--accent, set inline per group)
+     rather than the flat greys below it, so it reads as the odd tier
+     out -- the one that actually carries a real color, unlike vehicle/
+     edition which are neutral by design. Falls back to steel when
+     --accent isn't set (the "Uncategorized" bucket, for entries that
+     predate the category field). */
+  .category-bar {
+    font-size: 1.3rem; font-weight: 800; color: var(--text);
+    background: color-mix(in srgb, var(--accent, var(--steel-dark)) 22%, var(--black-2));
+    border-left: 4px solid var(--accent, var(--steel-dark));
+    margin: 0 -22px 14px; padding: 12px 22px 12px 18px;
+    display: flex; align-items: center;
+  }
+  .category-bar svg { flex-shrink: 0; }
   /* Full-bleed light-grey separator bar -- shared between Review Photo
      Requests' and My Vehicles' per-vehicle groupings, breaks out of
      .card's own padding via negative margin. */
@@ -120,10 +138,10 @@
      direct request: with real volume (60 photos across 3 manuals, or a
      maintainer covering several unrelated repos), a flat unfoldable
      list is the thing that doesn't scale, not the grouping itself. */
-  .vehicle-bar, .edition-bar { cursor: pointer; list-style: none; user-select: none; }
-  .vehicle-bar::-webkit-details-marker, .edition-bar::-webkit-details-marker { display: none; }
-  .vehicle-bar::before, .edition-bar::before { content: "\25B8  "; display: inline-block; width: 0.7em; }
-  details[open] > .vehicle-bar::before, details[open] > .edition-bar::before { content: "\25BE  "; }
+  .category-bar, .vehicle-bar, .edition-bar { cursor: pointer; list-style: none; user-select: none; }
+  .category-bar::-webkit-details-marker, .vehicle-bar::-webkit-details-marker, .edition-bar::-webkit-details-marker { display: none; }
+  .category-bar::before, .vehicle-bar::before, .edition-bar::before { content: "\25B8  "; display: inline-block; width: 0.7em; }
+  details[open] > .category-bar::before, details[open] > .vehicle-bar::before, details[open] > .edition-bar::before { content: "\25BE  "; }
   .tab-panel { display: none; }
   .tab-panel.active { display: block; }
   .pinned-note {
@@ -701,6 +719,7 @@
         crossorigin="anonymous"></script>
 <script src="auth.js"></script>
 <script src="registry.js"></script>
+<script src="category-style.js"></script>
 <script src="indexer-core.js"></script>
 <script src="indexer-ui.js"></script>
 <script src="indexer-review.js"></script>

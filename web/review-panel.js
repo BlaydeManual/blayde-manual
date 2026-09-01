@@ -45,6 +45,23 @@ async function vehicleSlugForRepo(repoUrl) {
   }
 }
 
+// Category is a grouping tier here, never a filter -- direct
+// architecture decision (see ROADMAP.md's "Category expansion"
+// section): a maintainer covering a vehicle in Garage and an appliance
+// in Home needs both in one scroll, not a global filter to flip.
+// null (not "other") covers a repo whose registry entries predate the
+// category field entirely -- genuinely uncategorized, distinct from a
+// real "other" manual_type choice a submitter made on purpose.
+async function categoryForRepo(repoUrl) {
+  try {
+    const registryData = await loadRegistry(CANONICAL_REGISTRY_URL_FOR_REVIEW);
+    const norm = (u) => (u || "").replace(/\/$/, "").toLowerCase();
+    return registryData.vehicles?.find((v) => norm(v.repo_url) === norm(repoUrl))?.category || null;
+  } catch (e) {
+    return null;
+  }
+}
+
 // A `?repo=` URL param overrides the maintained-repos list for local
 // testing. Doesn't weaken the actual guard: an overridden repo still
 // has to pass isRegisteredRepo() like any other.
@@ -198,66 +215,107 @@ async function renderPRList(approvedRepos) {
     statusByNumber.set(pr.number, await fetchReviewStatus(pr));
   }));
 
-  for (const repoUrl of approvedRepos) {
-    // Page order here decides which edition heading appears first and
-    // which PR within an edition is seen first, before the
-    // needs-attention/waiting split below reorders within each
-    // edition's own list.
-    const prs = currentPRs.filter((pr) => pr.repo_url === repoUrl).sort((a, b) => a.page - b.page);
-    if (!prs.length) continue;
-    // <details>, not a plain div -- direct request: with real volume
-    // (dozens of photos across several manuals), a flat unfoldable list
-    // is what doesn't scale, so each tier collapses independently. Open
-    // by default so nothing hides on first load; the count in the
-    // summary stays informative even collapsed.
-    const group = document.createElement("details");
-    group.open = true;
-    group.style.marginBottom = "16px";
-    const vehicleSlug = await vehicleSlugForRepo(repoUrl);
-    group.innerHTML = `<summary class="vehicle-bar">${vehicleSlug} (${prs.length})</summary>`;
+  // Category is a grouping tier here, never a filter (see
+  // categoryForRepo's comment) -- resolved per repo up front, in
+  // parallel, same shape as the status prefetch above.
+  const categoryByRepo = new Map();
+  await Promise.all(approvedRepos.map(async (repoUrl) => {
+    categoryByRepo.set(repoUrl, await categoryForRepo(repoUrl));
+  }));
 
-    const byEdition = new Map();
-    prs.forEach((pr) => {
-      const key = pr.edition_id || "(edition not set)";
-      if (!byEdition.has(key)) byEdition.set(key, []);
-      byEdition.get(key).push(pr);
-    });
-    byEdition.forEach((editionPrs, editionId) => {
-      const editionGroup = document.createElement("details");
-      editionGroup.open = true;
-      const editionHeading = document.createElement("summary");
-      editionHeading.className = "edition-bar";
-      editionHeading.textContent = `${editionId} (${editionPrs.length})`;
-      editionGroup.appendChild(editionHeading);
-      group.appendChild(editionGroup);
-      const editionWrap = document.createElement("div");
-      // Page order within two tiers, not one flat page order -- direct
-      // spec: rows waiting on someone else (not actionable for you)
-      // sink to the bottom, so what you can actually act on floats to
-      // the top. Array.sort is stable (guaranteed since ES2019), so
-      // page order survives within each tier without sorting on it
-      // explicitly.
-      editionPrs
-        .map((pr) => ({ pr, info: prStatusInfo(pr, statusByNumber.get(pr.number), myLogin) }))
-        .sort((a, b) => (a.info.state === "waiting" ? 1 : 0) - (b.info.state === "waiting" ? 1 : 0))
-        .forEach(({ pr, info }) => {
-          const row = document.createElement("div");
-          row.className = "pr-row";
-          row.innerHTML = `
-            <div>
-              <div class="pr-title">${formatProcedureLabel(pr.procedure_id, pr.page, pr.section_heading)}</div>
-              <div class="pr-meta">@${pr.author} &middot; Request #${pr.number}</div>
-            </div>
-            <div class="pr-row-actions">
-              <span class="pr-status-badge status-${info.state}">${info.label}</span>
-              <button data-pr="${pr.number}">Review</button>
-            </div>
-          `;
-          editionWrap.appendChild(row);
-        });
-      editionGroup.appendChild(editionWrap);
-    });
-    wrap.appendChild(group);
+  const reposByCategory = new Map();
+  for (const repoUrl of approvedRepos) {
+    if (!currentPRs.some((pr) => pr.repo_url === repoUrl)) continue;
+    const key = categoryByRepo.get(repoUrl) || null;
+    if (!reposByCategory.has(key)) reposByCategory.set(key, []);
+    reposByCategory.get(key).push(repoUrl);
+  }
+  // Fixed narrative order (same as the public category tabs), then any
+  // uncategorized repos last -- there's no real usage data to rank by,
+  // same reasoning ROADMAP.md gives for the tab order.
+  const orderedCategoryKeys = [...CATEGORY_ORDER.filter((c) => reposByCategory.has(c)), ...(reposByCategory.has(null) ? [null] : [])];
+  const showCategoryHeadings = orderedCategoryKeys.length > 1;
+
+  for (const categoryKey of orderedCategoryKeys) {
+    const repoUrlsInCategory = reposByCategory.get(categoryKey);
+    let categoryWrap = wrap;
+    if (showCategoryHeadings) {
+      const categoryGroup = document.createElement("details");
+      categoryGroup.open = true;
+      categoryGroup.className = "category-group";
+      if (categoryKey) categoryGroup.style.setProperty("--accent", CATEGORY_STYLE[categoryKey].accent);
+      const totalPrs = repoUrlsInCategory.reduce((sum, r) => sum + currentPRs.filter((pr) => pr.repo_url === r).length, 0);
+      const label = categoryKey ? categoryKey[0].toUpperCase() + categoryKey.slice(1) : "Uncategorized";
+      const icon = categoryKey ? categoryIconSvg(categoryKey) : "";
+      const heading = document.createElement("summary");
+      heading.className = "category-bar";
+      heading.innerHTML = `${icon}${label} (${totalPrs})`;
+      categoryGroup.appendChild(heading);
+      wrap.appendChild(categoryGroup);
+      categoryWrap = categoryGroup;
+    }
+
+    for (const repoUrl of repoUrlsInCategory) {
+      // Page order here decides which edition heading appears first and
+      // which PR within an edition is seen first, before the
+      // needs-attention/waiting split below reorders within each
+      // edition's own list.
+      const prs = currentPRs.filter((pr) => pr.repo_url === repoUrl).sort((a, b) => a.page - b.page);
+      if (!prs.length) continue;
+      // <details>, not a plain div -- direct request: with real volume
+      // (dozens of photos across several manuals), a flat unfoldable list
+      // is what doesn't scale, so each tier collapses independently. Open
+      // by default so nothing hides on first load; the count in the
+      // summary stays informative even collapsed.
+      const group = document.createElement("details");
+      group.open = true;
+      group.style.marginBottom = "16px";
+      const vehicleSlug = await vehicleSlugForRepo(repoUrl);
+      group.innerHTML = `<summary class="vehicle-bar">${vehicleSlug} (${prs.length})</summary>`;
+
+      const byEdition = new Map();
+      prs.forEach((pr) => {
+        const key = pr.edition_id || "(edition not set)";
+        if (!byEdition.has(key)) byEdition.set(key, []);
+        byEdition.get(key).push(pr);
+      });
+      byEdition.forEach((editionPrs, editionId) => {
+        const editionGroup = document.createElement("details");
+        editionGroup.open = true;
+        const editionHeading = document.createElement("summary");
+        editionHeading.className = "edition-bar";
+        editionHeading.textContent = `${editionId} (${editionPrs.length})`;
+        editionGroup.appendChild(editionHeading);
+        group.appendChild(editionGroup);
+        const editionWrap = document.createElement("div");
+        // Page order within two tiers, not one flat page order -- direct
+        // spec: rows waiting on someone else (not actionable for you)
+        // sink to the bottom, so what you can actually act on floats to
+        // the top. Array.sort is stable (guaranteed since ES2019), so
+        // page order survives within each tier without sorting on it
+        // explicitly.
+        editionPrs
+          .map((pr) => ({ pr, info: prStatusInfo(pr, statusByNumber.get(pr.number), myLogin) }))
+          .sort((a, b) => (a.info.state === "waiting" ? 1 : 0) - (b.info.state === "waiting" ? 1 : 0))
+          .forEach(({ pr, info }) => {
+            const row = document.createElement("div");
+            row.className = "pr-row";
+            row.innerHTML = `
+              <div>
+                <div class="pr-title">${formatProcedureLabel(pr.procedure_id, pr.page, pr.section_heading)}</div>
+                <div class="pr-meta">@${pr.author} &middot; Request #${pr.number}</div>
+              </div>
+              <div class="pr-row-actions">
+                <span class="pr-status-badge status-${info.state}">${info.label}</span>
+                <button data-pr="${pr.number}">Review</button>
+              </div>
+            `;
+            editionWrap.appendChild(row);
+          });
+        editionGroup.appendChild(editionWrap);
+      });
+      categoryWrap.appendChild(group);
+    }
   }
   if (!wrap.children.length) wrap.innerHTML = `<p class="sub">No open photo requests right now.</p>`;
   wrap.querySelectorAll("button[data-pr]").forEach(btn => {
