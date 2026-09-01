@@ -60,6 +60,12 @@
        climbing forever, but genuinely reads larger than a laptop
        instead of just slightly larger than mobile. */
     html { font-size: clamp(18px, 1.4vw, 21px); }
+    /* Bigger icons/label on real desktop widths specifically -- the
+       base .cat-tab sizing (below) is tuned for the mobile scroll
+       strip, which already reads well at its own size; this only
+       scales the six-across grid layout up, not mobile's tabs too. */
+    .cat-tab { font-size: 1.35rem; gap: 10px; padding: 20px 10px; }
+    .cat-tab svg { width: 44px; height: 44px; }
   }
   .top-nav { display: flex; justify-content: flex-end; gap: 8px; margin-bottom: 14px; }
   .pill-link {

@@ -30,7 +30,7 @@ const HERO_EXAMPLES = {
   hobby: null,
 };
 
-let activeHeroCategory = null; // null = "All" = default (Garage's real example, no re-theme)
+let activeHeroCategory = null; // set to "garage" at bootstrap, below -- Garage is the real default, per direct instruction
 
 function categoryLabel(id) {
   return id[0].toUpperCase() + id.slice(1);
@@ -172,6 +172,7 @@ function applyHeroCategory(categoryId) {
   renderHeroCategoryTabs();
 }
 
-renderHeroCategoryTabs();
-renderHeroExample(null);
-updateCategoryLinks();
+// Garage is the real default on load -- carries its own theme too
+// (trust-strip, card border, buttons pick up its orange), not just
+// its hero example, same as if a visitor had clicked it themselves.
+applyHeroCategory("garage");
