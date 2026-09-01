@@ -49,6 +49,7 @@ export default {
       if (request.method === "POST" && pathname === "/approve-vehicle") return await handleApproveVehicle(request, env);
       if (request.method === "POST" && pathname === "/manage-collaborator") return await handleManageCollaborator(request, env);
       if (request.method === "POST" && pathname === "/accept-photo-pr") return await handleAcceptPhotoPr(request, env);
+      if (request.method === "POST" && pathname === "/accept-recategorization") return await handleAcceptRecategorization(request, env);
     } catch (e) {
       // Any unexpected throw (a malformed GitHub response, a crypto
       // error, etc.) still needs to come back as JSON with CORS headers --
@@ -1178,6 +1179,133 @@ async function handleAcceptPhotoPr(request, env) {
     body: JSON.stringify({ commit_title: commitTitle || `Merge #${prNumber}`, sha: pr.head.sha }),
   });
   return json({ merged: true });
+}
+
+// The registry.json-only recategorization merge-gate, per ROADMAP.md's
+// "Other, and how something gets out of it" design: category/manual_type
+// describe the whole item, not one photo, so recategorizing targets the
+// REGISTRY repo's registry.json, never a vehicle's own manifest.json --
+// and because that file is org-wide classification data, not one
+// vehicle's own business, the approval bar is the same org-admin check
+// handleApproveVehicle uses, not that vehicle's own repo-scoped
+// maintainers. dryRun runs every check without the final merge, same
+// pattern as handleApproveVehicle -- lets the UI show the exact reason
+// Approve is disabled before anyone clicks it.
+//
+// Real next step once this exists: a Contributor-side "propose
+// recategorization" action that actually opens one of these PRs --
+// not built yet (see ROADMAP.md), so today this only gates a PR
+// someone opened by hand directly against the registry repo. That's a
+// real, usable path on its own (same way a photo PR could always be
+// opened directly via git even before contribute.js existed), just not
+// the eventual polished one.
+async function handleAcceptRecategorization(request, env) {
+  const login = await requireRealUser(request);
+  const body = await parseJson(request);
+  const { pr_number: prNumber, dry_run: dryRun } = body;
+  if (!prNumber) return json({ error: "missing pr_number" }, 400);
+
+  const installationToken = await getInstallationToken(env);
+  await requireOrgApprover(login, installationToken);
+
+  // Fetched fresh here, not trusted from the client -- same reasoning
+  // as handleAcceptPhotoPr: the moment that matters is right before
+  // merging.
+  const pr = await ghApi(`/repos/${REGISTRY_OWNER}/${REGISTRY_REPO}/pulls/${prNumber}`, installationToken);
+  if (pr.state !== "open") {
+    throw new Error(`PR #${prNumber} is ${pr.merged ? "already merged" : pr.state}, not open -- nothing to approve.`);
+  }
+  const files = await ghApi(`/repos/${REGISTRY_OWNER}/${REGISTRY_REPO}/pulls/${prNumber}/files`, installationToken);
+
+  // 1. Negative allowlist: exactly one file, registry.json itself,
+  // already existing (never added/removed) -- same shape as
+  // handleAcceptPhotoPr's own single-file check, but for a modified
+  // data file instead of an added photo.
+  if (files.length !== 1 || files[0].filename !== "registry.json" || files[0].status !== "modified") {
+    throw new Error(
+      `This PR ${files.length === 1 ? `touches "${files[0].filename}" (${files[0].status})` : `changes ${files.length} files`}, not exactly a modified registry.json -- rejecting rather than merging something broader than a recategorization.`
+    );
+  }
+
+  // 2. Fetch both versions of registry.json at the PR's real base/head
+  // commits (not the current default branch, which may have moved
+  // since this PR was opened) and diff them structurally.
+  const baseFile = await ghApi(`/repos/${REGISTRY_OWNER}/${REGISTRY_REPO}/contents/registry.json?ref=${pr.base.sha}`, installationToken);
+  const headFile = await ghApi(`/repos/${REGISTRY_OWNER}/${REGISTRY_REPO}/contents/registry.json?ref=${pr.head.sha}`, installationToken);
+  let baseData, headData;
+  try {
+    baseData = JSON.parse(base64ToUtf8(baseFile.content));
+    headData = JSON.parse(base64ToUtf8(headFile.content));
+  } catch (e) {
+    throw new Error(`registry.json isn't valid JSON on one side of this PR.`);
+  }
+  const baseVehicles = baseData.vehicles || [];
+  const headVehicles = headData.vehicles || [];
+
+  const entryKey = (v) => `${v.vehicle_slug}::${v.edition_id}`;
+  const baseByKey = new Map(baseVehicles.map((v) => [entryKey(v), v]));
+  const headByKey = new Map(headVehicles.map((v) => [entryKey(v), v]));
+
+  // No entries added, removed, or re-identified -- a recategorization
+  // touches exactly one already-existing entry's category/manual_type,
+  // nothing about which entries exist.
+  if (baseByKey.size !== baseVehicles.length || headByKey.size !== headVehicles.length) {
+    throw new Error(`registry.json has duplicate vehicle_slug+edition_id entries -- rejecting rather than guessing which one this PR means to change.`);
+  }
+  if (baseByKey.size !== headByKey.size || [...baseByKey.keys()].some((k) => !headByKey.has(k))) {
+    throw new Error(`This PR adds, removes, or re-identifies a vehicle/edition entry -- only changing an existing entry's category/manual_type is allowed here.`);
+  }
+
+  // 3. Exactly one entry differs, and the only fields that differ on it
+  // are category/manual_type -- everything else (repo_url,
+  // source_pdf_sha256, status, vehicle_slug, edition_id,
+  // vehicle_display_name, vehicle_class) must be byte-identical, or
+  // this PR is doing more than a recategorization.
+  const changedEntries = [];
+  for (const [key, baseEntry] of baseByKey) {
+    const headEntry = headByKey.get(key);
+    if (JSON.stringify(baseEntry) === JSON.stringify(headEntry)) continue;
+    const changedFields = Object.keys({ ...baseEntry, ...headEntry }).filter(
+      (field) => JSON.stringify(baseEntry[field]) !== JSON.stringify(headEntry[field])
+    );
+    changedEntries.push({ key, baseEntry, headEntry, changedFields });
+  }
+  if (changedEntries.length !== 1) {
+    throw new Error(`This PR changes ${changedEntries.length} vehicle/edition entries, not exactly 1 -- rejecting rather than merging something broader than a single recategorization.`);
+  }
+  const { key, headEntry, changedFields } = changedEntries[0];
+  const disallowedFields = changedFields.filter((f) => f !== "category" && f !== "manual_type");
+  if (disallowedFields.length) {
+    throw new Error(`This PR changes ${key}'s ${disallowedFields.join(", ")}, not just category/manual_type -- rejecting rather than merging an edit beyond recategorization.`);
+  }
+  if (!changedFields.length) {
+    throw new Error(`This PR doesn't actually change ${key}'s category or manual_type -- nothing to approve.`);
+  }
+
+  // 4. The resulting category/manual_type pair has to be a real one --
+  // checked against manual-types.json's current default-branch content
+  // (the actual source of truth every consumer reads), not whatever
+  // this PR happens to claim.
+  const manualTypesFile = await ghApi(`/repos/${REGISTRY_OWNER}/${REGISTRY_REPO}/contents/manual-types.json`, installationToken);
+  const manualTypes = JSON.parse(base64ToUtf8(manualTypesFile.content));
+  const category = manualTypes.categories?.find((c) => c.id === headEntry.category);
+  if (!category) {
+    throw new Error(`"${headEntry.category}" isn't a real category in manual-types.json -- rejecting.`);
+  }
+  if (!category.types?.some((t) => t.id === headEntry.manual_type)) {
+    throw new Error(`"${headEntry.manual_type}" isn't a real manual type under "${headEntry.category}" in manual-types.json -- rejecting.`);
+  }
+
+  if (dryRun) return json({ checked: true, entry: key, changedFields });
+
+  // sha pins this merge to the exact commit just validated above, same
+  // TOCTOU protection as handleAcceptPhotoPr.
+  await ghApi(`/repos/${REGISTRY_OWNER}/${REGISTRY_REPO}/pulls/${prNumber}/merge`, installationToken, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ commit_title: `Recategorize ${key}`, sha: pr.head.sha }),
+  });
+  return json({ merged: true, entry: key, changedFields });
 }
 
 function base64ToUtf8(b64) {
