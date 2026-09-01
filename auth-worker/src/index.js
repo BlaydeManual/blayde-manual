@@ -474,11 +474,22 @@ async function handleDirectContribute(request, env) {
         ``,
         `---`,
         `_Track this anytime from [My Reviewables](https://blaydemanual.com/contribute.html)._`,
+        // GitHub's search API silently returns zero matches for a quoted
+        // phrase containing an apostrophe (confirmed directly against
+        // the real API: the exact substring "Portal's Public path"
+        // exists verbatim in real PR bodies, yet a phrase search for it
+        // returns total_count: 0). A single punctuation-free word can't
+        // hit that failure mode, and staying invisible in the rendered
+        // PR means it never has to survive a future copy-editing pass
+        // the way the human-readable sentence above already has three
+        // times this session. contribute.js's syncRealSubmissions()
+        // searches for this exact token, unquoted.
+        `<!-- blaydepublicsubmission -->`,
       ].join("\n"),
     }),
   });
 
-  return json({ prUrl: pr.html_url });
+  return json({ prUrl: pr.html_url, prNumber: pr.number });
 }
 
 // Approving a submission is a higher trust bar than submitting one --

@@ -969,7 +969,7 @@ async function submitPhotoPublic(upload) {
   });
   const result = await resp.json().catch(() => ({}));
   if (!resp.ok || result.error) throw new Error(result.error || `Submit failed (${resp.status}).`);
-  return { prUrl: result.prUrl };
+  return { prUrl: result.prUrl, prNumber: result.prNumber };
 }
 
 // A saved draft carries no memory of which radio was checked when it
@@ -1024,6 +1024,7 @@ async function markSubmitted(uploadId) {
         const pr = await submitPhotoPublic(upload);
         upload.status = "submitted";
         upload.prUrl = pr.prUrl;
+        upload.prNumber = pr.prNumber;
         saveUploads();
         renderUploads();
         log(`Submitted -- pull request opened: ${pr.prUrl}`);
@@ -1081,14 +1082,21 @@ async function openPrForUpload(uploadId) {
   }
 }
 
-// Submissions are real pull requests now (submitPhotoToGitHub), so
-// there's nothing in the local mock PR store to look an outcome up
-// against anymore -- this always reads as "still pending" until
-// review-panel.js/org-approval.js go real too and can report an actual
-// accept/reject back here. upload.prUrl (set at submit time) is the
-// honest interim answer: a direct link to check status on GitHub.
+// A local record's status is only ever set once, at submit/push time,
+// and nothing else in this file ever touches it again -- so it stays
+// frozen at "submitted" even after the real PR is merged or closed on
+// GitHub. GitHub is the one real source of truth for what happens to a
+// PR after that, so once a local record has a real PR attached
+// (prNumber + repoUrl), defer to whatever syncRealSubmissions() most
+// recently learned from the API instead of trusting the stale local
+// guess. Returns null while there's nothing to defer to yet (no PR, or
+// the API hasn't been checked/found this one) -- the local status
+// stands unchanged in that case.
 function outcomeFor(upload) {
-  return null;
+  if (upload.prNumber == null || !upload.repoUrl) return null;
+  const remote = remoteUploads.find((r) => r.prNumber === upload.prNumber && r.repoUrl === upload.repoUrl);
+  if (!remote || remote.status === upload.status) return null;
+  return { status: remote.status, note: null };
 }
 
 // ---- real GitHub sync for "My Reviewables" -- finds every open OR
@@ -1112,7 +1120,16 @@ async function syncRealSubmissions() {
   try {
     const [privateResults, publicResults] = await Promise.all([
       githubApi(`/search/issues?q=${encodeURIComponent(`type:pr org:BlaydeManual author:${currentUsername}`)}`, token),
-      githubApi(`/search/issues?q=${encodeURIComponent(`type:pr org:BlaydeManual "Submitted by @${currentUsername} via the Contributor Portal's Public path"`)}`, token),
+      // A quoted phrase search here used to include the apostrophe in
+      // "Portal's Public path" -- confirmed directly against the real
+      // API that GitHub's search silently returns zero matches for a
+      // quoted phrase containing that apostrophe, even when the exact
+      // substring exists verbatim in real PR bodies. handleDirectContribute
+      // now stamps a punctuation-free marker word into every Public-path
+      // PR body specifically so this query never has to survive a
+      // phrase-search quirk (or a future copy-editing pass) again --
+      // two required plain terms, no quotes, no punctuation.
+      githubApi(`/search/issues?q=${encodeURIComponent(`type:pr org:BlaydeManual blaydepublicsubmission ${currentUsername} in:body`)}`, token),
     ]);
     const found = [
       ...(privateResults.items || []).map((pr) => ({ pr, isPrivate: true })),
