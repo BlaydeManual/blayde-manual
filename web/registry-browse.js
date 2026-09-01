@@ -25,20 +25,9 @@
 const CANONICAL_REGISTRY_URL_FOR_BROWSE = "https://raw.githubusercontent.com/BlaydeManual/registry/main/registry.json";
 const MANUAL_TYPES_URL_FOR_BROWSE = "https://raw.githubusercontent.com/BlaydeManual/registry/main/manual-types.json";
 
-// Real, CVD-verified colors + Tabler (MIT) icons -- see ROADMAP.md's
-// "Category expansion" section for the accessibility research behind
-// these exact values. Kept as a literal table here rather than fetched,
-// same reasoning as everything else styling-related: color/icon choice
-// is a design decision, not registry data, so it doesn't belong in
-// manual-types.json alongside the actual taxonomy.
-const CATEGORY_STYLE = {
-  garage: { accent: "#e06b1d", icon: '<path d="M2 16a3 3 0 1 0 6 0a3 3 0 1 0 -6 0" /><path d="M16 16a3 3 0 1 0 6 0a3 3 0 1 0 -6 0" /><path d="M7.5 14h5l4 -4h-10.5m1.5 4l4 -4" /><path d="M13 6h2l1.5 3l2 4" />' },
-  marina: { accent: "#317be5", icon: '<path d="M2 20a2.4 2.4 0 0 0 2 1a2.4 2.4 0 0 0 2 -1a2.4 2.4 0 0 1 2 -1a2.4 2.4 0 0 1 2 1a2.4 2.4 0 0 0 2 1a2.4 2.4 0 0 0 2 -1a2.4 2.4 0 0 1 2 -1a2.4 2.4 0 0 1 2 1a2.4 2.4 0 0 0 2 1a2.4 2.4 0 0 0 2 -1" /><path d="M4 18l-1 -3h18l-1 3" /><path d="M11 12h7l-7 -9v9" /><path d="M8 7l-2 5" />' },
-  hangar: { accent: "#c953a0", icon: '<path d="M16 10h4a2 2 0 0 1 0 4h-4l-4 7h-3l2 -7h-4l-2 2h-3l2 -4l-2 -4h3l2 2h4l-2 -7h3l4 7" />' },
-  farm: { accent: "#e2e636", icon: '<path d="M3 15a4 4 0 1 0 8 0a4 4 0 1 0 -8 0" /><path d="M7 15l0 .01" /><path d="M17 17a2 2 0 1 0 4 0a2 2 0 1 0 -4 0" /><path d="M10.5 17l6.5 0" /><path d="M20 15.2v-4.2a1 1 0 0 0 -1 -1h-6l-2 -5h-6v6.5" /><path d="M18 5h-1a1 1 0 0 0 -1 1v4" />' },
-  home: { accent: "#36e6e6", icon: '<path d="M5 12l-2 0l9 -9l9 9l-2 0" /><path d="M5 12v7a2 2 0 0 0 2 2h10a2 2 0 0 0 2 -2v-7" /><path d="M10 12h4v4h-4l0 -4" />' },
-  hobby: { accent: "#a134c5", icon: '<path d="M12 21a9 9 0 0 1 0 -18c4.97 0 9 3.582 9 8c0 1.06 -.474 2.078 -1.318 2.828c-.844 .75 -1.989 1.172 -3.182 1.172h-2.5a2 2 0 0 0 -1 3.75a1.3 1.3 0 0 1 -1 2.25" /><path d="M7.5 10.5a1 1 0 1 0 2 0a1 1 0 1 0 -2 0" /><path d="M11.5 7.5a1 1 0 1 0 2 0a1 1 0 1 0 -2 0" /><path d="M15.5 10.5a1 1 0 1 0 2 0a1 1 0 1 0 -2 0" />' },
-};
+// CATEGORY_STYLE/CATEGORY_ORDER come from category-style.js (shared
+// with review-panel.js/my-vehicles.js/contribute.js's category
+// grouping headings) -- see that file for the CVD research citation.
 
 let allVehicles = []; // populated once, real data, filtered/searched client-side
 let manualTypesData = null; // manual-types.json, fetched once
