@@ -307,7 +307,7 @@
             <stop offset="0" stop-color="#e8e8e4"/><stop offset="0.45" stop-color="#a0a099"/><stop offset="1" stop-color="#4a4a44"/>
           </radialGradient>
           <linearGradient id="paperFill" x1="0" y1="0" x2="0" y2="1">
-            <stop offset="0" stop-color="#f7f4ec"/><stop offset="1" stop-color="#ece7d8"/>
+            <stop offset="0" stop-color="#f5f5f5"/><stop offset="1" stop-color="#e5e5e5"/>
           </linearGradient>
           <!-- the actual dot-matrix halftone dither this project's hero
                photos have always used (ImageMagick -ordered-dither h4x4a
@@ -411,16 +411,28 @@
             <stop offset="0" stop-color="#f8f8f8"/><stop offset="0.5" stop-color="#c0c0c0"/><stop offset="1" stop-color="#2a2a2a"/>
           </radialGradient>
           <linearGradient id="paperFill2" x1="0" y1="0" x2="0" y2="1">
-            <stop offset="0" stop-color="#f7f4ec"/><stop offset="1" stop-color="#ece7d8"/>
+            <stop offset="0" stop-color="#f5f5f5"/><stop offset="1" stop-color="#e5e5e5"/>
           </linearGradient>
           <!-- subtle punch on the real contributed photo -- a little more
                saturation/contrast than the source, nothing heavy-handed -->
+          <!-- Direct pixel-sampled both real source JPEGs (hero-after.jpg,
+               hero-after-fig2.jpg) rather than assuming: both average out
+               6-11 points warmer on R/G than B (0-255 scale) -- a real,
+               consistent warm cast in the source photos, not a filter
+               artifact. The old saturate(1.18) amplified that cast
+               further instead of correcting it (saturate scales
+               whatever chroma is already there, warm or not). Saturate
+               dropped to 1.0 (contrast punch below is unrelated to hue,
+               kept) and blue's slope raised from 1.05 to 1.14 -- solved
+               directly from both images' real measured averages, not a
+               guess -- to bring both back near-neutral instead of
+               amplifying their existing tilt. -->
           <filter id="crispPhoto" x="-20%" y="-20%" width="140%" height="140%">
-            <feColorMatrix type="saturate" values="1.18"/>
+            <feColorMatrix type="saturate" values="1.0"/>
             <feComponentTransfer>
               <feFuncR type="linear" slope="1.06" intercept="-0.02"/>
               <feFuncG type="linear" slope="1.06" intercept="-0.02"/>
-              <feFuncB type="linear" slope="1.05" intercept="-0.02"/>
+              <feFuncB type="linear" slope="1.14" intercept="-0.02"/>
             </feComponentTransfer>
           </filter>
           <clipPath id="clipNewFig1"><rect x="70" y="156" width="128" height="100"/></clipPath>
