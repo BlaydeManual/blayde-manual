@@ -120,6 +120,7 @@ async function renderVehicleTeams() {
       card.innerHTML = `<summary class="vehicle-bar">${vehicleSlug}</summary>
         <p class="sub" style="margin:0 0 10px;">Covers ${editions.length} edition${editions.length === 1 ? "" : "s"}: ${editions.join(", ")}</p>
         <div class="roster"><p class="sub" style="margin:0;">Loading roster&hellip;</p></div>
+        <div class="join-requests" style="margin-top:12px;"></div>
         <div style="display:flex; gap:8px; margin-top:12px;">
           <input type="text" class="invite-input" placeholder="GitHub handle to invite" style="flex:1; width:auto; margin:0;">
           <button class="invite-btn" style="margin:0; flex-shrink:0;">Invite</button>
@@ -127,6 +128,8 @@ async function renderVehicleTeams() {
         <p class="sub invite-status" style="margin:6px 0 0;"></p>`;
       const rosterEl = card.querySelector(".roster");
       renderRoster(rosterEl, repoUrl);
+      const joinRequestsEl = card.querySelector(".join-requests");
+      renderJoinRequests(joinRequestsEl, rosterEl, repoUrl);
       const statusEl = card.querySelector(".invite-status");
       card.querySelector(".invite-btn").addEventListener("click", async () => {
         const input = card.querySelector(".invite-input");
@@ -210,6 +213,85 @@ async function renderRoster(rosterEl, repoUrl) {
         renderRoster(rosterEl, repoUrl);
       } catch (e) {
         alert(`Couldn't remove @${btn.dataset.handle}: ${e.message}`);
+      }
+    });
+  });
+}
+
+// Finds real open "join as a maintainer" requests on this repo, the
+// same marker (unquoted, punctuation-free) syncRealSubmissions uses for
+// Public-path photo PRs, for the same reason: a quoted phrase search
+// can silently fail on GitHub's own tokenizer, a single unbroken word
+// can't. issue.user.login is the requester's real handle -- it's who
+// opened the issue with their own token, not something parsed from
+// freeform text.
+async function fetchJoinRequests(repoUrl) {
+  const { owner, repo } = ownerRepoFromUrl(repoUrl);
+  const token = BlaydeAuth.getSession().token;
+  const resp = await fetch(
+    `https://api.github.com/search/issues?q=${encodeURIComponent(`type:issue state:open repo:${owner}/${repo} blaydemaintainerrequest in:body`)}`,
+    { headers: ghHeaders(token) }
+  );
+  if (!resp.ok) throw new Error(`GitHub search API error (${resp.status})`);
+  const result = await resp.json();
+  return (result.items || []).map((issue) => ({ number: issue.number, url: issue.html_url, handle: issue.user.login }));
+}
+
+async function closeJoinRequest(repoUrl, issueNumber) {
+  const { owner, repo } = ownerRepoFromUrl(repoUrl);
+  const token = BlaydeAuth.getSession().token;
+  await fetch(`https://api.github.com/repos/${owner}/${repo}/issues/${issueNumber}`, {
+    method: "PATCH",
+    headers: { ...ghHeaders(token), "Content-Type": "application/json" },
+    body: JSON.stringify({ state: "closed" }),
+  });
+}
+
+async function renderJoinRequests(el, rosterEl, repoUrl) {
+  let requests;
+  try {
+    requests = await fetchJoinRequests(repoUrl);
+  } catch (e) {
+    el.innerHTML = "";
+    return;
+  }
+  if (!requests.length) { el.innerHTML = ""; return; }
+  el.innerHTML = `<p class="sub" style="margin:0 0 6px; font-weight:700;">Requests to join (${requests.length})</p>`;
+  requests.forEach((req) => {
+    const row = document.createElement("div");
+    row.className = "pr-row";
+    row.innerHTML = `
+      <div class="pr-title">@${req.handle} <a href="${req.url}" target="_blank" rel="noopener" class="pr-link" style="font-weight:400;">view request</a></div>
+      <div>
+        <button class="invite-request-btn" data-handle="${req.handle}" data-number="${req.number}" style="margin:0;">Invite</button>
+        <button class="secondary decline-request-btn" data-number="${req.number}" style="margin:0 0 0 6px;">Decline</button>
+      </div>
+    `;
+    el.appendChild(row);
+  });
+  el.querySelectorAll(".invite-request-btn").forEach((btn) => {
+    btn.addEventListener("click", async () => {
+      btn.disabled = true;
+      try {
+        await inviteCollaborator(repoUrl, btn.dataset.handle);
+        await closeJoinRequest(repoUrl, btn.dataset.number);
+        renderRoster(rosterEl, repoUrl);
+        renderJoinRequests(el, rosterEl, repoUrl);
+      } catch (e) {
+        btn.disabled = false;
+        alert(`Couldn't invite @${btn.dataset.handle}: ${e.message}`);
+      }
+    });
+  });
+  el.querySelectorAll(".decline-request-btn").forEach((btn) => {
+    btn.addEventListener("click", async () => {
+      btn.disabled = true;
+      try {
+        await closeJoinRequest(repoUrl, btn.dataset.number);
+        renderJoinRequests(el, rosterEl, repoUrl);
+      } catch (e) {
+        btn.disabled = false;
+        alert(`Couldn't decline: ${e.message}`);
       }
     });
   });

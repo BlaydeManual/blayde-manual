@@ -109,7 +109,7 @@ async function resolveRepoUrl() {
 
 let signedIn = false;
 let currentUsername = null;
-let pendingMaintainRequest = null; // vehicle key -- deferred-sign-in pattern for "help maintain"
+let pendingMaintainRequest = null; // {vehicleKey, repoUrl} -- deferred-sign-in pattern for "help maintain"
 // Real bug, caught live: two identical pull requests opened for the
 // same photo from one click, because nothing stopped a second click
 // (or a second call through the deferred-sign-in path) from starting
@@ -136,6 +136,52 @@ let maintainerRequests = loadMaintainerRequests();
 // persisted back to localStorage as if it were a local draft.
 let remoteUploads = [];
 
+// Real review/merge status (approvals, changes-requested, checks) for a
+// still-open PR -- same shape and same /pr-review-status endpoint
+// review-panel.js already uses for maintainers, reused here so a
+// contributor sees actual progress inline instead of having to click
+// "View on GitHub" just to find out why nothing's happened yet.
+// Keyed by `${repoUrl}#${prNumber}` so a re-render doesn't refetch a
+// row that's already loaded.
+const reviewStatusCache = new Map();
+
+async function fetchPrReviewStatus(repoUrl, prNumber) {
+  try {
+    const session = BlaydeAuth.getSession();
+    const resp = await fetch(
+      `${BlaydeAuth.AUTH_WORKER_URL}pr-review-status?repo_url=${encodeURIComponent(repoUrl)}&pr_number=${prNumber}`,
+      { headers: { Authorization: `Bearer ${session.token}` } }
+    );
+    const result = await resp.json().catch(() => ({}));
+    if (!resp.ok || result.error) throw new Error(result.error || `status check failed (${resp.status})`);
+    return result;
+  } catch (e) {
+    return { error: e.message };
+  }
+}
+
+// Mirrors review-panel.js's renderReviewStatusLine wording exactly, so
+// a contributor and a maintainer looking at the same PR see the same
+// language for the same state.
+function reviewStatusText(status) {
+  if (!status) return "Checking review status&hellip;";
+  if (status.error) return `Couldn't check review status: ${status.error}`;
+  const parts = [];
+  parts.push(
+    `Reviews: ${status.approved_count}/${status.required_approvals} approved` +
+    (status.approved_by.length ? ` (${status.approved_by.map((u) => "@" + u).join(", ")})` : "")
+  );
+  if (status.changes_requested_by.length) {
+    parts.push(`changes requested by ${status.changes_requested_by.map((u) => "@" + u).join(", ")}`);
+  }
+  if (status.checks.length) {
+    parts.push("Checks: " + status.checks.map((c) =>
+      `${c.name} ${c.conclusion === "success" ? "&check;" : c.conclusion ? "&cross;" : "&hellip;"}`
+    ).join(", "));
+  }
+  return parts.join(" &middot; ");
+}
+
 function loadUploads() {
   try {
     const raw = localStorage.getItem(UPLOADS_STORAGE_KEY);
@@ -147,14 +193,11 @@ function saveUploads() {
   try { localStorage.setItem(UPLOADS_STORAGE_KEY, JSON.stringify(uploads)); } catch (e) { /* best-effort */ }
 }
 
-// Mock stand-in for the real mechanism designed in ROADMAP.md's
-// maintainer-succession entry: a visible request aimed at the current
-// maintainer(s) and the org quorum, timed out against the same
-// active/quiet signal my-vehicles.js already computes. The real
-// version needs a live repo (a scheduled GitHub Action, run centrally
-// from the org's own registry repo) to actually evaluate the grace
-// period -- this is the UI half only, same convention as every other
-// mocked action on this page.
+// Purely a local "don't let this browser spam the same request twice"
+// guard -- NOT the source of truth for whether a request exists or was
+// acted on. The real request is the GitHub issue submitMaintainRequest
+// opens; my-vehicles.js's renderJoinRequests reads real open issues
+// directly, independent of this.
 function loadMaintainerRequests() {
   try {
     const raw = localStorage.getItem(MAINTAINER_REQUESTS_KEY);
@@ -166,7 +209,7 @@ function saveMaintainerRequests() {
   try { localStorage.setItem(MAINTAINER_REQUESTS_KEY, JSON.stringify(maintainerRequests)); } catch (e) { /* best-effort */ }
 }
 function hasRequestedMaintain(vehicleKey) {
-  return maintainerRequests.some((r) => r.vehicleKey === vehicleKey && r.requestedBy === currentUsername);
+  return maintainerRequests.find((r) => r.vehicleKey === vehicleKey && r.requestedBy === currentUsername) || null;
 }
 
 // The "gitless" answer to "can I revoke a photo I contributed" (see
@@ -732,24 +775,59 @@ document.getElementById("promptSignInBtn").addEventListener("click", async () =>
   if (!(await performSignIn())) return;
   document.getElementById("signInPrompt").style.display = "none";
   updateRecatVisibility();
-  if (pendingMaintainRequest) { performMaintainRequest(pendingMaintainRequest); pendingMaintainRequest = null; }
+  if (pendingMaintainRequest) { performMaintainRequest(pendingMaintainRequest.vehicleKey, pendingMaintainRequest.repoUrl); pendingMaintainRequest = null; }
 });
 
-function requestToMaintain(vehicleKey) {
+function requestToMaintain(vehicleKey, repoUrl) {
   if (!signedIn) {
-    pendingMaintainRequest = vehicleKey;
+    pendingMaintainRequest = { vehicleKey, repoUrl };
     document.getElementById("signInPrompt").style.display = "block";
     return;
   }
-  performMaintainRequest(vehicleKey);
+  performMaintainRequest(vehicleKey, repoUrl);
 }
 
-function performMaintainRequest(vehicleKey) {
-  if (hasRequestedMaintain(vehicleKey)) return;
-  maintainerRequests.push({ vehicleKey, requestedBy: currentUsername, requestedAt: new Date().toISOString().slice(0, 10) });
-  saveMaintainerRequests();
-  log(`[mock] requested to help maintain ${vehicleKey} -- notifies the current maintainer(s) and the org quorum. If there's no response within the grace period, it escalates automatically.`);
+async function performMaintainRequest(vehicleKey, repoUrl) {
+  if (hasRequestedMaintain(vehicleKey) || !repoUrl) return;
+  log(`Asking to join as a maintainer on ${vehicleKey}...`);
+  try {
+    const issue = await submitMaintainRequest(repoUrl);
+    maintainerRequests.push({
+      vehicleKey, repoUrl, requestedBy: currentUsername,
+      requestedAt: new Date().toISOString().slice(0, 10), issueUrl: issue.url,
+    });
+    saveMaintainerRequests();
+    log(`Request sent: ${issue.url}`);
+  } catch (e) {
+    log(`Couldn't send the request: ${e.message}`);
+  }
   renderUploads();
+}
+
+// Opens a real GitHub issue on the vehicle's own repo, using this
+// contributor's own token -- same trust level as any public-repo issue,
+// no privileged Worker call needed. The marker (same pattern as
+// syncRealSubmissions' Public-path search) is what lets
+// my-vehicles.js's renderJoinRequests find these reliably without
+// depending on a label existing on every vehicle repo, which would
+// require write access this contributor doesn't have yet.
+async function submitMaintainRequest(repoUrl) {
+  const session = BlaydeAuth.getSession();
+  if (!session) throw new Error("Not signed in.");
+  const [owner, repo] = ownerRepo(repoUrl);
+  const body = [
+    `@${currentUsername} would like to help maintain this manual.`,
+    ``,
+    `Submitted from the Contributor Portal. Accepting this doesn't grant anything on its own -- a current maintainer needs to use the Maintainer Portal's My Vehicles tab to actually invite \`${currentUsername}\`, which is the real step that grants access.`,
+    ``,
+    `<!-- blaydemaintainerrequest -->`,
+  ].join("\n");
+  const issue = await githubApi(`/repos/${owner}/${repo}/issues`, session.token, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ title: `Request to join as a maintainer: @${currentUsername}`, body }),
+  });
+  return { number: issue.number, url: issue.html_url };
 }
 
 // Only ever called with "draft" now -- direct correction: nobody
@@ -1304,23 +1382,26 @@ function renderUploadGroup(uploadList, container, maintainRowShown, categoryByVe
             <img class="upload-thumb" src="${u.photoDataUrl}" alt="">
             <div>
               <div class="upload-title">${pageLabel}${u.sectionHeading}<span class="upload-status ${displayStatus}">${statusLabel}</span></div>
-              <div class="upload-meta">${u.procedureId}${u.prNumber != null ? ` &middot; ${u.prUrl ? `<a href="${u.prUrl}" target="_blank" rel="noopener" style="color:inherit;">Request #${u.prNumber}</a>` : `Request #${u.prNumber}`}` : ""}</div>
+              <div class="upload-meta">${u.procedureId}${u.prNumber != null ? ` &middot; ${u.prUrl ? `<a href="${u.prUrl}" target="_blank" rel="noopener" class="pr-link">Request #${u.prNumber}</a>` : `Request #${u.prNumber}`}` : ""}</div>
               ${outcome && outcome.note ? `<div class="upload-note">&ldquo;${outcome.note}&rdquo; &mdash; maintainer note</div>` : ""}
+              ${displayStatus === "submitted" && u.prNumber != null ? `<div class="sub review-status-line" id="reviewstatus-${u.id}" style="margin-top:4px;">${reviewStatusText(reviewStatusCache.get(`${u.repoUrl}#${u.prNumber}`))}</div>` : ""}
             </div>
           </div>
           <div class="upload-actions">
             ${u.remote ? (
-              // Fetched fresh from GitHub, not this device's own draft
-              // data -- there's no local crop/bbox state to open the
-              // compare viewer against, and nothing local to delete or
-              // open a PR for (it's already open). GitHub itself is the
-              // one real source of truth here.
-              `<a class="secondary" href="${u.prUrl}" target="_blank" rel="noopener" style="display:inline-block; padding:6px 12px; text-decoration:none;">View on GitHub</a>`
+              // This is the gitless front-end -- a contributor
+              // shouldn't need a GitHub-branded button at all now that
+              // the review-status line above gives the same real
+              // approval/changes-requested/checks feedback a maintainer
+              // sees in the Maintainer Portal. "Request #N" above (a
+              // plain small link, not a button) already covers the rare
+              // case someone actually wants the raw diff or comments.
+              ``
             ) : `
             <button class="secondary" data-view="${u.id}">View</button>
             ${u.status === "draft" ? `<button data-submit="${u.id}">Submit</button>` : ""}
             ${u.status === "draft" ? `<button class="secondary" data-delete="${u.id}">Delete</button>` : ""}
-            ${u.status === "forked" ? `<button data-openpr="${u.id}">Open pull request</button>` : ""}
+            ${u.status === "forked" ? `<button data-openpr="${u.id}">Submit for review</button>` : ""}
             ${u.status !== "draft" && u.status !== "forked" ? (
               hasRequestedRemoval(u.id)
                 ? `<span class="sub" style="margin:0 0 0 6px; color:var(--mint);">Removal requested</span>`
@@ -1341,9 +1422,15 @@ function renderUploadGroup(uploadList, container, maintainRowShown, categoryByVe
       maintainRowShown.add(vehicleKey);
       const maintainRow = document.createElement("div");
       maintainRow.className = "maintain-request-row";
-      maintainRow.innerHTML = hasRequestedMaintain(vehicleKey)
-        ? `<span class="sub" style="margin:0; color:var(--mint);">Requested to help maintain -- the current maintainer(s) and org team have been notified.</span>`
-        : `<button class="secondary" data-maintain="${vehicleKey}">Request to help maintain this vehicle</button>`;
+      // Opens a real GitHub issue on the vehicle's own repo
+      // (submitMaintainRequest, this contributor's own token), which the
+      // Maintainer Portal's My Vehicles tab reads directly and can act
+      // on with a real Invite/Decline (see my-vehicles.js's
+      // renderJoinRequests).
+      const localRecord = hasRequestedMaintain(vehicleKey);
+      maintainRow.innerHTML = localRecord
+        ? `<span class="sub" style="margin:0; color:var(--mint);">Request sent${localRecord.issueUrl ? ` -- <a href="${localRecord.issueUrl}" target="_blank" rel="noopener" class="pr-link">view it</a>` : ""}. The current maintainers will see it in the Maintainer Portal.</span>`
+        : `<button class="secondary" data-maintain="${vehicleKey}" data-repo="${group[0]?.repoUrl || ""}">Ask to join as a maintainer</button>`;
       details.appendChild(maintainRow);
     }
 
@@ -1415,9 +1502,9 @@ async function renderUploads() {
   // later in the file would be initialized, so this has to be created
   // fresh on every call rather than hoisted-and-shared.
   const visibilitySections = [
-    { key: "public", cls: "is-public", icon: "🌍", title: "Public", desc: "Already a real pull request -- visible to reviewers now, no personal copy kept." },
-    { key: "private", cls: "is-private", icon: "🔒", title: "Private", desc: "Pushed to your own fork -- nothing proposed to reviewers until you open the pull request yourself." },
-    { key: "draft", cls: "is-draft", icon: "📝", title: "Drafts", desc: "Only ever lived on this device -- not submitted anywhere yet." },
+    { key: "public", cls: "is-public", icon: "🌍", title: "Public", desc: "Public-facing submission requests. Status shown below for each one. No personal copy kept." },
+    { key: "private", cls: "is-private", icon: "🔒", title: "Private", desc: "Saved to your own personal copy. Nothing proposed to reviewers until you choose to submit it." },
+    { key: "draft", cls: "is-draft", icon: "📝", title: "Drafts", desc: "Only ever lived on this device. Not submitted anywhere yet." },
   ];
 
   const maintainRowShown = new Set();
@@ -1438,7 +1525,7 @@ async function renderUploads() {
     btn.addEventListener("click", () => openCompare(btn.dataset.view, btn));
   });
   list.querySelectorAll("[data-maintain]").forEach((btn) => {
-    btn.addEventListener("click", () => requestToMaintain(btn.dataset.maintain));
+    btn.addEventListener("click", () => requestToMaintain(btn.dataset.maintain, btn.dataset.repo));
   });
   list.querySelectorAll("[data-remove]").forEach((btn) => {
     btn.addEventListener("click", () => requestRemoval(btn.dataset.remove));
@@ -1452,6 +1539,29 @@ async function renderUploads() {
   list.querySelectorAll("[data-openpr]").forEach((btn) => {
     btn.addEventListener("click", () => openPrForUpload(btn.dataset.openpr));
   });
+  loadReviewStatusLines(allUploads);
+}
+
+// Fire-and-forget, one fetch per still-open PR actually shown this
+// render, skipping anything already cached from a prior render -- a
+// row whose real state has since changed (a new review came in) still
+// only refreshes on the next full renderUploads() call, same staleness
+// window syncRealSubmissions() already accepts elsewhere on this page.
+function loadReviewStatusLines(allUploads) {
+  allUploads
+    .filter((u) => {
+      const outcome = outcomeFor(u);
+      const displayStatus = outcome ? outcome.status : u.status;
+      return displayStatus === "submitted" && u.prNumber != null && !reviewStatusCache.has(`${u.repoUrl}#${u.prNumber}`);
+    })
+    .forEach((u) => {
+      const key = `${u.repoUrl}#${u.prNumber}`;
+      fetchPrReviewStatus(u.repoUrl, u.prNumber).then((status) => {
+        reviewStatusCache.set(key, status);
+        const el = document.getElementById(`reviewstatus-${u.id}`);
+        if (el) el.innerHTML = reviewStatusText(status);
+      });
+    });
 }
 
 // ---- view/compare: local-context rule -- the original scan can only
