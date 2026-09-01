@@ -1464,7 +1464,7 @@ async function renderUploads() {
   // later in the file would be initialized, so this has to be created
   // fresh on every call rather than hoisted-and-shared.
   const visibilitySections = [
-    { key: "public", cls: "is-public", icon: "🌍", title: "Public", desc: "Already a real pull request -- visible to reviewers now, no personal copy kept." },
+    { key: "public", cls: "is-public", icon: "🌍", title: "Public", desc: "Public-facing submission requests. Status shown below for each one. No personal copy kept." },
     { key: "private", cls: "is-private", icon: "🔒", title: "Private", desc: "Pushed to your own fork -- nothing proposed to reviewers until you open the pull request yourself." },
     { key: "draft", cls: "is-draft", icon: "📝", title: "Drafts", desc: "Only ever lived on this device -- not submitted anywhere yet." },
   ];

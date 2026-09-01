@@ -191,7 +191,12 @@
   .upload-status { font-size: 0.78rem; font-weight: 700; padding: 2px 7px; border-radius: 4px; margin-left: 6px; }
   .upload-status.draft { background: rgba(138,143,152,0.15); color: var(--steel); }
   .upload-status.forked { background: rgba(255,204,102,0.15); color: #ffcc66; }
-  .upload-status.submitted { background: rgba(159,225,203,0.12); color: var(--mint); }
+  /* Was the exact same mint as .accepted, just a lower alpha -- too
+     close to tell apart at a glance, and "pending" reading as "already
+     done" is the wrong signal. Reuses the same blue the Public section
+     above already uses for "out in the world" -- fitting, since
+     submitted specifically means already a real, public, pending PR. */
+  .upload-status.submitted { background: rgba(91,155,247,0.15); color: #5b9bf7; }
   .upload-status.accepted { background: rgba(159,225,203,0.18); color: var(--mint); }
   .upload-status.rejected { background: rgba(200,16,46,0.14); color: #ff6b6b; }
   .upload-note { font-size: 0.84rem; color: var(--steel); font-style: italic; margin-top: 3px; }
@@ -312,7 +317,11 @@
 
   <div class="card" id="uploadsSection">
     <h2>My Reviewables</h2>
-    <p class="sub" style="margin:0 0 8px;">Grouped by where each one actually stands: still just on this device, pushed privately to your own fork, or already a real public pull request. View it side by side with the original page, make sure it's the right shot, then Submit when you're ready (asks Public or Private at that point -- signing in only happens then, never before).</p>
+    <p class="sub" style="margin:0 0 6px;">Grouped by where each one stands:</p>
+    <p class="sub" style="margin:0 0 3px;"><strong>On Device:</strong> saved here only, not sent anywhere yet.</p>
+    <p class="sub" style="margin:0 0 3px;"><strong>Public:</strong> already a real, visible pull request.</p>
+    <p class="sub" style="margin:0 0 8px;"><strong>Private:</strong> pushed to your own fork, not proposed to reviewers yet.</p>
+    <p class="sub" style="margin:0 0 8px;">Blayde Manual recommends using the blaydemanual.com interface for this work rather than GitHub directly.</p>
     <p class="sub" id="uploadsEmpty" style="margin:0;">Nothing yet -- photos you save for review will show up here.</p>
     <div id="uploadsList"></div>
 
