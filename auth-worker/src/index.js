@@ -719,6 +719,32 @@ async function handleApproveVehicle(request, env) {
     throw new Error(`Rejected: manifest.json doesn't have the expected shape (entries[], page_geometry, vehicle).`);
   }
 
+  // 4. Real security gap, found during a full security-testing-matrix
+  // review, not caught when category/manual_type were first added:
+  // neither field was ever validated here before being written straight
+  // into the public registry.json below (or into an existing vehicle's
+  // sibling-inherited values, in the new-edition branch further down --
+  // this check runs before that branch, so it covers both paths). A
+  // submitter's own manifest is never trusted for anything else that
+  // matters (source, hash, shape) -- category/manual_type shouldn't
+  // have been the one exception. indexer-review.js's dropdowns are
+  // client-side UI, not a security boundary; a submitter can send
+  // whatever JSON they want here. Neither field is required (an older
+  // submission may have neither), but a present value has to be real --
+  // same manual-types.json check handleAcceptRecategorization already
+  // applies to a registry.json edit PR, applied here too.
+  if (manifest.category || manifest.manual_type) {
+    const manualTypesFile = await ghApi(`/repos/${REGISTRY_OWNER}/${REGISTRY_REPO}/contents/manual-types.json`, installationToken);
+    const manualTypes = JSON.parse(base64ToUtf8(manualTypesFile.content));
+    const category = manualTypes.categories?.find((c) => c.id === manifest.category);
+    if (manifest.category && !category) {
+      throw new Error(`Rejected: "${manifest.category}" isn't a real category in manual-types.json.`);
+    }
+    if (manifest.manual_type && !category?.types?.some((t) => t.id === manifest.manual_type)) {
+      throw new Error(`Rejected: "${manifest.manual_type}" isn't a real manual type under "${manifest.category}" in manual-types.json.`);
+    }
+  }
+
   if (dryRun) return json({ checked: true });
 
   // ---- New edition of an EXISTING, already-public vehicle --
