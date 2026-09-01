@@ -165,16 +165,19 @@
      registry-browse.html's glass-tray tabs, adapted to this page's
      centered layout. */
   .category-prompt { text-align: center; margin: 0 0 10px; font-size: 0.92rem; font-weight: 700; color: var(--text); }
-  .category-tabs { display: flex; flex-wrap: wrap; justify-content: center; gap: 10px; margin-bottom: 32px; }
+  /* Full width, evenly spaced -- six equal columns rather than
+     content-hugging flex items, so the row reads as one deliberate
+     control strip (closer to a real tab bar) instead of a cluster of
+     buttons floating in the middle of the page. */
+  .category-tabs { display: grid; grid-template-columns: repeat(6, 1fr); gap: 10px; margin-bottom: 0; }
   /* Tab-shaped, not pill-shaped -- matches maintainer.html's own
      #tabNav treatment (mild corner rounding, solid-fill active state)
      rather than the fully-rounded pill used elsewhere. Taller than
-     wide on purpose (generous vertical padding, tighter horizontal),
-     sized to fit all six across one row at typical desktop widths. */
+     wide on purpose (generous vertical padding, tighter horizontal). */
   .cat-tab {
-    display: flex; flex-direction: column; align-items: center; gap: 6px;
-    padding: 14px 16px; border-radius: 8px; font-size: 1rem; font-weight: 700;
-    background: var(--black-2); color: var(--steel); border: 1px solid var(--steel-dark);
+    display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 6px;
+    padding: 14px 8px; border-radius: 8px 8px 0 0; font-size: 1rem; font-weight: 700;
+    background: var(--black-2); color: var(--steel); border: 1px solid var(--steel-dark); border-bottom: none;
     cursor: pointer; user-select: none; transition: background 0.12s, color 0.12s, border-color 0.12s;
   }
   .cat-tab svg { width: 26px; height: 26px; stroke: currentColor; flex-shrink: 0; }
@@ -183,6 +186,18 @@
     background: var(--tab-accent); border-color: var(--tab-accent); color: #fff;
   }
   .cat-tab.active svg { stroke: #fff; }
+  /* The tray every tab feeds into -- same glass-tray language as
+     registry-browse.html's #browseTray (tinted border + fill in the
+     active category's accent), just spanning everything below the
+     tabs instead of one results list. No category chosen yet (fresh
+     page load) means no tint at all, matching the "never a forced
+     choice" default -- --accent is simply unset until a tab is clicked. */
+  #heroTray {
+    border: 1px solid var(--accent, transparent);
+    background: color-mix(in srgb, var(--accent, transparent) 7%, transparent);
+    border-radius: 0 8px 8px 8px;
+    padding: 24px; margin: 0 0 20px;
+  }
 
   /* ---- the flow diagram: three independently-scaling components, no
      static connector pieces -- every arrow is drawn live by hero.js, in
@@ -562,6 +577,7 @@
   <p class="category-prompt">But what kind of manual?</p>
   <div class="category-tabs" id="heroCategoryTabs"></div>
 
+  <div id="heroTray">
   <div class="trust-strip">
     <div class="trust-chip local">
       <span class="trust-chip-icon" aria-hidden="true">
@@ -688,6 +704,7 @@
       <a href="#" id="outLink">Not me, but I know someone who'd be great at this &rarr;</a>
     </div>
     <div class="out-confirm" id="outConfirm">Link copied. Send it to them -- this exact page, this exact manual.</div>
+  </div>
   </div>
 
   <footer>
