@@ -112,10 +112,21 @@ and "actually works" can't disagree):
 3. **Manifest schema.** Has to have the real expected shape
    (`entries[]`, `page_geometry`, a `vehicle` slug) before anything
    privileged happens.
-4. **Real org-admin check on the approver**, via GitHub's own
+4. **Category/manual_type, if present, must be real.** Added
+   2026-09-01 after a security-testing-matrix review found this had
+   been missed when the category-expansion fields were first added --
+   neither field was checked against `manual-types.json` before being
+   written into the public registry, even though nothing else about a
+   submitted manifest is trusted this loosely. Checked the same way
+   the recategorization gate below already does. Neither field is
+   required (an older submission may have neither).
+5. **Real org-admin check on the approver**, via GitHub's own
    membership API (`role === "admin"`, `state === "active"`) with the
    installation token -- never a client-side flag a maintainer's own
-   page state could fake.
+   page state could fake. This is a **single-admin** approval, not a
+   multi-person quorum -- any one active admin's approval is
+   sufficient, by design (see "Known gaps" below for the tradeoff this
+   accepts).
 
 A repo name matching one of BlaydeManual's own reserved repos
 (`registry`, `submission-log`, `blayde-manual`, `vehicle-scaffold`) is

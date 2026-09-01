@@ -343,8 +343,75 @@ PR #6) rather than a direct push, per standing instruction that changes
 to real repos go through a PR for review. A follow-up normal merge
 attempt against a still-failing check then confirmed 6.2 for real.
 
+## Tier 7: category expansion writes (`/accept-recategorization`, registry.json fork+PR)
+
+Added 2026-09-01, prompted by a direct instruction to review this whole
+matrix now that most of the category-expansion procedures are in
+place. Covers real new attack surface this document never accounted
+for: `category`/`manual_type` now flow through `/direct-submit` ->
+`/approve-vehicle` (existing endpoints, new fields), and a brand-new
+endpoint plus a brand-new client-side write path exist specifically to
+recategorize an already-approved item.
+
+**Real bug found and fixed during this review, not caught when
+category/manual_type were first added:** `handleApproveVehicle`'s
+manifest-schema check validated `entries[]`/`page_geometry`/`vehicle`
+but never checked `category`/`manual_type` against `manual-types.json`
+before writing them straight into the public `registry.json` -- a
+submitted manifest's category/type went through completely
+unvalidated, both for a brand-new vehicle and for a new edition's
+sibling-inherited values. `indexer-review.js`'s dropdowns are
+client-side UI, not a security boundary. **Fixed**: added the same
+`manual-types.json` check `handleAcceptRecategorization` already used,
+applied to `/approve-vehicle` too, before either field reaches the
+registry (auth-worker PR, 2026-09-01).
+
+**The two things this tier actually covers:**
+- `POST /accept-recategorization` -- the merge-time gate. Approves (or
+  dry-runs) a PR against `BlaydeManual/registry` that changes exactly
+  one entry's `category`/`manual_type`, nothing else. Same shape as
+  the existing photo-PR/vehicle-approval gates: negative file-allowlist
+  (exactly one file, `registry.json`, `modified`), single-entry diff
+  validation, org-approver bar (`requireOrgApprover` -- same single-
+  admin behavior as `/approve-vehicle`, see Tier 4's real quorum
+  finding, which applies here identically), `dry_run` support, merge
+  pinned to `pr.head.sha`.
+- **The new client-side write path** (`contribute.js`'s
+  `submitRecategorizationProposal`) -- fork `BlaydeManual/registry`
+  with the *contributor's own OAuth token* (not the Worker, not the
+  installation credential), edit `registry.json` on a new branch,
+  open a PR back to the org repo. Same fork-then-PR shape as the
+  existing Private photo-contribution path, just aimed at the registry
+  repo and editing an existing file instead of adding a new one. The
+  real security boundary here isn't this step at all (anyone forking a
+  public repo and opening a PR is just normal GitHub, by design, same
+  "anyone can propose" posture as `/direct-submit`'s Tier 2.3) -- it's
+  entirely `/accept-recategorization`'s merge-time gate, above.
+
+| # | Call | Expected | Status |
+|---|---|---|---|
+| 7.1 | `POST /accept-recategorization` with no `Authorization` header | `500`, `{"error":"Not signed in."}`, same as every other privileged endpoint (Tier 1 pattern) | Pending -- not yet run against live infra |
+| 7.2 | Same call, real signed-in identity, NOT a BlaydeManual member | Rejected by `requireOrgApprover` the same way `/approve-vehicle` rejects a non-member (Tier 2.8's pattern) | Pending -- same third-account backlog blocker as Tier 2.4/2.8 |
+| 7.3 | Same call, real member, NOT an admin | Rejected -- `"isn't an active admin"`, confirming the admin bar here is the same real, separate check Tier 3.2 already confirmed for `/approve-vehicle` | Pending |
+| 7.4 | Real org admin, `dry_run: true`, against a hand-crafted PR that changes ONLY `category`/`manual_type` on one real entry to a real pair | `{"checked": true, entry, changedFields}` | Pending -- needs a real open PR against the registry repo; no real "other"-tagged entry exists yet worth recategorizing for real |
+| 7.5 | Same, but the PR also touches a second file (e.g. `manual-types.json` alongside `registry.json`) | Rejected -- negative file-allowlist, same shape as 4.4's tamper check | Pending |
+| 7.6 | Same, but the PR changes a field other than `category`/`manual_type` on the target entry (e.g. `repo_url`, `status`) | Rejected -- single-entry diff validation catches the extra field | Pending |
+| 7.7 | Same, but the new `category`/`manual_type` values aren't real ids in `manual-types.json` | Rejected -- the same validation just added to `/approve-vehicle` (this tier's own found-bug, above) | Pending |
+| 7.8 | Same, but the PR adds or removes a `registry.json` entry instead of just changing one | Rejected -- entry-count/identity check | Pending |
+| 7.9 | A contributor forks `BlaydeManual/registry` and opens a real PR via `submitRecategorizationProposal`, using their own OAuth token, NOT a member | **Succeeds** -- by design, same "anyone can propose" posture as `/direct-submit` 2.3; the real gate is 7.1-7.8 at merge time, not here | Pending |
+| 7.10 | `POST /direct-submit` (or a new-edition submission) with a manifest containing a `category`/`manual_type` that isn't real | **Rejected** post-fix -- confirms the bug found in this review is actually closed, not just theoretically fixed | Pending -- needs a live re-run against the fixed code |
+
+**Not covered by this tier, logged as a real gap, not silently
+dropped:** there's still no UI-level way for a contributor to discover
+*which* real entries are worth recategorizing (e.g. a maintained list
+of everything still tagged `other`) -- ROADMAP.md already notes this
+as "not yet built." That's a missing feature, not a security gap, but
+it means 7.4/7.9/7.10 above can't be exercised against a genuinely
+real, user-initiated recategorization yet, only a hand-crafted one.
+
 ## What this plan does NOT cover
 
 - Load/rate-limit behavior of `/direct-submit` under real spam (SECURITY.md's known-gap note) -- worth a dedicated pass later, not blocking this merge.
 - The classic OAuth path's existing real flows (contribute.js fork+PR, review-panel.js accept/reject) -- unchanged by this PR, already live and working, out of scope for re-testing here.
 - Anything requiring GitHub's own infrastructure to misbehave (e.g., a genuinely compromised GitHub Apps platform) -- out of scope for a project like this.
+- **Issue Requests' real-registry fix (2026-09-01)**: `issue-requests.js` was rewired off `MOCK_REGISTRY` onto the real registry -- purely a data-source fix (same `loadRegistry()` call every other real tool already uses), no new privileged write path, so it doesn't need its own tier here. Worth a live sanity check once a second real, multi-edition repo exists, but not a security-relevant gap.
