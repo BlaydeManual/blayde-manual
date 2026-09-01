@@ -1350,21 +1350,21 @@ function renderUploadGroup(uploadList, container, maintainRowShown, categoryByVe
             <img class="upload-thumb" src="${u.photoDataUrl}" alt="">
             <div>
               <div class="upload-title">${pageLabel}${u.sectionHeading}<span class="upload-status ${displayStatus}">${statusLabel}</span></div>
-              <div class="upload-meta">${u.procedureId}${u.prNumber != null ? ` &middot; ${u.prUrl ? `<a href="${u.prUrl}" target="_blank" rel="noopener" style="color:inherit;">Request #${u.prNumber}</a>` : `Request #${u.prNumber}`}` : ""}</div>
+              <div class="upload-meta">${u.procedureId}${u.prNumber != null ? ` &middot; ${u.prUrl ? `<a href="${u.prUrl}" target="_blank" rel="noopener" class="pr-link">Request #${u.prNumber}</a>` : `Request #${u.prNumber}`}` : ""}</div>
               ${outcome && outcome.note ? `<div class="upload-note">&ldquo;${outcome.note}&rdquo; &mdash; maintainer note</div>` : ""}
               ${displayStatus === "submitted" && u.prNumber != null ? `<div class="sub review-status-line" id="reviewstatus-${u.id}" style="margin-top:4px;">${reviewStatusText(reviewStatusCache.get(`${u.repoUrl}#${u.prNumber}`))}</div>` : ""}
             </div>
           </div>
           <div class="upload-actions">
             ${u.remote ? (
-              // The review-status line above already gives a
-              // contributor the same real approval/changes-requested/
-              // checks feedback a maintainer sees in the Maintainer
-              // Portal, instead of making them click through to GitHub
-              // just to find out why nothing's happened yet -- the link
-              // stays as a secondary option for anyone who wants to see
-              // the actual diff or comment thread.
-              `<a class="secondary" href="${u.prUrl}" target="_blank" rel="noopener" style="display:inline-block; padding:6px 12px; text-decoration:none;">View on GitHub</a>`
+              // This is the gitless front-end -- a contributor
+              // shouldn't need a GitHub-branded button at all now that
+              // the review-status line above gives the same real
+              // approval/changes-requested/checks feedback a maintainer
+              // sees in the Maintainer Portal. "Request #N" above (a
+              // plain small link, not a button) already covers the rare
+              // case someone actually wants the raw diff or comments.
+              ``
             ) : `
             <button class="secondary" data-view="${u.id}">View</button>
             ${u.status === "draft" ? `<button data-submit="${u.id}">Submit</button>` : ""}

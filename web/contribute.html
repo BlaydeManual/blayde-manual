@@ -195,6 +195,12 @@
   .upload-status.accepted { background: rgba(159,225,203,0.18); color: var(--mint); }
   .upload-status.rejected { background: rgba(200,16,46,0.14); color: #ff6b6b; }
   .upload-note { font-size: 0.84rem; color: var(--steel); font-style: italic; margin-top: 3px; }
+  /* This is the gitless front-end -- the raw GitHub link is a small,
+     plain, secondary detail on the request number itself, not a
+     GitHub-branded button competing with the real in-app status above
+     it. */
+  .pr-link { color: inherit; text-decoration: underline; text-decoration-color: var(--steel-dark); text-underline-offset: 2px; }
+  .pr-link:hover { text-decoration-color: currentColor; }
   .upload-actions button { font-size: 0.86rem; padding: 6px 12px; margin: 0 0 0 6px; }
   .upload-thumb { width: 50px; height: 38px; object-fit: cover; border-radius: 4px; flex-shrink: 0; }
   .maintain-request-row { margin-top: 10px; padding-top: 10px; border-top: 1px solid var(--steel-dark); }
