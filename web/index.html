@@ -92,14 +92,14 @@
      background wash); the icon glyph itself carries the brand red,
      just enough accent to break up four identical grey tiles without
      reading as a danger signal the way a red-tinted background did. */
-  .trust-chip-icon { background: rgba(138,143,152,0.16); color: var(--red); text-shadow: var(--red-halo); }
+  .trust-chip-icon { background: rgba(138,143,152,0.16); color: var(--accent, var(--red)); text-shadow: var(--red-halo); }
   .trust-chip-title { font-size: 0.95rem; font-weight: 700; color: var(--text); margin: 0 0 2px; }
   .trust-chip-sub { font-size: 0.76rem; color: var(--steel); line-height: 1.4; margin: 0; }
   .trust-chip-sub a { color: var(--steel); }
   .trust-chip-sub a:hover { color: var(--text); }
   .card {
     background: var(--black-2); border: 1px solid var(--steel-dark);
-    border-left: 3px solid var(--red); border-radius: 8px;
+    border-left: 3px solid var(--accent, var(--red)); border-radius: 8px;
     padding: 20px 24px; margin-bottom: 16px;
   }
   .card h2 { font-size: 0.95rem; margin: 0 0 12px; }
@@ -111,7 +111,7 @@
     font-size: 0.85rem;
   }
   button {
-    background: var(--red); color: #fff; border: none; padding: 10px 20px;
+    background: var(--accent, var(--red)); color: #fff; border: none; padding: 10px 20px;
     font-size: 0.9rem; font-weight: 700; border-radius: 6px; cursor: pointer;
   }
   button:disabled { background: var(--steel-dark); cursor: default; }
@@ -153,7 +153,32 @@
     line-height: 1.45; margin: 0 0 20px;
   }
   .hero-tagline { text-align: center; margin: 4px 0 4px; font-size: 1.1rem; font-weight: 800; }
-  .hero-subtagline { text-align: center; margin: 0 0 28px; font-size: 0.85rem; color: var(--steel); }
+  .hero-subtagline { text-align: center; margin: 0 0 12px; font-size: 0.85rem; color: var(--steel); }
+
+  /* Category tabs: the site's actual front door, per direct
+     instruction -- "explained in one picture" answers WHAT this does,
+     then "but what kind of manual?" is the very next real decision.
+     Picking one sets --accent at the document root, which every
+     themed element below (trust-strip icons, the Pick-your-PDF card,
+     buttons) already falls back to via var(--accent, var(--red)) --
+     one flip, not per-element logic. Same tab visual language as
+     registry-browse.html's glass-tray tabs, adapted to this page's
+     centered layout. */
+  .category-prompt { text-align: center; margin: 0 0 10px; font-size: 0.92rem; font-weight: 700; color: var(--text); }
+  .category-tabs { display: flex; flex-wrap: wrap; justify-content: center; gap: 8px; margin-bottom: 28px; }
+  .cat-tab {
+    display: flex; align-items: center; gap: 6px;
+    padding: 7px 14px; border-radius: 999px; font-size: 0.85rem; font-weight: 700;
+    background: var(--black-2); color: var(--steel); border: 1px solid var(--steel-dark);
+    cursor: pointer; user-select: none; transition: background 0.12s, color 0.12s, border-color 0.12s;
+  }
+  .cat-tab svg { width: 15px; height: 15px; stroke: currentColor; flex-shrink: 0; }
+  .cat-tab:hover { border-color: var(--steel); color: var(--text); }
+  .cat-tab.active {
+    background: color-mix(in srgb, var(--tab-accent) 20%, var(--black-2));
+    border-color: var(--tab-accent); color: var(--text);
+  }
+  .cat-tab.active svg { stroke: var(--tab-accent); }
 
   /* ---- the flow diagram: three independently-scaling components, no
      static connector pieces -- every arrow is drawn live by hero.js, in
@@ -328,18 +353,32 @@
         <text x="135" y="42" text-anchor="middle" font-size="11" fill="#8a8f98">scanned locally, nothing uploaded</text>
         <g transform="translate(0,15) rotate(-7 135 215)" filter="url(#cardShadowOld)">
           <rect x="20" y="55" width="230" height="320" fill="url(#paperFill)"/>
-          <text x="40" y="90" font-size="16" font-weight="700" fill="#332f28" letter-spacing="0.02em">ENGINE TUNING</text>
-          <text x="40" y="111" font-size="11" fill="#4a4638">&#8226; Refer to Figure 1 &amp; 2</text>
-          <text x="40" y="126" font-size="11" fill="#4a4638">&#8226; Failure to do exactly as</text>
-          <text x="48" y="139" font-size="11" fill="#4a4638">pictured results in Failure!</text>
-          <rect x="40" y="156" width="128" height="100" fill="url(#badPhoto)"/>
-          <image href="images/hero-before-fig1.png" x="40" y="156" width="128" height="100" preserveAspectRatio="xMidYMid slice" clip-path="url(#clipOldFig1)"/>
-          <text x="176" y="210" font-size="10" font-weight="700" fill="#4a4225">FIG. 1</text>
-          <rect x="40" y="268" width="128" height="100" fill="url(#badPhoto)"/>
-          <image href="images/hero-before-fig2.png" x="40" y="268" width="128" height="100" preserveAspectRatio="xMidYMid slice" clip-path="url(#clipOldFig2)"/>
-          <text x="176" y="322" font-size="10" font-weight="700" fill="#4a4225">FIG. 2</text>
+          <!-- Real content vs. "example coming soon" are two whole,
+               mutually-exclusive groups toggled by heroCategory.js --
+               not a partial per-photo swap, so a category with no real
+               example yet never shows a mismatched heading/bullets next
+               to a placeholder photo. -->
+          <g id="oldCardContent">
+            <text id="oldCardHeading" x="40" y="90" font-size="16" font-weight="700" fill="#332f28" letter-spacing="0.02em">ENGINE TUNING</text>
+            <text x="40" y="111" font-size="11" fill="#4a4638">&#8226; Refer to Figure 1 &amp; 2</text>
+            <text x="40" y="126" font-size="11" fill="#4a4638">&#8226; Failure to do exactly as</text>
+            <text x="48" y="139" font-size="11" fill="#4a4638">pictured results in Failure!</text>
+            <rect x="40" y="156" width="128" height="100" fill="url(#badPhoto)"/>
+            <image id="oldFig1Image" href="images/hero-before-fig1.png" x="40" y="156" width="128" height="100" preserveAspectRatio="xMidYMid slice" clip-path="url(#clipOldFig1)"/>
+            <text x="176" y="210" font-size="10" font-weight="700" fill="#4a4225">FIG. 1</text>
+            <rect x="40" y="268" width="128" height="100" fill="url(#badPhoto)"/>
+            <image id="oldFig2Image" href="images/hero-before-fig2.png" x="40" y="268" width="128" height="100" preserveAspectRatio="xMidYMid slice" clip-path="url(#clipOldFig2)"/>
+            <text x="176" y="322" font-size="10" font-weight="700" fill="#4a4225">FIG. 2</text>
+          </g>
+          <g id="oldCardPlaceholder" style="display:none;" text-anchor="middle">
+            <rect x="40" y="156" width="128" height="212" fill="url(#badPhoto)"/>
+            <text x="104" y="252" font-size="13" font-weight="700" fill="#6b6b64">Example</text>
+            <text x="104" y="270" font-size="13" font-weight="700" fill="#6b6b64">coming soon</text>
+          </g>
           <!-- photo-center anchors, INSIDE the rotated group so the beam
-               targets follow the card's own tilt -->
+               targets follow the card's own tilt -- kept outside both
+               toggled groups above so Scan's beams still target the
+               same real spot on the page even in placeholder state. -->
           <circle id="anchor-photo1" cx="104" cy="206" r="0.1" fill="none"/>
           <circle id="anchor-photo2" cx="104" cy="318" r="0.1" fill="none"/>
         </g>
@@ -465,26 +504,33 @@
         </g>
         <g transform="translate(0,15) rotate(7 165 215)" filter="url(#cardShadowNew)">
           <rect x="50" y="55" width="230" height="320" fill="url(#paperFill2)"/>
-          <text x="70" y="90" font-size="16" font-weight="700" fill="#332f28" letter-spacing="0.02em">ENGINE TUNING</text>
-          <text x="70" y="111" font-size="11" fill="#4a4638">&#8226; Refer to Figure 1 &amp; 2</text>
-          <text x="70" y="126" font-size="11" fill="#4a4638">&#8226; Failure to do exactly as</text>
-          <text x="78" y="139" font-size="11" fill="#4a4638">pictured results in Failure!</text>
-          <rect x="70" y="156" width="128" height="100" fill="url(#goodPhoto)"/>
-          <image href="images/hero-after.jpg" x="70" y="156" width="128" height="100" preserveAspectRatio="xMidYMid slice" clip-path="url(#clipNewFig1)" filter="url(#crispPhoto)"/>
-          <g filter="url(#tagGlow)">
-            <rect x="134" y="245" width="64" height="11" fill="#0d0d0f"/>
-            <rect x="134" y="245" width="5" height="11" fill="#c8102e"/>
-            <text x="143" y="253.3" font-family="'Courier New', monospace" font-weight="700" font-size="7.2" fill="#fff" letter-spacing="0.06em">@THEBLAYDE</text>
+          <g id="newCardContent">
+            <text id="newCardHeading" x="70" y="90" font-size="16" font-weight="700" fill="#332f28" letter-spacing="0.02em">ENGINE TUNING</text>
+            <text x="70" y="111" font-size="11" fill="#4a4638">&#8226; Refer to Figure 1 &amp; 2</text>
+            <text x="70" y="126" font-size="11" fill="#4a4638">&#8226; Failure to do exactly as</text>
+            <text x="78" y="139" font-size="11" fill="#4a4638">pictured results in Failure!</text>
+            <rect x="70" y="156" width="128" height="100" fill="url(#goodPhoto)"/>
+            <image id="newFig1Image" href="images/hero-after.jpg" x="70" y="156" width="128" height="100" preserveAspectRatio="xMidYMid slice" clip-path="url(#clipNewFig1)" filter="url(#crispPhoto)"/>
+            <g id="newFig1Credit" filter="url(#tagGlow)">
+              <rect x="134" y="245" width="64" height="11" fill="#0d0d0f"/>
+              <rect x="134" y="245" width="5" height="11" fill="#c8102e"/>
+              <text id="newFig1CreditText" x="143" y="253.3" font-family="'Courier New', monospace" font-weight="700" font-size="7.2" fill="#fff" letter-spacing="0.06em">@THEBLAYDE</text>
+            </g>
+            <text x="206" y="210" font-size="10" font-weight="700" fill="#332f28">FIG. 1</text>
+            <rect x="70" y="268" width="128" height="100" fill="url(#goodPhoto)"/>
+            <image id="newFig2Image" href="images/hero-after-fig2.jpg" x="70" y="268" width="128" height="100" preserveAspectRatio="xMidYMid slice" clip-path="url(#clipNewFig2)" filter="url(#crispPhoto)"/>
+            <g id="newFig2Credit" filter="url(#tagGlow)">
+              <rect x="168" y="357" width="30" height="11" fill="#0d0d0f"/>
+              <rect x="168" y="357" width="5" height="11" fill="#c8102e"/>
+              <text id="newFig2CreditText" x="177" y="365.3" font-family="'Courier New', monospace" font-weight="700" font-size="7.2" fill="#fff" letter-spacing="0.06em">@YOU</text>
+            </g>
+            <text x="206" y="322" font-size="10" font-weight="700" fill="#332f28">FIG. 2</text>
           </g>
-          <text x="206" y="210" font-size="10" font-weight="700" fill="#332f28">FIG. 1</text>
-          <rect x="70" y="268" width="128" height="100" fill="url(#goodPhoto)"/>
-          <image href="images/hero-after-fig2.jpg" x="70" y="268" width="128" height="100" preserveAspectRatio="xMidYMid slice" clip-path="url(#clipNewFig2)" filter="url(#crispPhoto)"/>
-          <g filter="url(#tagGlow)">
-            <rect x="168" y="357" width="30" height="11" fill="#0d0d0f"/>
-            <rect x="168" y="357" width="5" height="11" fill="#c8102e"/>
-            <text x="177" y="365.3" font-family="'Courier New', monospace" font-weight="700" font-size="7.2" fill="#fff" letter-spacing="0.06em">@YOU</text>
+          <g id="newCardPlaceholder" style="display:none;" text-anchor="middle">
+            <rect x="70" y="156" width="128" height="212" fill="url(#goodPhoto)"/>
+            <text x="134" y="252" font-size="13" font-weight="700" fill="#5a5a54">Example</text>
+            <text x="134" y="270" font-size="13" font-weight="700" fill="#5a5a54">coming soon</text>
           </g>
-          <text x="206" y="322" font-size="10" font-weight="700" fill="#332f28">FIG. 2</text>
         </g>
         <circle id="anchor-new-in-row" cx="50" cy="235" r="0.1" fill="none"/>
         <circle id="anchor-new-in-col" cx="165" cy="65" r="0.1" fill="none"/>
@@ -508,6 +554,9 @@
 
   <p class="hero-tagline">Revive your old vehicle manuals.</p>
   <p class="hero-subtagline">Powered by the community.</p>
+
+  <p class="category-prompt">But what kind of manual?</p>
+  <div class="category-tabs" id="heroCategoryTabs"></div>
 
   <div class="trust-strip">
     <div class="trust-chip local">
@@ -552,7 +601,7 @@
     <h2>Pick your PDF manual</h2>
     <label>Any PDF you legally own. Identified locally and checked against the registry automatically.</label>
     <input type="file" id="pdfInput" accept="application/pdf">
-    <p class="sub" style="margin:8px 0 0;">Don't have your PDF handy? <a href="registry-browse.html" style="color:var(--steel);">Browse registered vehicles &rarr;</a></p>
+    <p class="sub" style="margin:8px 0 0;">Don't have your PDF handy? <a id="browseLink" href="registry-browse.html" style="color:var(--steel);">Browse registered vehicles &rarr;</a></p>
 
     <div id="contributorPrefWrap" style="display:none;">
       <label style="margin-top:10px;">Prefer a specific contributor's photos? (optional)</label>
@@ -578,7 +627,7 @@
   </div>
 
   <div class="card" id="maintainerCta" style="display:none;">
-    <h2>We don't have this one yet. Want to be first?</h2>
+    <h2 id="maintainerCtaHeading">We don't have this one yet. Want to be first?</h2>
     <p class="sub" style="margin:0 0 6px;">Nobody's indexed this manual yet. Here are the five steps involved, and there are no surprises.</p>
 
     <div class="steps">
@@ -627,7 +676,7 @@
     <p class="sub" style="margin:12px 0 10px;">These 5 steps seem reasonable? <a href="docs/faq.html#for-maintainers" style="color:var(--steel);">Read the maintainer guidance</a> for a quick list of expectations and support. Then choose:</p>
 
     <div class="cta-row">
-      <a id="maintainerCtaLink" href="maintainer.html" style="background:var(--red); color:#fff; text-decoration:none; padding:10px 20px; font-size:0.9rem; font-weight:700; border-radius:6px; display:inline-block;">Go to the Maintainer Portal &rarr;</a>
+      <a id="maintainerCtaLink" href="maintainer.html" style="background:var(--accent, var(--red)); color:#fff; text-decoration:none; padding:10px 20px; font-size:0.9rem; font-weight:700; border-radius:6px; display:inline-block;">Go to the Maintainer Portal &rarr;</a>
       <span class="fine">takes you to the Maintainer Portal</span>
     </div>
 
@@ -648,6 +697,8 @@
   <script src="qrcode.js"></script>
   <script src="patcher.js"></script>
   <script src="hero.js"></script>
+  <script src="category-style.js"></script>
+  <script src="hero-category.js"></script>
 </main>
 </body>
 </html>

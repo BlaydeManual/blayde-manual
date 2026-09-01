@@ -187,6 +187,10 @@ function showMaintainerCta(fingerprint) {
   // secondary "share this instead" link, and querySelector("a") would
   // silently grab whichever one happens to come first in the markup.
   document.getElementById("maintainerCtaLink").href = `maintainer.html?hash=${fingerprint}`;
+  // hero-category.js owns re-applying whichever category tab is
+  // currently active on top of this base href -- optional chaining
+  // since this file has no other reason to depend on that one existing.
+  window.applyCategoryToMaintainerLink?.();
 }
 
 // The deliberate second exit for someone who found the gap but doesn't

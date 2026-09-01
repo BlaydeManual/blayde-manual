@@ -8,6 +8,12 @@
 // procedure into a live manifest. Completeness tracking (touched vs.
 // total) is built in from the start per Initial Submission Standards.
 
+// Carries index.html's category-tab choice through to a genuinely
+// fresh manifest's Category dropdown, same "don't ask the same
+// question twice" reasoning as registry-browse.js's own ?category=
+// handling. Read once at load, not re-checked per review session.
+const prefillCategoryFromUrl = new URLSearchParams(location.search).get("category") || null;
+
 let reviewManifest = null;
 // pageNum -> {canvas, ctx, scaleUsed}, LRU-capped -- a 400+-page scanned
 // manual rendered at scale 2.5 is a full-resolution canvas per page, and
@@ -81,8 +87,18 @@ function startReview(manifest, savedChunkIdx) {
   document.getElementById("sourceUrlConfirm").value = manifest.source_markers?.source_identifier || "";
   document.getElementById("sourceUrlError").style.display = "none";
   populateCategoryOptions().then(() => {
-    document.getElementById("categoryConfirm").value = manifest.category || "";
-    populateManualTypeOptions(manifest.category, manifest.manual_type);
+    // The manifest's own saved category wins if this review session
+    // already has one (a resumed session, or re-indexing an existing
+    // vehicle) -- the ?category= URL param only fills in for a
+    // genuinely fresh manifest, carrying through whichever tab someone
+    // picked on index.html rather than asking again. Not re-validated
+    // here against manual-types.json a second time -- populateCategoryOptions()
+    // just rebuilt #categoryConfirm's real option list, so setting an
+    // invalid value below simply fails to match any <option> and the
+    // select stays on its placeholder, same as leaving it untouched.
+    const category = manifest.category || prefillCategoryFromUrl || "";
+    document.getElementById("categoryConfirm").value = category;
+    populateManualTypeOptions(category, manifest.manual_type);
   });
   document.getElementById("categoryRequiredError").style.display = "none";
   document.getElementById("manualTypeRequiredError").style.display = "none";
