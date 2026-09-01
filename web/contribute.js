@@ -136,6 +136,52 @@ let maintainerRequests = loadMaintainerRequests();
 // persisted back to localStorage as if it were a local draft.
 let remoteUploads = [];
 
+// Real review/merge status (approvals, changes-requested, checks) for a
+// still-open PR -- same shape and same /pr-review-status endpoint
+// review-panel.js already uses for maintainers, reused here so a
+// contributor sees actual progress inline instead of having to click
+// "View on GitHub" just to find out why nothing's happened yet.
+// Keyed by `${repoUrl}#${prNumber}` so a re-render doesn't refetch a
+// row that's already loaded.
+const reviewStatusCache = new Map();
+
+async function fetchPrReviewStatus(repoUrl, prNumber) {
+  try {
+    const session = BlaydeAuth.getSession();
+    const resp = await fetch(
+      `${BlaydeAuth.AUTH_WORKER_URL}pr-review-status?repo_url=${encodeURIComponent(repoUrl)}&pr_number=${prNumber}`,
+      { headers: { Authorization: `Bearer ${session.token}` } }
+    );
+    const result = await resp.json().catch(() => ({}));
+    if (!resp.ok || result.error) throw new Error(result.error || `status check failed (${resp.status})`);
+    return result;
+  } catch (e) {
+    return { error: e.message };
+  }
+}
+
+// Mirrors review-panel.js's renderReviewStatusLine wording exactly, so
+// a contributor and a maintainer looking at the same PR see the same
+// language for the same state.
+function reviewStatusText(status) {
+  if (!status) return "Checking review status&hellip;";
+  if (status.error) return `Couldn't check review status: ${status.error}`;
+  const parts = [];
+  parts.push(
+    `Reviews: ${status.approved_count}/${status.required_approvals} approved` +
+    (status.approved_by.length ? ` (${status.approved_by.map((u) => "@" + u).join(", ")})` : "")
+  );
+  if (status.changes_requested_by.length) {
+    parts.push(`changes requested by ${status.changes_requested_by.map((u) => "@" + u).join(", ")}`);
+  }
+  if (status.checks.length) {
+    parts.push("Checks: " + status.checks.map((c) =>
+      `${c.name} ${c.conclusion === "success" ? "&check;" : c.conclusion ? "&cross;" : "&hellip;"}`
+    ).join(", "));
+  }
+  return parts.join(" &middot; ");
+}
+
 function loadUploads() {
   try {
     const raw = localStorage.getItem(UPLOADS_STORAGE_KEY);
@@ -1295,15 +1341,18 @@ function renderUploadGroup(uploadList, container, maintainRowShown, categoryByVe
               <div class="upload-title">${pageLabel}${u.sectionHeading}<span class="upload-status ${displayStatus}">${statusLabel}</span></div>
               <div class="upload-meta">${u.procedureId}${u.prNumber != null ? ` &middot; ${u.prUrl ? `<a href="${u.prUrl}" target="_blank" rel="noopener" style="color:inherit;">Request #${u.prNumber}</a>` : `Request #${u.prNumber}`}` : ""}</div>
               ${outcome && outcome.note ? `<div class="upload-note">&ldquo;${outcome.note}&rdquo; &mdash; maintainer note</div>` : ""}
+              ${displayStatus === "submitted" && u.prNumber != null ? `<div class="sub review-status-line" id="reviewstatus-${u.id}" style="margin-top:4px;">${reviewStatusText(reviewStatusCache.get(`${u.repoUrl}#${u.prNumber}`))}</div>` : ""}
             </div>
           </div>
           <div class="upload-actions">
             ${u.remote ? (
-              // Fetched fresh from GitHub, not this device's own draft
-              // data -- there's no local crop/bbox state to open the
-              // compare viewer against, and nothing local to delete or
-              // open a PR for (it's already open). GitHub itself is the
-              // one real source of truth here.
+              // The review-status line above already gives a
+              // contributor the same real approval/changes-requested/
+              // checks feedback a maintainer sees in the Maintainer
+              // Portal, instead of making them click through to GitHub
+              // just to find out why nothing's happened yet -- the link
+              // stays as a secondary option for anyone who wants to see
+              // the actual diff or comment thread.
               `<a class="secondary" href="${u.prUrl}" target="_blank" rel="noopener" style="display:inline-block; padding:6px 12px; text-decoration:none;">View on GitHub</a>`
             ) : `
             <button class="secondary" data-view="${u.id}">View</button>
@@ -1441,6 +1490,29 @@ async function renderUploads() {
   list.querySelectorAll("[data-openpr]").forEach((btn) => {
     btn.addEventListener("click", () => openPrForUpload(btn.dataset.openpr));
   });
+  loadReviewStatusLines(allUploads);
+}
+
+// Fire-and-forget, one fetch per still-open PR actually shown this
+// render, skipping anything already cached from a prior render -- a
+// row whose real state has since changed (a new review came in) still
+// only refreshes on the next full renderUploads() call, same staleness
+// window syncRealSubmissions() already accepts elsewhere on this page.
+function loadReviewStatusLines(allUploads) {
+  allUploads
+    .filter((u) => {
+      const outcome = outcomeFor(u);
+      const displayStatus = outcome ? outcome.status : u.status;
+      return displayStatus === "submitted" && u.prNumber != null && !reviewStatusCache.has(`${u.repoUrl}#${u.prNumber}`);
+    })
+    .forEach((u) => {
+      const key = `${u.repoUrl}#${u.prNumber}`;
+      fetchPrReviewStatus(u.repoUrl, u.prNumber).then((status) => {
+        reviewStatusCache.set(key, status);
+        const el = document.getElementById(`reviewstatus-${u.id}`);
+        if (el) el.innerHTML = reviewStatusText(status);
+      });
+    });
 }
 
 // ---- view/compare: local-context rule -- the original scan can only
