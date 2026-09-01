@@ -334,6 +334,26 @@
       </div>
     </div>
   </div>
+
+  <div class="card" id="recategorizeSection">
+    <h2>Propose a recategorization</h2>
+    <p class="sub" style="margin:0 0 8px;">See something filed under the wrong category or manual type -- or just tagged "Other"? Anyone can propose a fix; an org-level maintainer reviews and merges it, the same bar as approving a new manual.</p>
+
+    <label>Which manual?</label>
+    <select id="recatEntrySelect"><option value="" disabled selected>Loading real registry data&hellip;</option></select>
+    <p class="sub" id="recatCurrentInfo" style="display:none; margin:6px 0 12px;"></p>
+
+    <label>New category</label>
+    <select id="recatCategorySelect" disabled><option value="" disabled selected>Choose a manual first&hellip;</option></select>
+
+    <label>New manual type</label>
+    <select id="recatManualTypeSelect" disabled><option value="" disabled selected>Choose a category first&hellip;</option></select>
+
+    <div>
+      <button id="recatSubmitBtn" disabled>Propose this change</button>
+    </div>
+    <div id="recatLog"></div>
+  </div>
 </main>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"
