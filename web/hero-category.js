@@ -36,6 +36,36 @@ function categoryLabel(id) {
   return id[0].toUpperCase() + id.slice(1);
 }
 
+// Real WCAG contrast math, not a guess -- the active tab is a SOLID
+// fill in the category's own accent (unlike registry-browse.html's
+// tinted-20%-into-black active state, which stays safe with light text
+// regardless of hue). A fixed white-on-accent choice, checked here
+// rather than assumed, turned out to fail badly on the brighter
+// categories: white-on-Farm (#e2e636) measures 1.35:1, white-on-Home
+// (#36e6e6) measures 1.54:1 -- both far below WCAG's 4.5:1 AA floor
+// for normal text, nearly unreadable in practice. Computing both
+// candidates' real contrast ratio per category and picking whichever
+// wins means this stays correct even if a category's color ever
+// changes, instead of a hardcoded per-category color lookup drifting
+// out of sync with ROADMAP.md's locked-in hex values.
+function relativeLuminance(hex) {
+  const [r, g, b] = [hex.slice(1, 3), hex.slice(3, 5), hex.slice(5, 7)].map((h) => {
+    const c = parseInt(h, 16) / 255;
+    return c <= 0.03928 ? c / 12.92 : Math.pow((c + 0.055) / 1.055, 2.4);
+  });
+  return 0.2126 * r + 0.7152 * g + 0.0722 * b;
+}
+function contrastRatio(hex1, hex2) {
+  const l1 = relativeLuminance(hex1), l2 = relativeLuminance(hex2);
+  const [lighter, darker] = l1 > l2 ? [l1, l2] : [l2, l1];
+  return (lighter + 0.05) / (darker + 0.05);
+}
+function readableTextOn(accentHex) {
+  const white = contrastRatio(accentHex, "#ffffff");
+  const black = contrastRatio(accentHex, "#0c0d0f");
+  return white > black ? "#ffffff" : "#0c0d0f";
+}
+
 function renderHeroCategoryTabs() {
   const wrap = document.getElementById("heroCategoryTabs");
   if (!wrap) return;
@@ -43,8 +73,12 @@ function renderHeroCategoryTabs() {
 
   const makeTab = (id, label, style) => {
     const tab = document.createElement("div");
-    tab.className = "cat-tab" + (activeHeroCategory === id ? " active" : "");
-    if (style) tab.style.setProperty("--tab-accent", style.accent);
+    const isActive = activeHeroCategory === id;
+    tab.className = "cat-tab" + (isActive ? " active" : "");
+    if (style) {
+      tab.style.setProperty("--tab-accent", style.accent);
+      if (isActive) tab.style.setProperty("--tab-text", readableTextOn(style.accent));
+    }
     tab.innerHTML = style
       ? `<svg viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">${style.icon}</svg><span>${label}</span>`
       : `<span>${label}</span>`;
