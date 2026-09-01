@@ -1,15 +1,15 @@
-# Contributing to {{VEHICLE_DISPLAY_NAME}} -- Blayde Manual
+# Contributing to {{ITEM_DISPLAY_NAME}} -- Blayde Manual
 
-If you're restoring, wrenching on, or documenting a {{VEHICLE_DISPLAY_NAME}},
+If you're restoring, repairing, or documenting a {{ITEM_DISPLAY_NAME}},
 your photos here don't just fix a broken manual -- **your GitHub username
 gets permanently credited directly on the photo, in the actual PDF**,
 every time someone enhances their own legal copy with the Blayde Manual
 overlay. That's not a
 buried commit in history; it's a visible, permanent "photo: @you" line
 under the exact procedure your photo documents, for as long as anyone
-uses this manual. If you're a restoration creator building a body of work
-around a vehicle, this is a citable, permanent credit -- not a comment
-that scrolls off a video description in a week.
+uses this manual. If you're a restoration or repair creator building a
+body of work around an item, this is a citable, permanent credit -- not
+a comment that scrolls off a video description in a week.
 
 ## Before you start
 
@@ -18,7 +18,7 @@ that scrolls off a video description in a week.
    top-level folder (`oem/`, `haynes/`, etc.), each with its own
    `manifest.json` and `images/` folder. They're different books with
    different page numbers and figures, even when they document the exact
-   same vehicle, so a photo has to go in the one whose `manifest.json`
+   same item, so a photo has to go in the one whose `manifest.json`
    you actually checked it against.
 2. **Check the gallery** for the procedure you want to shoot:
    `<edition>/manifest.json` lists every figure that edition's manual
@@ -46,7 +46,7 @@ It checks:
   and timestamp by default, and some editors add color profiles or
   comments -- none of it is allowed here (location data especially: this
   project doesn't want anyone able to work out where a contributor's
-  vehicle actually lives). The checker can strip all of it for you with
+  item actually lives). The checker can strip all of it for you with
   `--fix`. Credit stays outside the file either way -- it's drawn onto
   the photo fresh, by the site itself, every time someone patches their
   own manual, never baked into what you upload.
@@ -63,7 +63,7 @@ No essay, just the actual bar:
   technically a sharp photo.
 - **In focus, decently lit.** You don't need a studio, you need to be
   able to see what you're looking at.
-- **Your own photo, your own vehicle/work.** Not a screenshot from a
+- **Your own photo, your own item/work.** Not a screenshot from a
   forum post or someone else's video.
 - **When in doubt, review it like you'd want yours reviewed.** That's
   the actual standard -- everything above is just what it looks like in
@@ -137,11 +137,11 @@ you never end up worrying about them:
 
 - **How big this repo gets, or how many photos are in it.** Not your
   problem to manage or plan for.
-- **Scaling** -- more contributors, more traffic, more vehicles across
+- **Scaling** -- more contributors, more traffic, more items across
   the project. That's the Blayde Manual team's concern, not a repo
   maintainer's.
 - **Whether the whole project succeeds.** You're responsible for this
-  one vehicle's photos being good, not for the project's future.
+  one item's photos being good, not for the project's future.
 - **The legal/copyright architecture.** Already solved once, at the
   project level (see `LEGAL.md`) -- nothing about that needs
   re-deciding per repo.
