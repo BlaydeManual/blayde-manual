@@ -268,13 +268,22 @@ if (existingSession) {
   syncRealSubmissions();
 }
 BlaydeAuth?.renderAuthStatus(handleLoggedOut);
+updateRecatVisibility();
 
 function handleLoggedOut() {
   signedIn = false;
   currentUsername = null;
   remoteUploads = []; // scoped to whoever was signed in -- stale otherwise if a different account signs in next
   if (!hasProcedureContext) document.getElementById("landingSignIn").style.display = "block";
+  updateRecatVisibility();
   renderUploads();
+}
+
+// Recategorizing opens a real PR under the signed-in contributor's own
+// account, so the form only makes sense to show once a real session
+// exists -- same reasoning as gating "My Reviewables" on sign-in.
+function updateRecatVisibility() {
+  document.getElementById("recategorizeSection").style.display = signedIn ? "block" : "none";
 }
 
 // Two arrival paths: a real (repo, procedure) pair means someone
@@ -324,6 +333,7 @@ async function performSignIn() {
 document.getElementById("landingSignInBtn").addEventListener("click", async () => {
   if (await performSignIn()) {
     document.getElementById("landingSignIn").style.display = "none";
+    updateRecatVisibility();
     renderUploads();
   }
 });
@@ -721,6 +731,7 @@ document.getElementById("saveDraftBtn").addEventListener("click", () => performA
 document.getElementById("promptSignInBtn").addEventListener("click", async () => {
   if (!(await performSignIn())) return;
   document.getElementById("signInPrompt").style.display = "none";
+  updateRecatVisibility();
   if (pendingMaintainRequest) { performMaintainRequest(pendingMaintainRequest); pendingMaintainRequest = null; }
 });
 
