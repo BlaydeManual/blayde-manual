@@ -60,12 +60,6 @@
        climbing forever, but genuinely reads larger than a laptop
        instead of just slightly larger than mobile. */
     html { font-size: clamp(18px, 1.4vw, 21px); }
-    /* Bigger icons/label on real desktop widths specifically -- the
-       base .cat-tab sizing (below) is tuned for the mobile scroll
-       strip, which already reads well at its own size; this only
-       scales the six-across grid layout up, not mobile's tabs too. */
-    .cat-tab { font-size: 1.35rem; gap: 10px; padding: 20px 10px; }
-    .cat-tab svg { width: 44px; height: 44px; }
   }
   .top-nav { display: flex; justify-content: flex-end; gap: 8px; margin-bottom: 14px; }
   .pill-link {
@@ -205,6 +199,21 @@
     background: var(--tab-accent); border-color: var(--tab-accent); color: var(--tab-text, #fff);
   }
   .cat-tab.active svg { stroke: var(--tab-text, #fff); }
+  /* Bigger icons/label on real desktop widths specifically -- the
+     base .cat-tab sizing above is tuned for the mobile scroll strip,
+     which already reads well at its own size; this only scales the
+     six-across grid layout up. Deliberately placed AFTER the base
+     rules above (not inside the earlier global @media(min-width:900px)
+     block near the top of this stylesheet) -- equal-specificity CSS
+     rules resolve by source order regardless of which are inside a
+     matching media query, so a desktop override placed BEFORE the base
+     rule loses to it even when both conditions are true. Confirmed
+     live: the earlier placement measured computed font-size/svg-width
+     still at their base values on a real 1200px viewport. */
+  @media (min-width: 900px) {
+    .cat-tab { font-size: 1.5rem; font-weight: 800; gap: 12px; padding: 22px 10px; }
+    .cat-tab svg { width: 60px; height: 60px; }
+  }
   /* The tray every tab feeds into -- same glass-tray language as
      registry-browse.html's #browseTray (tinted border + fill in the
      active category's accent), just spanning everything below the
