@@ -1190,7 +1190,11 @@ function renderUploadGroup(uploadList, container, maintainRowShown, categoryByVe
     byCategory.get(key).push(u);
   });
   const orderedCategoryKeys = [...CATEGORY_ORDER.filter((c) => byCategory.has(c)), ...(byCategory.has(null) ? [null] : [])];
-  const showCategoryHeadings = orderedCategoryKeys.length > 1;
+  // Always shown, even with just one category -- see review-panel.js's
+  // matching comment: the color/icon system should flow through
+  // consistently, not pop in only once someone crosses a second
+  // category.
+  const showCategoryHeadings = orderedCategoryKeys.length > 0;
 
   orderedCategoryKeys.forEach((categoryKey) => {
     const categoryUploads = byCategory.get(categoryKey);

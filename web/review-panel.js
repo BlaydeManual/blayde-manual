@@ -234,7 +234,11 @@ async function renderPRList(approvedRepos) {
   // uncategorized repos last -- there's no real usage data to rank by,
   // same reasoning ROADMAP.md gives for the tab order.
   const orderedCategoryKeys = [...CATEGORY_ORDER.filter((c) => reposByCategory.has(c)), ...(reposByCategory.has(null) ? [null] : [])];
-  const showCategoryHeadings = orderedCategoryKeys.length > 1;
+  // Always shown, even with just one category -- direct instruction:
+  // the color/icon system should flow through consistently regardless
+  // of how many categories a maintainer happens to cover today, not
+  // pop in only once they cross a second one.
+  const showCategoryHeadings = orderedCategoryKeys.length > 0;
 
   for (const categoryKey of orderedCategoryKeys) {
     const repoUrlsInCategory = reposByCategory.get(categoryKey);
