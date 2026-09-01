@@ -281,12 +281,24 @@ document.getElementById("classFilter").addEventListener("change", render);
 const prefillSlug = new URLSearchParams(location.search).get("vehicle");
 if (prefillSlug) document.getElementById("searchInput").value = prefillSlug;
 
+// A `?category=<id>` param arrives from index.html's own category tabs
+// -- picking a category there is meant to carry through here rather
+// than asking again. Validated against manualTypesData once it loads
+// (below), same "never trust a URL param blindly" posture as anything
+// else user-suppliable -- an unrecognized id just leaves the default
+// "All" tab active instead of silently misbehaving.
+const prefillCategory = new URLSearchParams(location.search).get("category");
+
 (async () => {
   const results = document.getElementById("results");
   results.innerHTML = `<p class="sub">Loading real registry data&hellip;</p>`;
   manualTypesData = await loadRegistry(MANUAL_TYPES_URL_FOR_BROWSE).catch(() => null);
+  if (prefillCategory && manualTypesData?.categories.some((c) => c.id === prefillCategory)) {
+    activeCategory = prefillCategory;
+  }
   await loadRealRegistry();
   renderCategoryTabs();
+  updateTrayStyle();
   populateTypeFilter();
   render();
 })();
