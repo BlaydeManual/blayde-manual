@@ -214,6 +214,13 @@ pdfInput.addEventListener("change", async () => {
   registryResolution = null;
   renderContributorList([]);
   log.textContent = "";
+  // Real, confirmed bug: showMaintainerCta only ever shows this card,
+  // nothing ever hid it again -- picking an unregistered file, then a
+  // different, real, registered one left "We don't have this one yet"
+  // sitting there alongside the real "Found: ..." success state below
+  // it. Reset on every new file pick, same as the other state above.
+  const maintainerCta = document.getElementById("maintainerCta");
+  if (maintainerCta) maintainerCta.style.display = "none";
   setProgress(0, 1, "fingerprinting...");
   appendLog(`Loaded ${file.name} (${(pdfBytes.length / 1e6).toFixed(1)} MB)`);
 

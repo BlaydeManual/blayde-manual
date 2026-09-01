@@ -438,10 +438,10 @@
     <h2>Propose a photo location fix</h2>
     <p class="sub" style="margin:0 0 8px;">See a box in the wrong spot, sized wrong, or a real photo opportunity the manual's own index missed entirely? Propose a fix; a maintainer of that manual reviews and merges it, the same bar as approving a photo.</p>
 
-    <div id="issueRequestsCard" style="display:none; margin-bottom:14px;">
-      <p class="sub" style="margin:0 0 8px; font-weight:700;">Your proposed fixes</p>
-      <div id="issueRequestsList"></div>
-    </div>
+    <details id="issueRequestsCard" open style="display:none; margin-bottom:14px;">
+      <summary class="sub" id="issueRequestsSummary" style="cursor:pointer; font-weight:700; color:var(--text);">Your proposed fixes</summary>
+      <div id="issueRequestsList" style="max-height:220px; overflow-y:auto; margin-top:6px;"></div>
+    </details>
 
     <label>Which manual?</label>
     <div style="display:flex; gap:8px; margin-bottom:6px; flex-wrap:wrap;">
