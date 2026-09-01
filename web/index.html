@@ -165,20 +165,24 @@
      registry-browse.html's glass-tray tabs, adapted to this page's
      centered layout. */
   .category-prompt { text-align: center; margin: 0 0 10px; font-size: 0.92rem; font-weight: 700; color: var(--text); }
-  .category-tabs { display: flex; flex-wrap: wrap; justify-content: center; gap: 18px; margin-bottom: 34px; }
+  .category-tabs { display: flex; flex-wrap: wrap; justify-content: center; gap: 10px; margin-bottom: 32px; }
+  /* Tab-shaped, not pill-shaped -- matches maintainer.html's own
+     #tabNav treatment (mild corner rounding, solid-fill active state)
+     rather than the fully-rounded pill used elsewhere. Taller than
+     wide on purpose (generous vertical padding, tighter horizontal),
+     sized to fit all six across one row at typical desktop widths. */
   .cat-tab {
-    display: flex; align-items: center; gap: 14px;
-    padding: 17px 34px; border-radius: 999px; font-size: 2rem; font-weight: 700;
+    display: flex; flex-direction: column; align-items: center; gap: 6px;
+    padding: 14px 16px; border-radius: 8px; font-size: 1rem; font-weight: 700;
     background: var(--black-2); color: var(--steel); border: 1px solid var(--steel-dark);
     cursor: pointer; user-select: none; transition: background 0.12s, color 0.12s, border-color 0.12s;
   }
-  .cat-tab svg { width: 36px; height: 36px; stroke: currentColor; flex-shrink: 0; }
+  .cat-tab svg { width: 26px; height: 26px; stroke: currentColor; flex-shrink: 0; }
   .cat-tab:hover { border-color: var(--steel); color: var(--text); }
   .cat-tab.active {
-    background: color-mix(in srgb, var(--tab-accent) 20%, var(--black-2));
-    border-color: var(--tab-accent); color: var(--text);
+    background: var(--tab-accent); border-color: var(--tab-accent); color: #fff;
   }
-  .cat-tab.active svg { stroke: var(--tab-accent); }
+  .cat-tab.active svg { stroke: #fff; }
 
   /* ---- the flow diagram: three independently-scaling components, no
      static connector pieces -- every arrow is drawn live by hero.js, in
