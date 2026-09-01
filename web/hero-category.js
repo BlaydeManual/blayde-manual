@@ -52,7 +52,9 @@ function renderHeroCategoryTabs() {
     wrap.appendChild(tab);
   };
 
-  makeTab(null, "All", null);
+  // No "All" tab here, unlike registry-browse.html's tabs -- this is a
+  // one-shot choice (which category is this manual?), not a filter
+  // someone needs to clear back to a neutral state.
   CATEGORY_ORDER.forEach((id) => makeTab(id, categoryLabel(id), CATEGORY_STYLE[id]));
 }
 
