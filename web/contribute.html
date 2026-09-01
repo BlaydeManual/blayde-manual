@@ -355,7 +355,12 @@
     <p class="sub" style="margin:0 0 8px;">See something filed under the wrong category or manual type -- or just tagged "Other"? Anyone can propose a fix; an org-level maintainer reviews and merges it, the same bar as approving a new manual.</p>
 
     <label>Which manual?</label>
+    <div style="display:flex; gap:8px; margin-bottom:6px; flex-wrap:wrap;">
+      <select id="recatFilterCategory" style="flex:0 0 auto; width:auto;"><option value="">All categories</option></select>
+      <input type="text" id="recatSearchInput" placeholder="Search by name&hellip;" style="flex:1; min-width:160px;">
+    </div>
     <select id="recatEntrySelect"><option value="" disabled selected>Loading real registry data&hellip;</option></select>
+    <p class="sub" id="recatEntryHint" style="margin:4px 0 0;"></p>
     <p class="sub" id="recatCurrentInfo" style="display:none; margin:6px 0 12px;"></p>
 
     <label>New category</label>

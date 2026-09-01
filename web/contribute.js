@@ -1683,19 +1683,76 @@ function recatCategoryLabel(id) {
   return id[0].toUpperCase() + id.slice(1);
 }
 
+// A flat <select> with one <option> per approved registry entry
+// doesn't scale to a large registry -- slow to render, unusable to
+// scroll on mobile, no way to find one entry among many without
+// already knowing its exact position in an unsorted list. Category
+// (already a hard filter, cheap since manual-types.json's category
+// list is small and fixed) plus a live text search over just the
+// filtered subset -- same matchesSearch-by-name shape registry-
+// browse.js already uses -- keeps what's actually rendered small
+// regardless of how big the registry gets. RECAT_ENTRY_RENDER_CAP is a
+// second, independent backstop: even an unfiltered "All categories"
+// view never dumps the whole registry into the DOM at once.
+const RECAT_ENTRY_RENDER_CAP = 100;
+
 async function populateRecatEntrySelect() {
-  const select = document.getElementById("recatEntrySelect");
   const registryData = await loadRegistry(CANONICAL_REGISTRY_URL).catch(() => ({ vehicles: [] }));
   recatRegistryEntries = (registryData.vehicles || []).filter((v) => v.status === "approved");
-  select.innerHTML = '<option value="" disabled selected>Choose one&hellip;</option>';
-  recatRegistryEntries.forEach((entry, i) => {
+  populateRecatFilterCategoryOptions();
+  renderRecatEntryOptions();
+}
+
+function populateRecatFilterCategoryOptions() {
+  const select = document.getElementById("recatFilterCategory");
+  select.innerHTML = '<option value="">All categories</option>';
+  (recatManualTypesData?.categories || []).forEach((c) => {
     const opt = document.createElement("option");
-    opt.value = i;
+    opt.value = c.id;
+    opt.textContent = c.label;
+    select.appendChild(opt);
+  });
+}
+
+function recatEntryMatchesSearch(entry, q) {
+  if (!q) return true;
+  const hay = `${entry.vehicle_display_name || ""} ${entry.vehicle_slug || ""}`.toLowerCase();
+  return hay.includes(q.toLowerCase());
+}
+
+function renderRecatEntryOptions() {
+  const select = document.getElementById("recatEntrySelect");
+  const hint = document.getElementById("recatEntryHint");
+  const categoryFilter = document.getElementById("recatFilterCategory").value;
+  const query = document.getElementById("recatSearchInput").value.trim();
+
+  const matches = [];
+  recatRegistryEntries.forEach((entry, i) => {
+    if (categoryFilter && entry.category !== categoryFilter) return;
+    if (!recatEntryMatchesSearch(entry, query)) return;
+    matches.push({ entry, originalIndex: i });
+  });
+
+  select.innerHTML = '<option value="" disabled selected>Choose one&hellip;</option>';
+  matches.slice(0, RECAT_ENTRY_RENDER_CAP).forEach(({ entry, originalIndex }) => {
+    const opt = document.createElement("option");
+    opt.value = originalIndex;
     const current = entry.category ? `${recatCategoryLabel(entry.category)} / ${entry.manual_type || "(no type)"}` : "uncategorized";
     opt.textContent = `${entry.vehicle_display_name || entry.vehicle_slug} (${entry.edition_id}) -- currently ${current}`;
     select.appendChild(opt);
   });
+
+  if (!matches.length) {
+    hint.textContent = query || categoryFilter ? "No matches. Try a different search or category." : "";
+  } else if (matches.length > RECAT_ENTRY_RENDER_CAP) {
+    hint.textContent = `Showing the first ${RECAT_ENTRY_RENDER_CAP} of ${matches.length} matches -- search or pick a category to narrow this down.`;
+  } else {
+    hint.textContent = "";
+  }
 }
+
+document.getElementById("recatFilterCategory").addEventListener("change", renderRecatEntryOptions);
+document.getElementById("recatSearchInput").addEventListener("input", renderRecatEntryOptions);
 
 function populateRecatCategoryOptions() {
   const select = document.getElementById("recatCategorySelect");
