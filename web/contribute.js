@@ -44,6 +44,7 @@ const MOCK_MANIFEST_CONTEXT = {
 };
 
 const CANONICAL_REGISTRY_URL = "https://raw.githubusercontent.com/BlaydeManual/registry/main/registry.json";
+const MANUAL_TYPES_URL = "https://raw.githubusercontent.com/BlaydeManual/registry/main/manual-types.json";
 
 const params = new URLSearchParams(location.search);
 // A real context only ever arrives via an in-PDF QR code -- .has(),
@@ -1509,3 +1510,214 @@ document.getElementById("viewWholePageBtn").addEventListener("click", () => {
   wholeArea.style.display = "block";
   document.getElementById("viewWholePageBtn").textContent = "Hide whole page";
 });
+
+// ---- Propose a recategorization -- ROADMAP.md's "Other, and how
+// something gets out of it" design: "Anyone (not just that item's own
+// maintainer) can file a recategorization from the Contributor side,
+// same 'requesting is always Contributor, reviewing is always
+// Maintainer' rule as everything else on this site." The Worker-side
+// merge-gate for this (handleAcceptRecategorization, auth-worker's
+// POST /accept-recategorization) already existed; this is the missing
+// other half -- actually generating one of these PRs, rather than only
+// being able to gate a PR someone opened by hand. ----
+
+let recatManualTypesData = null;
+let recatRegistryEntries = []; // real approved registry.json rows, populated once
+let recatSelectedEntry = null;
+
+function recatLog(msg) {
+  const el = document.getElementById("recatLog");
+  el.textContent += msg + "\n";
+  el.scrollTop = el.scrollHeight;
+}
+
+function recatCategoryLabel(id) {
+  return id[0].toUpperCase() + id.slice(1);
+}
+
+async function populateRecatEntrySelect() {
+  const select = document.getElementById("recatEntrySelect");
+  const registryData = await loadRegistry(CANONICAL_REGISTRY_URL).catch(() => ({ vehicles: [] }));
+  recatRegistryEntries = (registryData.vehicles || []).filter((v) => v.status === "approved");
+  select.innerHTML = '<option value="" disabled selected>Choose one&hellip;</option>';
+  recatRegistryEntries.forEach((entry, i) => {
+    const opt = document.createElement("option");
+    opt.value = i;
+    const current = entry.category ? `${recatCategoryLabel(entry.category)} / ${entry.manual_type || "(no type)"}` : "uncategorized";
+    opt.textContent = `${entry.vehicle_display_name || entry.vehicle_slug} (${entry.edition_id}) -- currently ${current}`;
+    select.appendChild(opt);
+  });
+}
+
+function populateRecatCategoryOptions() {
+  const select = document.getElementById("recatCategorySelect");
+  select.innerHTML = '<option value="" disabled selected>Choose one&hellip;</option>';
+  (recatManualTypesData?.categories || []).forEach((c) => {
+    const opt = document.createElement("option");
+    opt.value = c.id;
+    opt.textContent = c.label;
+    select.appendChild(opt);
+  });
+}
+
+function recatPopulateManualTypeOptions(categoryId, selectedTypeId) {
+  const select = document.getElementById("recatManualTypeSelect");
+  const category = recatManualTypesData?.categories.find((c) => c.id === categoryId);
+  if (!category) {
+    select.innerHTML = '<option value="" disabled selected>Choose a category first&hellip;</option>';
+    select.disabled = true;
+    return;
+  }
+  select.innerHTML = '<option value="" disabled selected>Choose one&hellip;</option>';
+  category.types.forEach((t) => {
+    const opt = document.createElement("option");
+    opt.value = t.id;
+    opt.textContent = t.label;
+    select.appendChild(opt);
+  });
+  select.disabled = false;
+  if (selectedTypeId && category.types.some((t) => t.id === selectedTypeId)) select.value = selectedTypeId;
+}
+
+// Submit only makes sense once the proposal actually differs from the
+// entry's current category/manual_type -- same "nothing to approve"
+// check the Worker-side gate itself makes, checked here too so a
+// contributor sees why Submit is disabled instead of finding out only
+// after a failed PR.
+function updateRecatSubmitState() {
+  const categorySel = document.getElementById("recatCategorySelect");
+  const typeSel = document.getElementById("recatManualTypeSelect");
+  const btn = document.getElementById("recatSubmitBtn");
+  const category = categorySel.value, manualType = typeSel.value;
+  const changed = recatSelectedEntry && (category !== (recatSelectedEntry.category || "") || manualType !== (recatSelectedEntry.manual_type || ""));
+  btn.disabled = !(recatSelectedEntry && category && manualType && changed);
+}
+
+document.getElementById("recatEntrySelect").addEventListener("change", (e) => {
+  recatSelectedEntry = recatRegistryEntries[parseInt(e.target.value, 10)];
+  const info = document.getElementById("recatCurrentInfo");
+  info.style.display = "block";
+  info.textContent = recatSelectedEntry.category
+    ? `Currently: ${recatCategoryLabel(recatSelectedEntry.category)} / ${recatSelectedEntry.manual_type || "(no type)"}`
+    : "Currently: uncategorized";
+  const categorySel = document.getElementById("recatCategorySelect");
+  categorySel.disabled = false;
+  categorySel.value = recatSelectedEntry.category || "";
+  recatPopulateManualTypeOptions(recatSelectedEntry.category, recatSelectedEntry.manual_type);
+  updateRecatSubmitState();
+});
+
+document.getElementById("recatCategorySelect").addEventListener("change", (e) => {
+  recatPopulateManualTypeOptions(e.target.value);
+  updateRecatSubmitState();
+});
+
+document.getElementById("recatManualTypeSelect").addEventListener("change", updateRecatSubmitState);
+
+// Same fork -> branch -> commit -> PR sequence submitPhotoPrivate
+// already uses for a vehicle repo (verified against GitHub's REST API
+// docs when that was built -- POST .../forks is async, a cross-repo
+// PR's head must be "username:branch"), aimed at BlaydeManual/registry
+// instead. The one real difference: EDITING registry.json's existing
+// content (fetch current file + sha, change only this one entry's
+// category/manual_type, write back with the same sha) rather than
+// ADDING a new file -- matching exactly what the Worker-side merge-gate
+// (handleAcceptRecategorization) validates: one file, modified, one
+// entry, only those two fields differing.
+async function submitRecategorizationProposal(entry, newCategory, newManualType) {
+  const session = BlaydeAuth.getSession();
+  if (!session) throw new Error("Not signed in.");
+  const owner = "BlaydeManual", repo = "registry";
+
+  let defaultBranch = null, upstreamSha = null;
+  for (const branch of ["main", "master"]) {
+    try {
+      const ref = await githubApi(`/repos/${owner}/${repo}/git/ref/heads/${branch}`, session.token);
+      defaultBranch = branch; upstreamSha = ref.object.sha; break;
+    } catch (e) { /* try next */ }
+  }
+  if (!defaultBranch) throw new Error(`Could not find a main or master branch on ${owner}/${repo}.`);
+
+  // POST is safe even if a fork already exists from a previous
+  // proposal -- GitHub just returns the existing one.
+  await githubApi(`/repos/${owner}/${repo}/forks`, session.token, { method: "POST" });
+  const forkOwner = session.username;
+  const forkRef = await waitForForkRef(forkOwner, repo, defaultBranch, session.token);
+
+  const branchName = `recategorize/${entry.vehicle_slug}-${entry.edition_id}-${Date.now()}`;
+  await githubApi(`/repos/${forkOwner}/${repo}/git/refs`, session.token, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ ref: `refs/heads/${branchName}`, sha: forkRef.object.sha }),
+  });
+
+  const registryFile = await githubApi(`/repos/${forkOwner}/${repo}/contents/registry.json?ref=${branchName}`, session.token);
+  const registryData = JSON.parse(base64ToUtf8(registryFile.content));
+  const target = (registryData.vehicles || []).find(
+    (v) => v.vehicle_slug === entry.vehicle_slug && v.edition_id === entry.edition_id
+  );
+  if (!target) throw new Error("Couldn't find that entry in the registry -- it may have changed since this page loaded. Try reloading and proposing again.");
+  const oldCategory = target.category, oldManualType = target.manual_type;
+  target.category = newCategory;
+  target.manual_type = newManualType;
+
+  await githubApi(`/repos/${forkOwner}/${repo}/contents/registry.json`, session.token, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      message: `Recategorize ${entry.vehicle_slug} (${entry.edition_id})`,
+      content: utf8ToBase64(JSON.stringify(registryData, null, 2) + "\n"),
+      sha: registryFile.sha,
+      branch: branchName,
+    }),
+  });
+
+  const prBody = [
+    `Proposes changing \`${entry.vehicle_slug}\` (${entry.edition_id})'s category/manual_type:`,
+    ``,
+    `- category: \`${oldCategory || "(none)"}\` -> \`${newCategory}\``,
+    `- manual_type: \`${oldManualType || "(none)"}\` -> \`${newManualType}\``,
+    ``,
+    `Submitted via the Contributor Portal's "Propose a recategorization" action. Only this one entry's category/manual_type changed -- nothing else in registry.json was touched.`,
+  ].join("\n");
+  const pr = await githubApi(`/repos/${owner}/${repo}/pulls`, session.token, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      title: `Recategorize ${entry.vehicle_slug} (${entry.edition_id}) to ${newCategory}/${newManualType}`,
+      head: `${forkOwner}:${branchName}`,
+      base: defaultBranch,
+      body: prBody,
+    }),
+  });
+  return { number: pr.number, url: pr.html_url };
+}
+
+document.getElementById("recatSubmitBtn").addEventListener("click", async () => {
+  if (!BlaydeAuth.getSession()) {
+    recatLog("Signing in...");
+    if (!(await performSignIn())) return;
+  }
+  const category = document.getElementById("recatCategorySelect").value;
+  const manualType = document.getElementById("recatManualTypeSelect").value;
+  const btn = document.getElementById("recatSubmitBtn");
+  btn.disabled = true;
+  recatLog(`Proposing ${recatSelectedEntry.vehicle_slug} (${recatSelectedEntry.edition_id}) -> ${category}/${manualType}...`);
+  try {
+    const { url } = await submitRecategorizationProposal(recatSelectedEntry, category, manualType);
+    recatLog(`Opened: ${url}`);
+    recatLog(`An org-level maintainer will review and merge it -- the same bar as approving a new manual.`);
+  } catch (e) {
+    recatLog(`Couldn't open the proposal: ${e.message}`);
+  }
+  updateRecatSubmitState();
+});
+
+(async () => {
+  recatManualTypesData = await loadRegistry(MANUAL_TYPES_URL).catch((e) => {
+    recatLog(`Couldn't load manual-types.json: ${e.message}`);
+    return null;
+  });
+  populateRecatCategoryOptions();
+  await populateRecatEntrySelect().catch((e) => recatLog(`Couldn't load the registry: ${e.message}`));
+})();
