@@ -304,7 +304,7 @@
       <svg viewBox="0 0 300 430" role="img" aria-label="A worn old manual page titled Engine Tuning, with two blown-out placeholder photos, captioned: scanned locally, nothing uploaded.">
         <defs>
           <radialGradient id="badPhoto" cx="35%" cy="30%" r="80%">
-            <stop offset="0" stop-color="#fdf6d8"/><stop offset="0.45" stop-color="#c9b98a"/><stop offset="1" stop-color="#5a5240"/>
+            <stop offset="0" stop-color="#e8e8e4"/><stop offset="0.45" stop-color="#a0a099"/><stop offset="1" stop-color="#4a4a44"/>
           </radialGradient>
           <linearGradient id="paperFill" x1="0" y1="0" x2="0" y2="1">
             <stop offset="0" stop-color="#f7f4ec"/><stop offset="1" stop-color="#ece7d8"/>
@@ -315,8 +315,8 @@
                -- this pattern can't be reproduced as a live CSS/SVG
                filter, so both old-manual photos are already-dithered
                PNGs, not color photos with a filter layered on top -->
-          <clipPath id="clipOldFig1"><rect x="40" y="156" width="128" height="100" rx="4"/></clipPath>
-          <clipPath id="clipOldFig2"><rect x="40" y="268" width="128" height="100" rx="4"/></clipPath>
+          <clipPath id="clipOldFig1"><rect x="40" y="156" width="128" height="100"/></clipPath>
+          <clipPath id="clipOldFig2"><rect x="40" y="268" width="128" height="100"/></clipPath>
           <filter id="cardShadowOld" x="-40%" y="-40%" width="180%" height="180%">
             <feGaussianBlur in="SourceAlpha" stdDeviation="8" result="blur"/>
             <feOffset in="blur" dx="0" dy="10" result="off"/>
@@ -327,15 +327,15 @@
         <text x="135" y="24" text-anchor="middle" font-size="15" font-weight="700" fill="#e8e8ea">OLD MANUAL</text>
         <text x="135" y="42" text-anchor="middle" font-size="11" fill="#8a8f98">scanned locally, nothing uploaded</text>
         <g transform="translate(0,15) rotate(-7 135 215)" filter="url(#cardShadowOld)">
-          <rect x="20" y="55" width="230" height="320" rx="6" fill="url(#paperFill)"/>
+          <rect x="20" y="55" width="230" height="320" fill="url(#paperFill)"/>
           <text x="40" y="90" font-size="16" font-weight="700" fill="#332f28" letter-spacing="0.02em">ENGINE TUNING</text>
           <text x="40" y="111" font-size="11" fill="#4a4638">&#8226; Refer to Figure 1 &amp; 2</text>
           <text x="40" y="126" font-size="11" fill="#4a4638">&#8226; Failure to do exactly as</text>
           <text x="48" y="139" font-size="11" fill="#4a4638">pictured results in Failure!</text>
-          <rect x="40" y="156" width="128" height="100" rx="4" fill="url(#badPhoto)"/>
+          <rect x="40" y="156" width="128" height="100" fill="url(#badPhoto)"/>
           <image href="images/hero-before-fig1.png" x="40" y="156" width="128" height="100" preserveAspectRatio="xMidYMid slice" clip-path="url(#clipOldFig1)"/>
           <text x="176" y="210" font-size="10" font-weight="700" fill="#4a4225">FIG. 1</text>
-          <rect x="40" y="268" width="128" height="100" rx="4" fill="url(#badPhoto)"/>
+          <rect x="40" y="268" width="128" height="100" fill="url(#badPhoto)"/>
           <image href="images/hero-before-fig2.png" x="40" y="268" width="128" height="100" preserveAspectRatio="xMidYMid slice" clip-path="url(#clipOldFig2)"/>
           <text x="176" y="322" font-size="10" font-weight="700" fill="#4a4225">FIG. 2</text>
           <!-- photo-center anchors, INSIDE the rotated group so the beam
@@ -408,7 +408,7 @@
       <svg viewBox="0 0 300 460" role="img" aria-label="The same manual page, now with two crisp community-contributed photos, captioned: the only thing you use is Blayde Manual.">
         <defs>
           <radialGradient id="goodPhoto" cx="35%" cy="30%" r="80%">
-            <stop offset="0" stop-color="#fff3d6"/><stop offset="0.5" stop-color="#e8963f"/><stop offset="1" stop-color="#2c3e3a"/>
+            <stop offset="0" stop-color="#f8f8f8"/><stop offset="0.5" stop-color="#c0c0c0"/><stop offset="1" stop-color="#2a2a2a"/>
           </radialGradient>
           <linearGradient id="paperFill2" x1="0" y1="0" x2="0" y2="1">
             <stop offset="0" stop-color="#f7f4ec"/><stop offset="1" stop-color="#ece7d8"/>
@@ -423,8 +423,8 @@
               <feFuncB type="linear" slope="1.05" intercept="-0.02"/>
             </feComponentTransfer>
           </filter>
-          <clipPath id="clipNewFig1"><rect x="70" y="156" width="128" height="100" rx="4"/></clipPath>
-          <clipPath id="clipNewFig2"><rect x="70" y="268" width="128" height="100" rx="4"/></clipPath>
+          <clipPath id="clipNewFig1"><rect x="70" y="156" width="128" height="100"/></clipPath>
+          <clipPath id="clipNewFig2"><rect x="70" y="268" width="128" height="100"/></clipPath>
           <filter id="cardShadowNew" x="-40%" y="-40%" width="180%" height="180%">
             <feGaussianBlur in="SourceAlpha" stdDeviation="8" result="blur"/>
             <feOffset in="blur" dx="0" dy="10" result="off"/>
@@ -452,12 +452,12 @@
           <text x="165" y="438" text-anchor="middle" font-size="11" fill="#8a8f98">Still your manual. Better photos. Easy contribution.</text>
         </g>
         <g transform="translate(0,15) rotate(7 165 215)" filter="url(#cardShadowNew)">
-          <rect x="50" y="55" width="230" height="320" rx="6" fill="url(#paperFill2)"/>
+          <rect x="50" y="55" width="230" height="320" fill="url(#paperFill2)"/>
           <text x="70" y="90" font-size="16" font-weight="700" fill="#332f28" letter-spacing="0.02em">ENGINE TUNING</text>
           <text x="70" y="111" font-size="11" fill="#4a4638">&#8226; Refer to Figure 1 &amp; 2</text>
           <text x="70" y="126" font-size="11" fill="#4a4638">&#8226; Failure to do exactly as</text>
           <text x="78" y="139" font-size="11" fill="#4a4638">pictured results in Failure!</text>
-          <rect x="70" y="156" width="128" height="100" rx="4" fill="url(#goodPhoto)"/>
+          <rect x="70" y="156" width="128" height="100" fill="url(#goodPhoto)"/>
           <image href="images/hero-after.jpg" x="70" y="156" width="128" height="100" preserveAspectRatio="xMidYMid slice" clip-path="url(#clipNewFig1)" filter="url(#crispPhoto)"/>
           <g filter="url(#tagGlow)">
             <rect x="134" y="245" width="64" height="11" fill="#0d0d0f"/>
@@ -465,7 +465,7 @@
             <text x="143" y="253.3" font-family="'Courier New', monospace" font-weight="700" font-size="7.2" fill="#fff" letter-spacing="0.06em">@THEBLAYDE</text>
           </g>
           <text x="206" y="210" font-size="10" font-weight="700" fill="#332f28">FIG. 1</text>
-          <rect x="70" y="268" width="128" height="100" rx="4" fill="url(#goodPhoto)"/>
+          <rect x="70" y="268" width="128" height="100" fill="url(#goodPhoto)"/>
           <image href="images/hero-after-fig2.jpg" x="70" y="268" width="128" height="100" preserveAspectRatio="xMidYMid slice" clip-path="url(#clipNewFig2)" filter="url(#crispPhoto)"/>
           <g filter="url(#tagGlow)">
             <rect x="168" y="357" width="30" height="11" fill="#0d0d0f"/>

@@ -74,6 +74,23 @@ function drawHeroConnectors() {
   const enhancePath = isRow
     ? `M ${blaydeOut.x} ${blaydeOut.y} C ${blaydeOut.x + 60} ${blaydeOut.y + 10}, ${newIn.x - 70} ${newIn.y}, ${newIn.x} ${newIn.y}`
     : `M ${blaydeOut.x} ${blaydeOut.y} C ${enhanceWayX} ${blaydeOut.y}, ${enhanceWayX} ${githubClear.y - enhanceBend}, ${enhanceWayX} ${githubClear.y} C ${enhanceWayX} ${githubClear.y + enhanceBend}, ${newIn.x} ${newIn.y - 70}, ${newIn.x} ${newIn.y}`;
+  // The visible arrow's own curve bends hard to route around GitHub
+  // (column layout) or just to arrive cleanly (row layout) -- riding
+  // ENHANCE's label directly on it put the label right on the curve's
+  // steepest stretch, measured live at ~33-34deg off horizontal versus
+  // SCAN's ~17deg on its own straight beam, and it visibly read as far
+  // less legible than SCAN despite being the same font/size/weight.
+  // Confirmed live (getPointAtLength sampling across the whole curve)
+  // before touching this: nowhere along the actual curve stays as flat
+  // as a straight line does, since the curve is deliberately bent for
+  // the ARROW's own routing needs, not the label's readability. Same
+  // fix CONTRIBUTE already uses below for a different problem (upside-
+  // down direction) applied here for a different one (steepness): the
+  // label rides its own straight, invisible line between the same two
+  // endpoints, independent of however bent the visible arrow needs to
+  // be -- a straight line has one constant angle its whole length, so
+  // there's no steep stretch to land on regardless of viewport size.
+  const enhanceTextPath = `M ${blaydeOut.x} ${blaydeOut.y} L ${newIn.x} ${newIn.y}`;
 
   // Tractor-beam cone: a quadrilateral from a wide end (w1, at the photo)
   // to a narrower end (w2, at the convergence point), so the two long
@@ -156,10 +173,15 @@ function drawHeroConnectors() {
       <filter id="glow" x="-80%" y="-80%" width="260%" height="260%"><feGaussianBlur stdDeviation="3.5" result="b"/><feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge></filter>
     </defs>
 
-    <!-- ENHANCE: thicker, redder, urgent -- its own label rides the curve -->
+    <!-- ENHANCE: thicker, redder, urgent -- the visible arrow rides its
+         own bent routing curve, but the label rides a separate, invisible
+         STRAIGHT line between the same two endpoints (see enhanceTextPath
+         above) so it stays at one constant, legible angle regardless of
+         how hard the visible arrow needs to bend. -->
     <path id="enhancePathEl" d="${enhancePath}" fill="none" stroke="url(#enhanceGrad)" stroke-width="4" stroke-linecap="round" filter="url(#glow)" marker-end="url(#arrowEnhance)"/>
+    <path id="enhanceTextPathEl" d="${enhanceTextPath}" fill="none" stroke="none"/>
     <text font-size="14" font-weight="700" letter-spacing="0.04em" fill="#ffd0d6">
-      <textPath href="#enhancePathEl" startOffset="42%">ENHANCE</textPath>
+      <textPath href="#enhanceTextPathEl" startOffset="42%">ENHANCE</textPath>
     </text>
     <!-- CONTRIBUTE: alive, ongoing -- a small dot actually travels the
          path on a loop, real SVG animation, not a static arrow. The label
