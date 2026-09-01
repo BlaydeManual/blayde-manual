@@ -1,18 +1,17 @@
-// Blayde Manual -- Issue Requests. Reuses the actual patcher mechanism
-// instead of inventing a fourth "load the current version" renderer:
-// pick a repo, pick your own copy of that exact document, patch it
-// against the current approved photos, and browse the real result page
-// by page. Any box you adjust (move/resize an existing photo, draw a
-// new one on empty space) becomes the issue -- no separate form. Right-
-// click an existing photo for a lighter action (flag a problem, or
-// just leave a comment).
+// Blayde Manual -- Propose a photo location fix (Contributor Portal).
+// Reuses the actual patcher mechanism instead of inventing a fourth
+// "load the current version" renderer: pick a manual, pick your own
+// copy of that exact document, patch it against the current approved
+// photos, and browse the real result page by page. Any box you adjust
+// (move/resize an existing photo, draw a new one on empty space, or
+// right-click to flag one as wrong entirely) becomes a proposed
+// manifest change -- no separate form.
 //
-// Issues funnel into the exact same review queue and review tool as
-// any photo submission (MOCK_PRS / review-panel.js's accept/reject
-// compare tool) -- confirmed directly: a maintainer reviewing an issue
-// should be doing the same thing they already do for a photo request,
-// not learning a second review UI. See ROADMAP.md's Issue Requests
-// entry for the full reasoning.
+// Any signed-in contributor can use this, not just a manual's own
+// maintainers (see contribute.js's updateManifestFixVisibility) --
+// proposals go through the same fork+PR+review pattern as a photo or a
+// recategorization, reviewed by a real maintainer via the Worker's
+// /accept-manifest-change gate, never applied directly.
 
 let issueRepoUrl = null;
 let issueEditionId = null;
@@ -22,7 +21,9 @@ let issuePdfDoc = null;
 let issuePdfIsPatchedOutput = false;
 let issuePageCache = {};
 let issuePageNum = 1;
-let pendingIssues = []; // {kind, procedure_id, page, bbox, note, label}
+let pendingIssues = []; // {kind, procedure_id, page, bbox, section_heading}
+let issueRegistryEntries = []; // real approved registry.json rows, populated once
+const ISSUE_ENTRY_RENDER_CAP = 100;
 
 function issueLog(msg) {
   const el = document.getElementById("issueLog");
@@ -40,84 +41,82 @@ function issueParsePhotoFilename(filename) {
   return procedureId;
 }
 
-// Real registry data as of this pass -- was reading MOCK_REGISTRY.vehicles
-// (a hand-authored stand-in that never contained any repo actually live
-// on this site), which surfaced as a real bug in real use: My Manuals
-// correctly showed "Covers 1 edition: OEM" for a real vehicle while
-// this tab showed "(edition not set)" for that same repo, since its
-// mock data simply didn't have it. Same loadRegistry()/
-// CANONICAL_REGISTRY_URL_FOR_REVIEW pair review-panel.js/my-vehicles.js
-// already use, not a second copy.
-async function populateIssueRepoSelect() {
-  const select = document.getElementById("issueRepoSelect");
-  select.innerHTML = "";
-  const approved = (typeof maintainedApprovedRepos === "function" ? maintainedApprovedRepos() : maintainedRepos.map((r) => r.repoUrl));
-  const registryData = await loadRegistry(CANONICAL_REGISTRY_URL_FOR_REVIEW).catch(() => ({ vehicles: [] }));
-  const norm = (u) => (u || "").replace(/\/$/, "").toLowerCase();
-  const seen = new Set();
-  approved.forEach((repoUrl) => {
-    const editions = (registryData.vehicles || []).filter((v) => norm(v.repo_url) === norm(repoUrl));
-    // No registry rows for this repo -- same fallback vehicleSlugForRepo()
-    // itself uses (the raw repo_url), not a fabricated mock slug.
-    (editions.length ? editions : [{ vehicle_slug: repoUrl, edition_id: null }]).forEach((e) => {
-      const key = repoUrl + "::" + e.edition_id;
-      if (seen.has(key)) return;
-      seen.add(key);
-      const opt = document.createElement("option");
-      opt.value = key;
-      opt.textContent = `${e.vehicle_slug} -- ${e.edition_id || "(edition not set)"}`;
-      select.appendChild(opt);
-    });
-  });
-  updateIssueSourceNote();
+// Same category-filter + live-search shape as contribute.js's own
+// recategorization picker (populateRecatEntrySelect) -- a flat <select>
+// over every approved registry entry doesn't scale, for the same
+// reason it didn't there.
+async function populateIssueEntrySelect() {
+  const registryData = await loadRegistry(CANONICAL_REGISTRY_URL).catch(() => ({ vehicles: [] }));
+  issueRegistryEntries = (registryData.vehicles || []).filter((v) => v.status === "approved");
+  await populateIssueFilterCategoryOptions();
+  renderIssueEntryOptions();
 }
+
+async function populateIssueFilterCategoryOptions() {
+  const select = document.getElementById("issueFilterCategory");
+  const manualTypes = await loadRegistry(MANUAL_TYPES_URL).catch(() => null);
+  select.innerHTML = '<option value="">All categories</option>';
+  (manualTypes?.categories || []).forEach((c) => {
+    const opt = document.createElement("option");
+    opt.value = c.id;
+    opt.textContent = c.label;
+    select.appendChild(opt);
+  });
+}
+
+function issueEntryMatchesSearch(entry, q) {
+  if (!q) return true;
+  const hay = `${entry.vehicle_display_name || ""} ${entry.vehicle_slug || ""}`.toLowerCase();
+  return hay.includes(q.toLowerCase());
+}
+
+function renderIssueEntryOptions() {
+  const select = document.getElementById("issueEntrySelect");
+  const hint = document.getElementById("issueEntryHint");
+  const categoryFilter = document.getElementById("issueFilterCategory").value;
+  const query = document.getElementById("issueSearchInput").value.trim();
+
+  const matches = [];
+  issueRegistryEntries.forEach((entry, i) => {
+    if (categoryFilter && entry.category !== categoryFilter) return;
+    if (!issueEntryMatchesSearch(entry, query)) return;
+    matches.push({ entry, originalIndex: i });
+  });
+
+  select.innerHTML = '<option value="" disabled selected>Choose one&hellip;</option>';
+  matches.slice(0, ISSUE_ENTRY_RENDER_CAP).forEach(({ entry, originalIndex }) => {
+    const opt = document.createElement("option");
+    opt.value = originalIndex;
+    opt.textContent = `${entry.vehicle_display_name || entry.vehicle_slug} (${entry.edition_id})`;
+    select.appendChild(opt);
+  });
+
+  if (!matches.length) {
+    hint.textContent = query || categoryFilter ? "No matches. Try a different search or category." : "";
+  } else if (matches.length > ISSUE_ENTRY_RENDER_CAP) {
+    hint.textContent = `Showing the first ${ISSUE_ENTRY_RENDER_CAP} of ${matches.length} matches -- search or pick a category to narrow this down.`;
+  } else {
+    hint.textContent = "";
+  }
+}
+
+document.getElementById("issueFilterCategory").addEventListener("change", renderIssueEntryOptions);
+document.getElementById("issueSearchInput").addEventListener("input", renderIssueEntryOptions);
+
+document.getElementById("issueEntrySelect").addEventListener("change", (e) => {
+  const entry = issueRegistryEntries[parseInt(e.target.value, 10)];
+  issueRepoUrl = entry.repo_url;
+  issueEditionId = entry.edition_id;
+  document.getElementById("issuePickerArea").style.display = "block";
+});
 
 function currentIssueSelection() {
-  const [repoUrl, editionId] = document.getElementById("issueRepoSelect").value.split("::");
-  return { repoUrl, editionId };
+  return { repoUrl: issueRepoUrl, editionId: issueEditionId };
 }
-
-function updateIssueSourceNote() {
-  const note = document.getElementById("issueSourceNote");
-  const { repoUrl, editionId } = currentIssueSelection();
-  if (!repoUrl) { note.textContent = ""; return; }
-  note.innerHTML = `Ensure you're using this exact document -- checking the repo's own source link once you open the editor.`;
-  issueRepoUrl = repoUrl;
-  issueEditionId = editionId;
-}
-
-document.getElementById("issueRepoSelect").addEventListener("change", updateIssueSourceNote);
 
 document.getElementById("issuePdfPicker").addEventListener("change", (e) => {
   document.getElementById("issueOpenEditorBtn").disabled = !e.target.files[0];
 });
-
-// Real fetch first (works once a repo is actually live); a small,
-// realistic mock fallback otherwise -- same convention as every other
-// tool this session, so the flow is genuinely testable before a real
-// registry exists (see LEGAL.md's standing pin).
-async function loadIssueManifestAndPhotos(repoUrl, editionId) {
-  try {
-    return await fetchManifestAndPhotos(repoUrl, editionId);
-  } catch (e) {
-    return {
-      manifest: {
-        vehicle: mockVehicleSlugForRepo(repoUrl),
-        page_count: 40,
-        source_markers: { source_identifier: "https://www.manualslib.com/manual/example" },
-        page_geometry: { "40": { composite_width_px: 2544, composite_height_px: 3276, page_width_pt: 612, page_height_pt: 792 }, "28": { composite_width_px: 2544, composite_height_px: 3276, page_width_pt: 612, page_height_pt: 792 } },
-        entries: [
-          { procedure_id: "p040_2-10-periodic-maintenance_fig1", page: 40, section_heading: "PERIODIC MAINTENANCE", pixel_bbox: [1466, 222, 2326, 795] },
-          { procedure_id: "p040_extra_fig2", page: 40, section_heading: "PERIODIC MAINTENANCE (cont.)", pixel_bbox: [1466, 900, 2326, 1400] },
-          { procedure_id: "p028_chain-slack-adjustment_fig2", page: 28, section_heading: "CHAIN SLACK ADJUSTMENT", pixel_bbox: [900, 1400, 2100, 2600] },
-        ],
-      },
-      photos: new Map([
-        ["p040_2-10-periodic-maintenance_fig1__by_gsxr_greg.jpg", null],
-      ]),
-    };
-  }
-}
 
 document.getElementById("issueOpenEditorBtn").addEventListener("click", async () => {
   const file = document.getElementById("issuePdfPicker").files[0];
@@ -140,7 +139,7 @@ document.getElementById("issueOpenEditorBtn").addEventListener("click", async ()
 
   const { repoUrl, editionId } = currentIssueSelection();
   issueLog(`patching against ${repoUrl}'s current approved photos...`);
-  const result = await loadIssueManifestAndPhotos(repoUrl, editionId);
+  const result = await fetchManifestAndPhotos(repoUrl, editionId);
   issueManifest = result.manifest;
   issuePhotos = result.photos;
   issueLog(`ready -- ${issueManifest.entries.length} tracked procedures, ${issuePhotos.size} approved photo(s)`);
@@ -245,6 +244,9 @@ function renderIssueOverlays() {
     box.style.left = (x0 * sx) + "px"; box.style.top = (y0 * sy) + "px";
     box.style.width = ((x1 - x0) * sx) + "px"; box.style.height = ((y1 - y0) * sy) + "px";
     const photoFilename = findPhotoFor(entry.procedure_id);
+    if (pendingIssues.some((i) => i.kind === "remove" && i.procedure_id === entry.procedure_id)) {
+      box.classList.add("queued-remove");
+    }
     box.innerHTML = `<div class="handle nw" data-corner="nw"></div><div class="handle se" data-corner="se"></div>`;
     if (photoFilename) {
       const img = document.createElement("img");
@@ -355,9 +357,12 @@ function queueNewSlotIssue(label, box) {
   renderPendingIssues();
 }
 
-function queueCommentIssue(entry, note) {
-  pendingIssues.push({ kind: "comment", procedure_id: entry.procedure_id, page: entry.page, section_heading: entry.section_heading, note });
+function queueRemoveIssue(entry) {
+  const existing = pendingIssues.find((i) => i.kind === "remove" && i.procedure_id === entry.procedure_id);
+  if (existing) return;
+  pendingIssues.push({ kind: "remove", procedure_id: entry.procedure_id, page: entry.page, section_heading: entry.section_heading, bbox: entry.pixel_bbox });
   renderPendingIssues();
+  renderIssueOverlays();
 }
 
 function renderPendingIssues() {
@@ -365,25 +370,26 @@ function renderPendingIssues() {
   const list = document.getElementById("issuePendingList");
   card.style.display = pendingIssues.length ? "block" : "none";
   list.innerHTML = "";
-  const labels = { structure: "Reposition/resize", "new-slot": "Missing/wrong slot", comment: "Comment" };
+  const labels = { structure: "Reposition/resize", "new-slot": "Missing/wrong slot", remove: "Remove this slot" };
   pendingIssues.forEach((issue) => {
     const row = document.createElement("div");
     row.className = "issue-pending-row";
-    row.innerHTML = `<span>PG. ${issue.page} &mdash; ${labels[issue.kind]}: ${issue.section_heading}${issue.note ? ` &mdash; &ldquo;${issue.note}&rdquo;` : ""}</span>`;
+    row.innerHTML = `<span>PG. ${issue.page} &mdash; ${labels[issue.kind]}: ${issue.section_heading}</span>`;
     list.appendChild(row);
   });
 }
 
 // ---- right-click menu on an existing photo: a lighter action than
 // editing the box -- flag a problem (routes to the real submit flow,
-// already scoped, no new mechanism) or just leave a comment. ----
+// already scoped, no new mechanism) or mark the slot itself as wrong,
+// not just its photo. ----
 function openIssueRightClickMenu(e, entry, photoFilename) {
   const menu = document.getElementById("issueRightClickMenu");
   menu.style.left = e.clientX + "px";
   menu.style.top = e.clientY + "px";
   menu.innerHTML = `
     <button id="rcProblem">Problem with this photo &rarr;</button>
-    <button id="rcComment">Add a comment</button>
+    <button id="rcRemove">Remove this slot</button>
   `;
   menu.style.display = "block";
   document.getElementById("rcProblem").addEventListener("click", () => {
@@ -392,48 +398,128 @@ function openIssueRightClickMenu(e, entry, photoFilename) {
     window.open(url, "_blank");
     issueLog(`opened the Contributor Portal for ${entry.procedure_id} -- a replacement photo there resolves this the normal way, no separate issue mechanism needed.`);
   });
-  document.getElementById("rcComment").addEventListener("click", async () => {
+  document.getElementById("rcRemove").addEventListener("click", () => {
     menu.style.display = "none";
-    const note = await blaydePrompt(`Comment on ${entry.section_heading}:`, "");
-    if (note) queueCommentIssue(entry, note);
+    queueRemoveIssue(entry);
   });
   const closeMenu = () => { menu.style.display = "none"; document.removeEventListener("click", closeMenu); };
   setTimeout(() => document.addEventListener("click", closeMenu), 0);
 }
 
-// ---- submit: every pending issue lands in the exact same queue and
-// review tool as a photo submission (MOCK_PRS / review-panel.js) --
-// no second review UI. issue_type distinguishes it for the accept
-// handler (a structure/new-slot issue has no new photo to merge). ----
-document.getElementById("issueSubmitAllBtn").addEventListener("click", () => {
-  const prs = loadMockPrs(MOCK_PRS_SEED);
-  const { editionId } = currentIssueSelection();
-  pendingIssues.forEach((issue) => {
-    const number = nextMockPrNumber(prs);
-    prs.push({
-      number,
-      title: issue.kind === "comment" ? `Issue: comment on ${issue.section_heading}` : `Issue: ${issue.section_heading}`,
-      author: "you",
-      repo_url: issueRepoUrl,
-      edition_id: editionId,
+// Fork-based, same shape as contribute.js's submitRecategorizationProposal
+// -- an arbitrary contributor doesn't have push access on a vehicle
+// repo they don't maintain, so this proposes the change via a PR
+// instead of writing directly. Reviewed by a real maintainer through
+// the Worker's /accept-manifest-change gate, which independently
+// re-validates the diff before merging; this function only proposes.
+async function submitManifestChange(repoUrl, editionId, issue) {
+  const session = BlaydeAuth.getSession();
+  if (!session) throw new Error("Not signed in.");
+  const [owner, repo] = ownerRepo(repoUrl);
+
+  let defaultBranch = null, upstreamSha = null;
+  for (const branch of ["main", "master"]) {
+    try {
+      const ref = await githubApi(`/repos/${owner}/${repo}/git/ref/heads/${branch}`, session.token);
+      defaultBranch = branch; upstreamSha = ref.object.sha; break;
+    } catch (e) { /* try next */ }
+  }
+  if (!defaultBranch) throw new Error(`Could not find a main or master branch on ${owner}/${repo}.`);
+
+  await githubApi(`/repos/${owner}/${repo}/forks`, session.token, { method: "POST" });
+  const forkOwner = session.username;
+  const forkRef = await waitForForkRef(forkOwner, repo, defaultBranch, session.token);
+
+  const branchName = `manifest-fix/${issue.kind}-${issue.procedure_id}-${Date.now()}`;
+  await githubApi(`/repos/${forkOwner}/${repo}/git/refs`, session.token, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ ref: `refs/heads/${branchName}`, sha: forkRef.object.sha }),
+  });
+
+  const manifestFile = await githubApi(`/repos/${forkOwner}/${repo}/contents/${editionId}/manifest.json?ref=${branchName}`, session.token);
+  const manifestData = JSON.parse(base64ToUtf8(manifestFile.content));
+  const entries = manifestData.entries || [];
+  let summary, prTitle;
+  if (issue.kind === "remove") {
+    const idx = entries.findIndex((e) => e.procedure_id === issue.procedure_id);
+    if (idx === -1) throw new Error(`Couldn't find ${issue.procedure_id} in the manifest -- it may have changed since this page loaded.`);
+    entries.splice(idx, 1);
+    summary = `Removes \`${issue.procedure_id}\` (${issue.section_heading}) -- flagged as not a real photo opportunity.`;
+    prTitle = `Remove tracked slot: ${issue.section_heading}`;
+  } else if (issue.kind === "structure") {
+    const entry = entries.find((e) => e.procedure_id === issue.procedure_id);
+    if (!entry) throw new Error(`Couldn't find ${issue.procedure_id} in the manifest -- it may have changed since this page loaded.`);
+    entry.pixel_bbox = issue.bbox;
+    summary = `Repositions \`${issue.procedure_id}\` (${issue.section_heading}).`;
+    prTitle = `Reposition: ${issue.section_heading}`;
+  } else {
+    entries.push({
       procedure_id: issue.procedure_id,
       page: issue.page,
       section_heading: issue.section_heading,
-      issue_type: issue.kind,
-      issue_note: issue.note || null,
-      original_bbox: issue.bbox || null,
-      composite_width_px: issueManifest.page_geometry[String(issue.page)]?.composite_width_px,
-      composite_height_px: issueManifest.page_geometry[String(issue.page)]?.composite_height_px,
-      page_width_pt: issueManifest.page_geometry[String(issue.page)]?.page_width_pt,
-      page_height_pt: issueManifest.page_geometry[String(issue.page)]?.page_height_pt,
+      pixel_bbox: issue.bbox,
+      content_type: "photo",
+      source_layout: "contributor_added",
+      status: "needs_contributed_photo",
     });
+    summary = `Adds a new tracked slot: \`${issue.procedure_id}\` (${issue.section_heading}).`;
+    prTitle = `Add missed photo slot: ${issue.section_heading}`;
+  }
+  manifestData.entries = entries;
+
+  await githubApi(`/repos/${forkOwner}/${repo}/contents/${editionId}/manifest.json`, session.token, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      message: `Manifest change: ${issue.kind} ${issue.procedure_id}`,
+      content: utf8ToBase64(JSON.stringify(manifestData, null, 2) + "\n"),
+      sha: manifestFile.sha,
+      branch: branchName,
+    }),
   });
-  saveMockPrs(prs);
-  issueLog(`[mock] submitted ${pendingIssues.length} issue(s) -- they'll show up in Review Photo Requests, reviewed the same way as any photo submission.`);
-  pendingIssues = [];
+
+  const prBody = [
+    summary,
+    ``,
+    `Submitted via the Contributor Portal's "Propose a photo location fix" action.`,
+    ``,
+    `---`,
+    `<!-- blaydemanifestchange -->`,
+  ].join("\n");
+  const pr = await githubApi(`/repos/${owner}/${repo}/pulls`, session.token, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      title: prTitle,
+      head: `${forkOwner}:${branchName}`,
+      base: defaultBranch,
+      body: prBody,
+    }),
+  });
+  return { number: pr.number, url: pr.html_url };
+}
+
+document.getElementById("issueSubmitAllBtn").addEventListener("click", async () => {
+  const btn = document.getElementById("issueSubmitAllBtn");
+  btn.disabled = true;
+  const { editionId } = currentIssueSelection();
+  const toSubmit = pendingIssues.slice();
+  let opened = 0;
+  for (const issue of toSubmit) {
+    try {
+      const pr = await submitManifestChange(issueRepoUrl, editionId, issue);
+      issueLog(`Proposed: ${pr.url}`);
+      pendingIssues = pendingIssues.filter((i) => i !== issue);
+      opened++;
+    } catch (e) {
+      issueLog(`Couldn't propose "${issue.section_heading}": ${e.message}`);
+    }
+  }
   renderPendingIssues();
+  renderIssueOverlays();
+  btn.disabled = false;
+  if (opened) issueLog(`${opened} change(s) proposed as real pull requests -- a maintainer of this manual will review them.`);
 });
 
-function initIssuesTab() {
-  populateIssueRepoSelect().catch((e) => issueLog(`Couldn't load the repo list: ${e.message}`));
-}
+populateIssueEntrySelect().catch((e) => issueLog(`Couldn't load the registry: ${e.message}`));

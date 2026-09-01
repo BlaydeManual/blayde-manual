@@ -444,6 +444,15 @@ function updateApproveButtonState() {
     return;
   }
   const myLogin = BlaydeAuth.getSession()?.username;
+  // The server already excludes a self-review from ever counting (see
+  // the Worker's resolveRealSubmitter), but letting the button submit
+  // one anyway reads as "that worked" when it silently didn't --
+  // disabled here so the UI doesn't lie about what a click will do.
+  if (myLogin && reviewStatus.real_submitter && myLogin === reviewStatus.real_submitter) {
+    btn.disabled = true;
+    btn.textContent = "You submitted this";
+    return;
+  }
   if (myLogin && reviewStatus.approved_by.includes(myLogin)) {
     btn.disabled = true;
     btn.textContent = "You approved ✓";

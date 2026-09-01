@@ -84,6 +84,9 @@
      them to fill it out before hitting a sign-in wall at Submit, so it
      stays hidden until contribute.js confirms a real session. */
   #recategorizeSection { display: none; }
+  /* Same reasoning -- proposing a manifest fix also opens a real PR
+     under the signed-in contributor's own account. */
+  #issueSection { display: none; }
 
   .preview-thumb { width: 120px; height: 90px; object-fit: cover; border-radius: 6px; border: 1px solid var(--steel-dark); margin-top: 10px; display: none; }
 
@@ -246,6 +249,41 @@
   @media (prefers-reduced-motion: reduce) {
     #toast.show { animation: none; opacity: 1; transform: translate(-50%, 0) scale(1); }
   }
+
+  /* ---- Propose a photo location fix -- full-page box editor, same
+     interaction pattern indexer-review.js's own confirm-boxes step and
+     the Maintainer Portal's photo review already use. ---- */
+  .overlay-box { position: absolute; border: 3px solid var(--steel); background: rgba(138,143,152,0.1); cursor: move; box-sizing: border-box; }
+  .overlay-box.touched { border-color: #1d9e75; }
+  .overlay-box .handle { position: absolute; width: 12px; height: 12px; background: var(--red); border: 2px solid #fff; border-radius: 50%; }
+  .overlay-box .handle.nw { top: -6px; left: -6px; cursor: nwse-resize; }
+  .overlay-box .handle.ne { top: -6px; right: -6px; cursor: nesw-resize; }
+  .overlay-box .handle.sw { bottom: -6px; left: -6px; cursor: nesw-resize; }
+  .overlay-box .handle.se { bottom: -6px; right: -6px; cursor: nwse-resize; }
+  /* Filled with the real current photo instead of an empty box --
+     "load the current version" means actually patched, not a
+     synthetic placeholder (see ROADMAP.md). */
+  .overlay-box img { width: 100%; height: 100%; object-fit: cover; display: block; pointer-events: none; }
+  .overlay-box.new-slot { border-color: var(--red); background: rgba(200,16,46,0.12); border-style: dashed; }
+  /* Queued for removal -- blue (the same blue used for "proposed" state
+     elsewhere) with a corner-to-corner X, drawn as two diagonal
+     gradient lines rather than an SVG/JS overlay. */
+  .overlay-box.queued-remove {
+    border-color: #5b9bf7;
+    background:
+      linear-gradient(to top right, transparent 49%, #5b9bf7 49.5%, #5b9bf7 50.5%, transparent 51%),
+      linear-gradient(to top left, transparent 49%, #5b9bf7 49.5%, #5b9bf7 50.5%, transparent 51%);
+  }
+  #issueRightClickMenu button {
+    display: block; width: 100%; text-align: left; margin: 0; padding: 7px 12px;
+    background: transparent; color: var(--text); font-weight: 400; font-size: 0.92rem; border-radius: 3px;
+  }
+  #issueRightClickMenu button:hover { background: var(--steel-dark); }
+  .issue-pending-row {
+    display: flex; justify-content: space-between; align-items: center;
+    padding: 8px 0; border-bottom: 1px solid var(--steel-dark); font-size: 0.95rem;
+  }
+  .issue-pending-row:last-child { border-bottom: none; }
 </style>
 </head>
 <body>
@@ -374,6 +412,57 @@
     </div>
     <div id="recatLog"></div>
   </div>
+
+  <div class="card" id="issueSection">
+    <h2>Propose a photo location fix</h2>
+    <p class="sub" style="margin:0 0 8px;">See a box in the wrong spot, sized wrong, or a real photo opportunity the manual's own index missed entirely? Propose a fix; a maintainer of that manual reviews and merges it, the same bar as approving a photo.</p>
+
+    <label>Which manual?</label>
+    <div style="display:flex; gap:8px; margin-bottom:6px; flex-wrap:wrap;">
+      <select id="issueFilterCategory" style="flex:0 0 auto; width:auto;"><option value="">All categories</option></select>
+      <input type="text" id="issueSearchInput" placeholder="Search by name&hellip;" style="flex:1; min-width:160px;">
+    </div>
+    <select id="issueEntrySelect"><option value="" disabled selected>Loading real registry data&hellip;</option></select>
+    <p class="sub" id="issueEntryHint" style="margin:4px 0 0;"></p>
+
+    <div id="issuePickerArea" style="display:none; margin-top:10px;">
+      <label style="display:block; font-size: 0.9rem; color:var(--steel); margin-bottom:6px;">
+        Pick your own copy of this exact document -- this repo never stores the manual's own pages.
+      </label>
+      <input type="file" id="issuePdfPicker" accept="application/pdf">
+      <button id="issueOpenEditorBtn" disabled style="margin-top:10px;">Patch &amp; open editor</button>
+    </div>
+
+    <div id="issueEditorArea" style="display:none; margin-top:14px;">
+      <div id="issueEditorHeader" style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
+        <p class="sub" id="issueEditorTitle" style="margin:0;"></p>
+        <div style="display:flex; align-items:center; gap:6px;">
+          <button class="secondary" id="issuePrevBtn" style="margin:0; padding:6px 12px; font-size: 0.88rem;">&larr; Prev</button>
+          <button class="secondary" id="issueNextBtn" style="margin:0; padding:6px 12px; font-size: 0.88rem;">Next &rarr;</button>
+          <span class="sub" style="margin:0;">jump to page:</span>
+          <input type="number" id="issueJumpInput" min="1" style="width:60px;">
+          <button class="secondary" id="issueJumpBtn" style="margin:0; padding:6px 12px; font-size: 0.88rem;">Open page</button>
+        </div>
+      </div>
+      <div id="issuePageWrap" style="position:relative; max-width:100%; overflow:hidden; border:1px solid var(--steel-dark);">
+        <div id="issuePageInner" style="position:relative; transform-origin: top left;">
+          <img id="issuePageImg" alt="" style="display:block; max-width:100%;">
+        </div>
+      </div>
+      <div id="issueEditorFooter" style="padding:10px 0 0;">
+        <span class="sub" style="margin:0;">drag empty space to flag a missing/wrong slot &middot; drag an existing box to move it &middot; drag its corner to resize &middot; right-click an existing photo for more options</span>
+      </div>
+      <div id="issueRightClickMenu" style="display:none; position:fixed; z-index:60; background:var(--black-2); border:1px solid var(--steel-dark); border-radius:6px; padding:4px; font-size: 0.92rem;"></div>
+    </div>
+
+    <div id="issuePendingCard" style="display:none; margin-top:14px;">
+      <p class="sub" style="margin:0 0 8px; font-weight:700;">Changes ready to propose</p>
+      <div id="issuePendingList"></div>
+      <button id="issueSubmitAllBtn" style="margin-top:10px;">Propose these changes</button>
+    </div>
+
+    <div id="issueLog" style="font-family:ui-monospace,monospace; font-size: 0.86rem; color:#9fe1cb; white-space:pre-wrap; margin-top:10px;"></div>
+  </div>
 </main>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"
@@ -382,7 +471,7 @@
 <script src="auth.js"></script>
 <script src="registry.js"></script>
 <script src="category-style.js"></script>
-<script src="mock-pr-store.js"></script>
 <script src="contribute.js"></script>
+<script src="issue-requests.js"></script>
 </body>
 </html>

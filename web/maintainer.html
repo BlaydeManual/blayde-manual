@@ -246,21 +246,6 @@
   .overlay-box .handle.ne { top: -6px; right: -6px; cursor: nesw-resize; }
   .overlay-box .handle.sw { bottom: -6px; left: -6px; cursor: nesw-resize; }
   .overlay-box .handle.se { bottom: -6px; right: -6px; cursor: nwse-resize; }
-  /* Issue Requests reuses .overlay-box, filled with the real current
-     photo instead of an empty box -- "load the current version" means
-     actually patched, not a synthetic placeholder (see ROADMAP.md). */
-  .overlay-box img { width: 100%; height: 100%; object-fit: cover; display: block; pointer-events: none; }
-  .overlay-box.new-slot { border-color: var(--red); background: rgba(200,16,46,0.12); border-style: dashed; }
-  #issueRightClickMenu button {
-    display: block; width: 100%; text-align: left; margin: 0; padding: 7px 12px;
-    background: transparent; color: var(--text); font-weight: 400; font-size: 0.92rem; border-radius: 3px;
-  }
-  #issueRightClickMenu button:hover { background: var(--steel-dark); }
-  .issue-pending-row {
-    display: flex; justify-content: space-between; align-items: center;
-    padding: 8px 0; border-bottom: 1px solid var(--steel-dark); font-size: 0.95rem;
-  }
-  .issue-pending-row:last-child { border-bottom: none; }
   #pageModalFooter { padding: 10px; display: flex; gap: 8px; align-items: center; }
   #pageModalFooter button { margin: 0; }
 
@@ -414,7 +399,6 @@
       <button class="tab-btn active" data-tab="review">Review Photo Requests</button>
       <button class="tab-btn" data-tab="vehicles">My Manuals</button>
       <button class="tab-btn" data-tab="approve">Approve New Manuals</button>
-      <button class="tab-btn" data-tab="issues">Issue Requests</button>
       <button class="tab-btn" data-tab="index">Index a New Manual</button>
     </div>
 
@@ -556,53 +540,6 @@
       </div>
     </div>
 
-    <!-- ============ Issue Requests (issue-requests.js) ============ -->
-    <div class="tab-panel" id="tab-issues">
-      <p class="sub" style="margin:0 0 10px;">Raise a specific change -- a photo's position or size, or a missing/wrong slot -- the same way any photo submission gets reviewed. Patch your own copy against the current approved photos, browse it page by page, and any box you adjust becomes the issue.</p>
-
-      <div class="card">
-        <h2 style="font-size: 1.05rem; margin:0 0 4px;">Choose a repo to issue against</h2>
-        <select id="issueRepoSelect" style="width:100%; padding:8px; margin-bottom:12px; background:#000; color:var(--text); border:1px solid var(--steel-dark); border-radius:4px; font-size: 0.95rem;"></select>
-        <p class="sub" id="issueSourceNote" style="margin:0 0 10px;"></p>
-
-        <label style="display:block; font-size: 0.9rem; color:var(--steel); margin-bottom:6px;">
-          Pick your own copy of this exact document -- this repo never stores the manual's own pages.
-        </label>
-        <input type="file" id="issuePdfPicker" accept="application/pdf">
-        <button id="issueOpenEditorBtn" disabled style="margin-top:10px;">Patch &amp; open editor</button>
-      </div>
-
-      <div class="card" id="issueEditorArea" style="display:none;">
-        <div id="issueEditorHeader" style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
-          <p class="sub" id="issueEditorTitle" style="margin:0;"></p>
-          <div style="display:flex; align-items:center; gap:6px;">
-            <button id="issuePrevBtn" style="margin:0; padding:6px 12px; font-size: 0.88rem;">&larr; Prev</button>
-            <button id="issueNextBtn" style="margin:0; padding:6px 12px; font-size: 0.88rem;">Next &rarr;</button>
-            <span class="sub" style="margin:0;">jump to page:</span>
-            <input type="number" id="issueJumpInput" min="1" style="width:60px; padding:5px 7px; background:#000; color:var(--text); border:1px solid var(--steel-dark); border-radius:4px; font-size: 0.9rem;">
-            <button id="issueJumpBtn" style="margin:0; padding:6px 12px; font-size: 0.88rem; background:var(--steel-dark);">Open page</button>
-          </div>
-        </div>
-        <div id="issuePageWrap" style="position:relative; max-width:100%; overflow:hidden; border:1px solid var(--steel-dark);">
-          <div id="issuePageInner" style="position:relative; transform-origin: top left;">
-            <img id="issuePageImg" alt="" style="display:block;">
-          </div>
-        </div>
-        <div id="issueEditorFooter" style="padding:10px 0 0; display:flex; gap:8px; align-items:center;">
-          <span class="sub" style="margin:0;">drag empty space to flag a missing/wrong slot &middot; drag an existing box to move it &middot; drag its corner to resize &middot; right-click an existing photo for more options</span>
-        </div>
-        <div id="issueRightClickMenu" style="display:none; position:fixed; z-index:60; background:var(--black-2); border:1px solid var(--steel-dark); border-radius:6px; padding:4px; font-size: 0.92rem;"></div>
-      </div>
-
-      <div class="card" id="issuePendingCard" style="display:none;">
-        <h2 style="font-size: 1.05rem; margin:0 0 8px;">Issues ready to submit</h2>
-        <div id="issuePendingList"></div>
-        <button id="issueSubmitAllBtn" style="margin-top:10px;">Submit these issues for review</button>
-        <p class="sub" style="margin:8px 0 0;">Submitted issues show up in <b>Review Photo Requests</b> and get reviewed the same way any photo submission does -- by a different maintainer, same accept/reject tool.</p>
-      </div>
-
-      <div id="issueLog" style="font-family:ui-monospace,monospace; font-size: 0.86rem; color:#9fe1cb; white-space:pre-wrap; margin-top:10px;"></div>
-    </div>
 
     <!-- ============ Index a New Manual (indexer-core.js / indexer-ui.js / indexer-review.js) ============ -->
     <div class="tab-panel" id="tab-index">
@@ -724,11 +661,9 @@
 <script src="indexer-core.js"></script>
 <script src="indexer-ui.js"></script>
 <script src="indexer-review.js"></script>
-<script src="mock-pr-store.js"></script>
 <script src="review-panel.js"></script>
 <script src="org-approval.js"></script>
 <script src="my-vehicles.js"></script>
-<script src="issue-requests.js"></script>
 <script src="maintainer-portal.js"></script>
 </body>
 </html>
