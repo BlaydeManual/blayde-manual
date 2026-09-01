@@ -40,14 +40,26 @@ function issueParsePhotoFilename(filename) {
   return procedureId;
 }
 
-function populateIssueRepoSelect() {
+// Real registry data as of this pass -- was reading MOCK_REGISTRY.vehicles
+// (a hand-authored stand-in that never contained any repo actually live
+// on this site), which surfaced as a real bug in real use: My Manuals
+// correctly showed "Covers 1 edition: OEM" for a real vehicle while
+// this tab showed "(edition not set)" for that same repo, since its
+// mock data simply didn't have it. Same loadRegistry()/
+// CANONICAL_REGISTRY_URL_FOR_REVIEW pair review-panel.js/my-vehicles.js
+// already use, not a second copy.
+async function populateIssueRepoSelect() {
   const select = document.getElementById("issueRepoSelect");
   select.innerHTML = "";
   const approved = (typeof maintainedApprovedRepos === "function" ? maintainedApprovedRepos() : maintainedRepos.map((r) => r.repoUrl));
+  const registryData = await loadRegistry(CANONICAL_REGISTRY_URL_FOR_REVIEW).catch(() => ({ vehicles: [] }));
+  const norm = (u) => (u || "").replace(/\/$/, "").toLowerCase();
   const seen = new Set();
   approved.forEach((repoUrl) => {
-    const editions = MOCK_REGISTRY.vehicles.filter((v) => v.repo_url === repoUrl);
-    (editions.length ? editions : [{ vehicle_slug: mockVehicleSlugForRepo(repoUrl), edition_id: null }]).forEach((e) => {
+    const editions = (registryData.vehicles || []).filter((v) => norm(v.repo_url) === norm(repoUrl));
+    // No registry rows for this repo -- same fallback vehicleSlugForRepo()
+    // itself uses (the raw repo_url), not a fabricated mock slug.
+    (editions.length ? editions : [{ vehicle_slug: repoUrl, edition_id: null }]).forEach((e) => {
       const key = repoUrl + "::" + e.edition_id;
       if (seen.has(key)) return;
       seen.add(key);
@@ -142,6 +154,17 @@ document.getElementById("issueJumpBtn").addEventListener("click", () => {
   const n = parseInt(document.getElementById("issueJumpInput").value, 10);
   if (!n || n < 1 || (issueManifest && n > issueManifest.page_count)) return;
   openIssuePage(n);
+});
+
+// Same &larr; Prev / Next &rarr; convention as review-panel.js's and
+// org-approval.js's own page viewers -- was the one genuinely different
+// nav pattern among the three (jump-only), not a design choice, just
+// downstream of this tab not having real data to page through yet.
+document.getElementById("issuePrevBtn").addEventListener("click", () => {
+  if (issueManifest && issuePageNum > 1) openIssuePage(issuePageNum - 1);
+});
+document.getElementById("issueNextBtn").addEventListener("click", () => {
+  if (issueManifest && issuePageNum < issueManifest.page_count) openIssuePage(issuePageNum + 1);
 });
 
 async function getIssuePage(pageNum, scale = 2.0) {
@@ -412,5 +435,5 @@ document.getElementById("issueSubmitAllBtn").addEventListener("click", () => {
 });
 
 function initIssuesTab() {
-  populateIssueRepoSelect();
+  populateIssueRepoSelect().catch((e) => issueLog(`Couldn't load the repo list: ${e.message}`));
 }
