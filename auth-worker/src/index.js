@@ -471,6 +471,9 @@ async function handleDirectContribute(request, env) {
         `Submitted by @${login} via the Contributor Portal's Public path. Both required attestations were checked before this was allowed to submit:`,
         `- This is the contributor's own photo, not sourced from elsewhere.`,
         `- Licensed CC-BY 4.0.`,
+        ``,
+        `---`,
+        `_Track this anytime from [My Reviewables](https://blaydemanual.com/contribute.html)._`,
       ].join("\n"),
     }),
   });

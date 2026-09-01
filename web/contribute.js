@@ -907,6 +907,16 @@ async function openPrFromFork(upload) {
     `Submitted via the Contributor Portal's Private path. Both required attestations were checked before this was allowed to submit:`,
     `- This is the contributor's own photo, not sourced from elsewhere.`,
     `- Licensed CC-BY 4.0.`,
+    ``,
+    `---`,
+    // Direct instruction: point back to the portal without telling
+    // anyone to ignore GitHub's own notifications -- GitHub's PR/review
+    // emails always link straight into github.com with no way for an
+    // App or repo owner to redirect that (a real platform limit, not a
+    // setting we're missing), so this is the one thing we DO control:
+    // once someone lands on the PR, offer the easier path, not a
+    // demand to stop using the platform they're already on.
+    `_Track this anytime from [My Reviewables](https://blaydemanual.com/contribute.html)._`,
   ].join("\n");
   const pr = await githubApi(`/repos/${owner}/${repo}/pulls`, session.token, {
     method: "POST",
@@ -1679,6 +1689,9 @@ async function submitRecategorizationProposal(entry, newCategory, newManualType)
     `- manual_type: \`${oldManualType || "(none)"}\` -> \`${newManualType}\``,
     ``,
     `Submitted via the Contributor Portal's "Propose a recategorization" action. Only this one entry's category/manual_type changed -- nothing else in registry.json was touched.`,
+    ``,
+    `---`,
+    `_Track this anytime from the [Contributor Portal](https://blaydemanual.com/contribute.html)._`,
   ].join("\n");
   const pr = await githubApi(`/repos/${owner}/${repo}/pulls`, session.token, {
     method: "POST",
