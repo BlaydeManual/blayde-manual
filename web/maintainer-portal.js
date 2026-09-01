@@ -79,11 +79,9 @@ async function enterPortal() {
   if (maintainedRepos.length) {
     initReviewTab(); // review-panel.js -- repo-scope check + PR list
     initVehiclesTab(); // my-vehicles.js -- per-vehicle rosters
-    initIssuesTab(); // issue-requests.js -- needs a repo to issue against
   } else {
     reviewTabBtn.disabled = true;
     vehiclesTabBtn.disabled = true;
-    document.querySelector('.tab-btn[data-tab="issues"]').disabled = true;
     // Nothing to maintain yet -- landing on Review Photo Requests (its
     // default position) would just show a disabled tab. The one thing
     // a not-yet-active maintainer can actually do here is index a new

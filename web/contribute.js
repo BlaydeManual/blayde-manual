@@ -322,11 +322,13 @@ function handleLoggedOut() {
   renderUploads();
 }
 
-// Recategorizing opens a real PR under the signed-in contributor's own
-// account, so the form only makes sense to show once a real session
-// exists -- same reasoning as gating "My Reviewables" on sign-in.
+// Recategorizing (and proposing a manifest fix, below) both open a real
+// PR under the signed-in contributor's own account, so neither form
+// makes sense to show until a real session exists -- same reasoning as
+// gating "My Reviewables" on sign-in.
 function updateRecatVisibility() {
   document.getElementById("recategorizeSection").style.display = signedIn ? "block" : "none";
+  document.getElementById("issueSection").style.display = signedIn ? "block" : "none";
 }
 
 // Two arrival paths: a real (repo, procedure) pair means someone

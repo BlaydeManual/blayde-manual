@@ -50,6 +50,7 @@ export default {
       if (request.method === "POST" && pathname === "/manage-collaborator") return await handleManageCollaborator(request, env);
       if (request.method === "POST" && pathname === "/accept-photo-pr") return await handleAcceptPhotoPr(request, env);
       if (request.method === "POST" && pathname === "/accept-recategorization") return await handleAcceptRecategorization(request, env);
+      if (request.method === "POST" && pathname === "/accept-manifest-change") return await handleAcceptManifestChange(request, env);
     } catch (e) {
       // Any unexpected throw (a malformed GitHub response, a crypto
       // error, etc.) still needs to come back as JSON with CORS headers --
@@ -1074,6 +1075,26 @@ async function handleManageCollaborator(request, env) {
 // matching org-approval.js's checks for vehicle submissions, which are
 // hard blocks too, not just a warning the human can click past.
 //
+// The one real identity that matters for "did the submitter approve
+// their own request" -- for a Public-path photo PR, GitHub's own
+// pr.user.login is always the App's bot identity, never the real
+// person, so this checks the photo's own filename convention first
+// (<procedure_id>__by_<login>(__altN)?.ext, same as parsePhotoFilename
+// client-side) and only falls back to pr.user.login for PRs that don't
+// carry a photo at all (recategorization and manifest-change proposals
+// are both fork-based, so pr.user.login is already the real proposer
+// there).
+function resolveRealSubmitter(pr, files) {
+  const photoFile = files.find((f) => f.status === "added" && /^[^/]+\/images\//.test(f.filename));
+  if (photoFile) {
+    const m = /^[^/]+\/images\/(.+)$/.exec(photoFile.filename);
+    const stem = m[1].replace(/\.(jpe?g|png|webp)$/i, "");
+    const [, rest] = stem.split("__by_");
+    if (rest) return rest.split("__alt")[0];
+  }
+  return pr.user?.login || null;
+}
+
 // Deliberately merges via the App's installation token, not the
 // Real review/check state for one PR, so the Maintainer Portal can show
 // "1/2 approved" and disable Accept until it's actually mergeable,
@@ -1095,7 +1116,11 @@ async function handlePrReviewStatus(request, env) {
   const installationToken = await getInstallationToken(env);
 
   const pr = await ghApi(`/repos/${owner}/${repo}/pulls/${prNumber}`, installationToken);
-  const reviews = await ghApi(`/repos/${owner}/${repo}/pulls/${prNumber}/reviews?per_page=100`, installationToken);
+  const [reviews, files] = await Promise.all([
+    ghApi(`/repos/${owner}/${repo}/pulls/${prNumber}/reviews?per_page=100`, installationToken),
+    ghApi(`/repos/${owner}/${repo}/pulls/${prNumber}/files`, installationToken),
+  ]);
+  const realSubmitter = resolveRealSubmitter(pr, files);
 
   // Only the LATEST review per user counts, and only toward whichever
   // state it currently is -- an old CHANGES_REQUESTED a reviewer later
@@ -1104,10 +1129,19 @@ async function handlePrReviewStatus(request, env) {
   // COMMENTED/DISMISSED reviews carry no weight either way, but a user's
   // most recent real review can flip from one meaningful state to
   // COMMENTED/DISMISSED, so track "last meaningful state" not just
-  // "last state."
+  // "last state." The real submitter's own review never counts toward
+  // either bucket -- GitHub's website hides the Approve button for a
+  // PR's own author, but that's web-UI-only behavior, not something the
+  // REST API this app actually uses enforces on its own (confirmed
+  // directly: the API accepts a self-submitted APPROVE review). For a
+  // Public-path photo PR the recorded PR author is always the App's own
+  // bot identity, never the real contributor, so this excludes by the
+  // real submitter identity (parsed from the photo filename when one
+  // exists), not just pr.user.login.
   const latestByUser = new Map();
   for (const r of reviews) {
     if (r.state !== "APPROVED" && r.state !== "CHANGES_REQUESTED") continue;
+    if (realSubmitter && r.user.login === realSubmitter) continue;
     const prior = latestByUser.get(r.user.login);
     if (!prior || new Date(r.submitted_at) >= new Date(prior.submitted_at)) latestByUser.set(r.user.login, r);
   }
@@ -1144,6 +1178,7 @@ async function handlePrReviewStatus(request, env) {
     approved_count: approvedBy.length,
     required_approvals: requiredApprovals,
     approved_by: approvedBy,
+    real_submitter: realSubmitter,
     changes_requested_by: changesRequestedBy,
     checks,
     checks_passing: checksPassing,
@@ -1181,6 +1216,17 @@ async function handleAcceptPhotoPr(request, env) {
   // maintainer happened to open the review.
   const pr = await ghApi(`/repos/${owner}/${repo}/pulls/${prNumber}`, installationToken);
   const files = await ghApi(`/repos/${owner}/${repo}/pulls/${prNumber}/files`, installationToken);
+
+  // Real gap, confirmed live: GitHub's own website hides the Approve/
+  // merge controls for a PR's own author, but that's web-UI-only --
+  // the REST API this app actually uses doesn't enforce it, so without
+  // this check a contributor could submit their own photo and then
+  // merge it themselves. resolveRealSubmitter checks the photo's own
+  // filename convention, not pr.user.login, since a Public-path PR is
+  // always opened by the App's bot identity, never the real person.
+  if (resolveRealSubmitter(pr, files) === login) {
+    throw new Error(`@${login} submitted this request -- can't also be the one accepting it.`);
+  }
 
   // Negative allowlist: exactly one file, a real contributed photo,
   // nothing else riding along. The severe case this stops isn't a bad
@@ -1256,6 +1302,15 @@ async function handleAcceptRecategorization(request, env) {
     throw new Error(`PR #${prNumber} is ${pr.merged ? "already merged" : pr.state}, not open -- nothing to approve.`);
   }
   const files = await ghApi(`/repos/${REGISTRY_OWNER}/${REGISTRY_REPO}/pulls/${prNumber}/files`, installationToken);
+
+  // Same real gap as handleAcceptPhotoPr -- GitHub's own website hides
+  // this for a PR's own author, but the REST API doesn't. A
+  // recategorization PR is always fork-based, so pr.user.login (what
+  // resolveRealSubmitter falls back to when there's no photo file) is
+  // already the real proposer here.
+  if (resolveRealSubmitter(pr, files) === login) {
+    throw new Error(`@${login} proposed this recategorization -- can't also be the one accepting it.`);
+  }
 
   // 1. Negative allowlist: exactly one file, registry.json itself,
   // already existing (never added/removed) -- same shape as
@@ -1346,6 +1401,153 @@ async function handleAcceptRecategorization(request, env) {
     body: JSON.stringify({ commit_title: `Recategorize ${key}`, sha: pr.head.sha }),
   });
   return json({ merged: true, entry: key, changedFields });
+}
+
+// Gates a contributor's proposed manifest change (contribute.js's
+// submitManifestChangeProposal, fork-based -- the proposer doesn't have
+// push access, unlike a repo's own maintainer using Issue Requests'
+// direct-write path, which never touches this endpoint at all). A
+// manifest describes one vehicle's own content, not org-wide
+// classification data, so this uses the same per-repo push-or-better
+// bar handleAcceptPhotoPr checks for the APPROVER, not
+// handleAcceptRecategorization's org-admin check (that one gates
+// registry.json specifically). Covers the three real proposal shapes:
+// one entry added, one removed, or one entry's pixel_bbox changed --
+// nothing else, on either side of the diff.
+async function handleAcceptManifestChange(request, env) {
+  const login = await requireRealUser(request);
+  const body = await parseJson(request);
+  const { repo_url: repoUrl, pr_number: prNumber, dry_run: dryRun } = body;
+  if (!repoUrl || !prNumber) return json({ error: "missing repo_url or pr_number" }, 400);
+
+  await requireRegisteredRepo(repoUrl);
+  const [owner, repo] = new URL(repoUrl).pathname.replace(/^\//, "").split("/");
+  const installationToken = await getInstallationToken(env);
+
+  let callerPermission;
+  try {
+    const permData = await ghApi(`/repos/${owner}/${repo}/collaborators/${login}/permission`, installationToken);
+    callerPermission = permData.permission;
+  } catch (e) {
+    throw new Error(`@${login} isn't a collaborator on ${repoUrl}.`);
+  }
+  if (!["admin", "maintain", "write"].includes(callerPermission)) {
+    throw new Error(`@${login} needs push access or better on ${repoUrl} to accept manifest changes (has: ${callerPermission}).`);
+  }
+
+  // Fetched fresh here, not trusted from the client -- same reasoning
+  // as every other accept handler: the moment that matters is right
+  // before merging.
+  const pr = await ghApi(`/repos/${owner}/${repo}/pulls/${prNumber}`, installationToken);
+  if (pr.state !== "open") {
+    throw new Error(`PR #${prNumber} is ${pr.merged ? "already merged" : pr.state}, not open -- nothing to approve.`);
+  }
+  const files = await ghApi(`/repos/${owner}/${repo}/pulls/${prNumber}/files`, installationToken);
+
+  // Same real gap as handleAcceptPhotoPr -- GitHub's own website hides
+  // this for a PR's own author, but the REST API doesn't. A manifest-
+  // change proposal is always fork-based, so pr.user.login (what
+  // resolveRealSubmitter falls back to when there's no photo file) is
+  // already the real proposer here.
+  if (resolveRealSubmitter(pr, files) === login) {
+    throw new Error(`@${login} proposed this manifest change -- can't also be the one accepting it.`);
+  }
+
+  // 1. Negative allowlist: exactly one file, some edition's own
+  // manifest.json, already existing (never added/removed).
+  if (files.length !== 1 || files[0].status !== "modified" || !/^[^/]+\/manifest\.json$/.test(files[0].filename)) {
+    throw new Error(
+      `This PR ${files.length === 1 ? `touches "${files[0].filename}" (${files[0].status})` : `changes ${files.length} files`}, not exactly a modified manifest.json -- rejecting rather than merging something broader than a manifest change.`
+    );
+  }
+  const manifestPath = files[0].filename;
+
+  // 2. Fetch both versions at the PR's real base/head commits (not the
+  // current default branch, which may have moved since this PR was
+  // opened) and diff them structurally.
+  const baseFile = await ghApi(`/repos/${owner}/${repo}/contents/${manifestPath}?ref=${pr.base.sha}`, installationToken);
+  const headFile = await ghApi(`/repos/${owner}/${repo}/contents/${manifestPath}?ref=${pr.head.sha}`, installationToken);
+  let baseData, headData;
+  try {
+    baseData = JSON.parse(base64ToUtf8(baseFile.content));
+    headData = JSON.parse(base64ToUtf8(headFile.content));
+  } catch (e) {
+    throw new Error(`${manifestPath} isn't valid JSON on one side of this PR.`);
+  }
+
+  // Everything outside `entries` (page_geometry, vehicle metadata, etc.)
+  // must be byte-identical -- not this gate's business to touch.
+  const { entries: baseEntries, ...baseRest } = baseData;
+  const { entries: headEntries, ...headRest } = headData;
+  if (JSON.stringify(baseRest) !== JSON.stringify(headRest)) {
+    throw new Error(`This PR changes something in ${manifestPath} besides its entries list -- rejecting rather than merging an edit beyond a manifest change.`);
+  }
+
+  const baseByKey = new Map((baseEntries || []).map((e) => [e.procedure_id, e]));
+  const headByKey = new Map((headEntries || []).map((e) => [e.procedure_id, e]));
+  if (baseByKey.size !== (baseEntries || []).length || headByKey.size !== (headEntries || []).length) {
+    throw new Error(`${manifestPath} has duplicate procedure_id entries -- rejecting rather than guessing which one this PR means to change.`);
+  }
+
+  const added = [...headByKey.keys()].filter((k) => !baseByKey.has(k));
+  const removed = [...baseByKey.keys()].filter((k) => !headByKey.has(k));
+  const modified = [...baseByKey.keys()].filter(
+    (k) => headByKey.has(k) && JSON.stringify(baseByKey.get(k)) !== JSON.stringify(headByKey.get(k))
+  );
+
+  // 3. Exactly one real change -- an add, a remove, or a reposition,
+  // never a mix and never more than one entry's worth.
+  const totalChanges = added.length + removed.length + modified.length;
+  if (totalChanges !== 1) {
+    throw new Error(
+      `This PR changes ${totalChanges} entries (added ${added.length}, removed ${removed.length}, modified ${modified.length}), not exactly 1 -- rejecting rather than merging something broader than a single manifest change.`
+    );
+  }
+
+  let summary;
+  if (added.length) {
+    const entry = headByKey.get(added[0]);
+    const requiredFields = ["procedure_id", "page", "section_heading", "pixel_bbox", "content_type", "status"];
+    const missing = requiredFields.filter((f) => entry[f] === undefined);
+    if (missing.length) throw new Error(`The new entry "${added[0]}" is missing required field(s): ${missing.join(", ")}.`);
+    if (entry.status !== "needs_contributed_photo") {
+      throw new Error(`A newly added entry must start as "needs_contributed_photo", not "${entry.status}" -- rejecting.`);
+    }
+    if (!Array.isArray(entry.pixel_bbox) || entry.pixel_bbox.length !== 4 || entry.pixel_bbox.some((n) => typeof n !== "number")) {
+      throw new Error(`"${added[0]}"'s pixel_bbox isn't a real 4-number box -- rejecting.`);
+    }
+    if (!headData.page_geometry?.[String(entry.page)]) {
+      throw new Error(`"${added[0]}" is on page ${entry.page}, which has no page_geometry entry -- rejecting.`);
+    }
+    summary = `add ${added[0]}`;
+  } else if (removed.length) {
+    summary = `remove ${removed[0]}`;
+  } else {
+    const key = modified[0];
+    const baseEntry = baseByKey.get(key), headEntry = headByKey.get(key);
+    const changedFields = Object.keys({ ...baseEntry, ...headEntry }).filter(
+      (f) => JSON.stringify(baseEntry[f]) !== JSON.stringify(headEntry[f])
+    );
+    const disallowed = changedFields.filter((f) => f !== "pixel_bbox");
+    if (disallowed.length) {
+      throw new Error(`This PR changes "${key}"'s ${disallowed.join(", ")}, not just its position -- rejecting rather than merging an edit beyond a reposition.`);
+    }
+    if (!Array.isArray(headEntry.pixel_bbox) || headEntry.pixel_bbox.length !== 4 || headEntry.pixel_bbox.some((n) => typeof n !== "number")) {
+      throw new Error(`"${key}"'s new pixel_bbox isn't a real 4-number box -- rejecting.`);
+    }
+    summary = `reposition ${key}`;
+  }
+
+  if (dryRun) return json({ checked: true, summary });
+
+  // sha pins this merge to the exact commit just validated above, same
+  // TOCTOU protection as every other accept handler.
+  await ghApi(`/repos/${owner}/${repo}/pulls/${prNumber}/merge`, installationToken, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ commit_title: `Manifest change: ${summary}`, sha: pr.head.sha }),
+  });
+  return json({ merged: true, summary });
 }
 
 function base64ToUtf8(b64) {
