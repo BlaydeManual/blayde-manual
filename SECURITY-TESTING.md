@@ -440,14 +440,16 @@ own content, not org-wide classification data.
 **Real, confirmed gap found and closed in the same pass, not specific
 to this endpoint:** direct question ("I swear we had repo policies in
 place that states you can't be one of the 2 approvers if you submitted
-it") led to checking rather than assuming. GitHub's own website hides
-the Approve/merge controls for a PR's own author, but that's web-UI-only
-behavior -- confirmed directly against the live REST API that a
-self-submitted `APPROVE` review is accepted, not rejected, since this
-app calls the API directly and never goes through github.com's own UI.
-Nothing in `handleAcceptPhotoPr`, `handleAcceptRecategorization`, or
-this endpoint checked the approver's identity against the real
-submitter at all before this fix. Closed with `resolveRealSubmitter`
+it") led to checking rather than assuming. GitHub's own docs state
+"pull request authors cannot approve their own pull requests," but
+don't specify whether that's enforced platform-wide (including the raw
+REST API this app calls directly) or only surfaced through github.com's
+own UI -- not independently confirmed against a real API call here, and
+an earlier version of this note overstated that as "confirmed," which
+it wasn't. What IS confirmed: nothing in `handleAcceptPhotoPr`,
+`handleAcceptRecategorization`, or this endpoint checked the approver's
+identity against the real submitter at all before this fix, regardless
+of what GitHub's own platform separately does. Closed with `resolveRealSubmitter`
 (checks the photo's own filename convention first, since a Public-path
 PR's recorded `pr.user.login` is always the App's bot identity, never
 the real contributor; falls back to `pr.user.login` for the two

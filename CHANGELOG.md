@@ -27,11 +27,13 @@ and corrections in both directions -- see
   used for photos and recategorizations. The maintainer-only tool this
   started as (direct-write, no review step) was reverted before
   shipping -- see SECURITY-TESTING.md's Tier 8 and ROADMAP.md for the
-  reasoning. Also closed a real, confirmed self-approval gap across all
+  reasoning. Also added an explicit self-approval check across all
   three accept/merge gates (photo, recategorization, manifest change):
-  GitHub's website hides the Approve/merge controls for a PR's own
-  author, but the REST API this app uses does not enforce that. See
-  SECURITY.md's "Self-approval is blocked" section.
+  none of them checked the approver's identity against the real
+  submitter at all before this. See SECURITY.md's "Self-approval is
+  blocked at the app level" section for what's actually confirmed
+  about GitHub's own platform behavior here versus what this app
+  enforces regardless of it.
 - **Added tabs to the Contributor Portal** (My Reviewables /
   Recategorize / Photo Location Fix) (PR #93), plus real submit-to-toast
   feedback and a live-status tracking list for proposed fixes -- these

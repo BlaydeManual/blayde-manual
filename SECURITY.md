@@ -282,20 +282,25 @@ the merge -- verified live: a normal merge attempt against a failing
 check is genuinely rejected ("the base branch policy prohibits the
 merge"), no override, nothing bypassed.
 
-## Self-approval is blocked, not just hidden by GitHub's website
+## Self-approval is blocked at the app level, regardless of what GitHub itself does
 
-GitHub's own website hides the Approve/merge controls when you're
-looking at your own PR -- real, but a web-UI-only behavior, not
-something the platform enforces at the API level. This app never uses
-GitHub's web UI; every approval and merge goes through the raw REST
-API (`POST /pulls/{n}/reviews`, `PUT /pulls/{n}/merge`), and confirmed
-directly against the live API: a token can submit an `APPROVE` review
-on a PR its own owner authored, and GitHub accepts it. Nothing in
+GitHub's own documentation states plainly that "pull request authors
+cannot approve their own pull requests," but doesn't specify whether
+that's enforced platform-wide (including the raw REST API this app
+uses) or only surfaced as a UI restriction on github.com -- and this
+hasn't been independently confirmed against a real API call in this
+project. Rather than build a security control on top of an ambiguous
+platform behavior, this app checks the approver's identity itself, so
+it doesn't matter which way that ambiguity resolves. Nothing in
 `handleAcceptPhotoPr`, `handleAcceptRecategorization`, or
 `handleAcceptManifestChange` checked the approver's identity against
-the real submitter before this was found and fixed (2026-09-02) --
-each only ever verified the approver's *permission level*, never that
-they weren't the same person who opened the request.
+the real submitter before this was added (2026-09-02) -- each only
+ever verified the approver's *permission level*, never that they
+weren't the same person who opened the request. Direct instruction
+prompted this: "I swear we had repo policies in place that states you
+can't be one of the 2 approvers if you submitted it" -- checked rather
+than assumed, and found the app genuinely had no such check anywhere,
+whatever GitHub's own platform separately does or doesn't enforce.
 
 Closed with `resolveRealSubmitter(pr, files)`, used identically by all
 three accept handlers and by `handlePrReviewStatus`:
