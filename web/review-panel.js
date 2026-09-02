@@ -105,10 +105,13 @@ async function initReviewTab() {
     : `repo scope check passed for ${approved.length} repo(s)`;
   statusEl.style.color = refused.length ? "#ffcc66" : "";
   document.getElementById("prListCard").style.display = "block";
-  document.getElementById("prList").innerHTML = `<p class="sub">Loading open photo requests...</p>`;
+  document.getElementById("prList").innerHTML = `<p class="sub">Loading open requests...</p>`;
 
   const perRepo = await Promise.all(approved.map((repoUrl) =>
-    loadOpenPhotoPRs(repoUrl).catch((e) => { log(`Couldn't load requests for ${repoUrl}: ${e.message}`); return []; })
+    Promise.all([
+      loadOpenPhotoPRs(repoUrl).catch((e) => { log(`Couldn't load photo requests for ${repoUrl}: ${e.message}`); return []; }),
+      loadOpenManifestChangePRs(repoUrl).catch((e) => { log(`Couldn't load manifest-fix requests for ${repoUrl}: ${e.message}`); return []; }),
+    ]).then(([photos, manifestChanges]) => [...photos, ...manifestChanges])
   ));
   currentPRs = perRepo.flat();
   await renderPRList(approved);
@@ -173,6 +176,72 @@ async function loadOpenPhotoPRs(repoUrl) {
         // any -- carried through so re-opening a PR shows prior
         // annotation work instead of silently discarding it.
         original_annotations: entry.annotations || [],
+      };
+    } catch (e) {
+      return null;
+    }
+  }));
+  return results.filter(Boolean);
+}
+
+// Real open PRs on this repo that propose a manifest.json change
+// instead of adding a photo -- issue-requests.js's Contributor Portal
+// proposals. Diffed client-side the same way handleAcceptManifestChange
+// validates server-side, but only for DISPLAY here; the Worker gate
+// independently re-verifies everything again at accept time, this
+// never substitutes for that. A PR whose diff doesn't match one of the
+// three real shapes (one add, one remove, one reposition) is silently
+// skipped, same "isolate one bad item, don't break the list" rule as
+// loadOpenPhotoPRs.
+async function loadOpenManifestChangePRs(repoUrl) {
+  const session = BlaydeAuth.getSession();
+  const [owner, repo] = ownerRepo(repoUrl);
+  const prs = await githubApi(`/repos/${owner}/${repo}/pulls?state=open&per_page=50`, session.token);
+  const results = await Promise.all(prs.map(async (pr) => {
+    try {
+      const files = await githubApi(`/repos/${owner}/${repo}/pulls/${pr.number}/files`, session.token);
+      if (files.length !== 1 || files[0].status !== "modified" || !/^[^/]+\/manifest\.json$/.test(files[0].filename)) return null;
+      const manifestPath = files[0].filename;
+      const editionId = manifestPath.split("/")[0];
+      const [baseFile, headFile] = await Promise.all([
+        githubApi(`/repos/${owner}/${repo}/contents/${manifestPath}?ref=${pr.base.sha}`, session.token),
+        githubApi(`/repos/${owner}/${repo}/contents/${manifestPath}?ref=${pr.head.sha}`, session.token),
+      ]);
+      const baseData = JSON.parse(base64ToUtf8(baseFile.content));
+      const headData = JSON.parse(base64ToUtf8(headFile.content));
+      const baseByKey = new Map((baseData.entries || []).map((e) => [e.procedure_id, e]));
+      const headByKey = new Map((headData.entries || []).map((e) => [e.procedure_id, e]));
+      const added = [...headByKey.keys()].filter((k) => !baseByKey.has(k));
+      const removed = [...baseByKey.keys()].filter((k) => !headByKey.has(k));
+      const modified = [...baseByKey.keys()].filter(
+        (k) => headByKey.has(k) && JSON.stringify(baseByKey.get(k)) !== JSON.stringify(headByKey.get(k))
+      );
+
+      let kind, procedureId, entry, oldBbox = null, newBbox = null;
+      if (added.length === 1 && !removed.length && !modified.length) {
+        kind = "new-slot"; procedureId = added[0]; entry = headByKey.get(procedureId); newBbox = entry.pixel_bbox;
+      } else if (removed.length === 1 && !added.length && !modified.length) {
+        kind = "remove"; procedureId = removed[0]; entry = baseByKey.get(procedureId); oldBbox = entry.pixel_bbox;
+      } else if (modified.length === 1 && !added.length && !removed.length) {
+        kind = "structure"; procedureId = modified[0]; entry = headByKey.get(procedureId);
+        oldBbox = baseByKey.get(procedureId).pixel_bbox; newBbox = entry.pixel_bbox;
+      } else {
+        return null; // not a real single-change shape -- the accept gate will refuse it regardless, not this list's job to explain why
+      }
+
+      const geo = headData.page_geometry?.[String(entry.page)] || baseData.page_geometry?.[String(entry.page)];
+      return {
+        isManifestChange: true,
+        number: pr.number, repo_url: repoUrl, edition_id: editionId,
+        kind, procedure_id: procedureId, page: entry.page, section_heading: entry.section_heading,
+        oldBbox, newBbox,
+        // Always fork-based (see submitManifestChange), so pr.user.login
+        // is already the real proposer -- no bot-authored path exists
+        // for this PR type the way it does for Public-path photos.
+        author: pr.user?.login || "unknown",
+        composite_width_px: geo?.composite_width_px, composite_height_px: geo?.composite_height_px,
+        page_width_pt: geo?.page_width_pt, page_height_pt: geo?.page_height_pt,
+        base_branch: pr.base.ref,
       };
     } catch (e) {
       return null;
@@ -304,9 +373,13 @@ async function renderPRList(approvedRepos) {
           .forEach(({ pr, info }) => {
             const row = document.createElement("div");
             row.className = "pr-row";
+            const manifestKindLabel = { "new-slot": "Add", remove: "Remove", structure: "Reposition" };
+            const title = pr.isManifestChange
+              ? `${manifestKindLabel[pr.kind]}: ${formatProcedureLabel(pr.procedure_id, pr.page, pr.section_heading)}`
+              : formatProcedureLabel(pr.procedure_id, pr.page, pr.section_heading);
             row.innerHTML = `
               <div>
-                <div class="pr-title">${formatProcedureLabel(pr.procedure_id, pr.page, pr.section_heading)}</div>
+                <div class="pr-title">${title}</div>
                 <div class="pr-meta">@${pr.author} &middot; Request #${pr.number}</div>
               </div>
               <div class="pr-row-actions">
@@ -400,7 +473,10 @@ function renderReviewStatusLine() {
 // one and forget the other.
 function updateAcceptButtonState() {
   const btn = document.getElementById("acceptBtn");
-  if (!submittedPhotoImg) { btn.disabled = true; btn.textContent = "Accept & merge"; updateApproveButtonState(); return; }
+  // A manifest-change review has no photo to load at all -- gating on
+  // submittedPhotoImg here would leave Accept permanently disabled for
+  // every one of these regardless of real review status.
+  if (!currentPR?.isManifestChange && !submittedPhotoImg) { btn.disabled = true; btn.textContent = "Accept & merge"; updateApproveButtonState(); return; }
   if (!reviewStatus) { btn.disabled = true; btn.textContent = "Checking review status..."; updateApproveButtonState(); return; }
   if (reviewStatus.error) { btn.disabled = true; btn.textContent = "Couldn't verify review status"; updateApproveButtonState(); return; }
   if (reviewStatus.changes_requested_by.length) {
@@ -491,6 +567,21 @@ async function openPR(number) {
   pdfDoc = null;
   submittedPhotoImg = null;
   reviewStatus = null;
+  document.getElementById("prLog").textContent = "";
+  document.getElementById("reviewArea").classList.add("open");
+  document.getElementById("rejectBtn").disabled = false;
+
+  if (currentPR.isManifestChange) {
+    openManifestChangeReview();
+    return;
+  }
+  // Coming back from a manifest-change review needs these restored to
+  // their normal defaults -- openManifestChangeReview hides them, and
+  // nothing else in the photo path ever re-shows them since they're
+  // visible by default.
+  document.getElementById("manifestDiffArea").style.display = "none";
+  document.getElementById("annoToolbar").style.display = "";
+  document.getElementById("resetBoxBtn").style.display = "";
   // A leftover "showing original" state from whatever PR was open
   // before would otherwise start this one with its own real photo
   // hidden, or the button reading the wrong label.
@@ -516,8 +607,6 @@ async function openPR(number) {
   document.getElementById("annoNextNumberInput").value = annoNextNumber;
   annoRenderHelp();
   renderAnnotations();
-  document.getElementById("prLog").textContent = "";
-  document.getElementById("reviewArea").classList.add("open");
   document.getElementById("reviewTitle").textContent =
     `${formatProcedureLabel(currentPR.procedure_id, currentPR.page, currentPR.section_heading)} - Request #${currentPR.number}`;
   document.getElementById("reviewMeta").textContent = `Submitted by @${currentPR.author}`;
@@ -526,7 +615,6 @@ async function openPR(number) {
   setReviewViewMode("zoomed");
   updateAcceptButtonState();
   renderReviewStatusLine();
-  document.getElementById("rejectBtn").disabled = false;
   document.getElementById("resetBoxBtn").disabled = true;
   loadReviewStatus(); // fires in parallel with the photo fetch below, not awaited
 
@@ -562,8 +650,76 @@ document.getElementById("pdfPicker").addEventListener("change", async (e) => {
   log(`loading ${file.name}...`);
   const buf = await file.arrayBuffer();
   pdfDoc = await pdfjsLib.getDocument({ data: buf }).promise;
-  await renderPage();
+  if (currentPR.isManifestChange) await renderManifestDiffPage();
+  else await renderPage();
 });
+
+// ---- manifest-change review: full page, color-coded, read-only --
+// bbox review only makes sense against real page context (same
+// reasoning issue-requests.js's own editor follows), and unlike a
+// photo there's no crop box to drag here, just a diff to look at. ----
+function openManifestChangeReview() {
+  document.getElementById("manifestDiffArea").style.display = "block";
+  document.getElementById("annoToolbar").style.display = "none";
+  document.getElementById("resetBoxBtn").style.display = "none";
+  document.getElementById("zoomViewport").style.display = "none";
+  document.getElementById("viewModeRow").style.display = "none";
+  const kindLabel = { "new-slot": "Add", remove: "Remove", structure: "Reposition" }[currentPR.kind];
+  document.getElementById("reviewTitle").textContent =
+    `${kindLabel}: ${formatProcedureLabel(currentPR.procedure_id, currentPR.page, currentPR.section_heading)} - Request #${currentPR.number}`;
+  document.getElementById("reviewMeta").textContent = `Proposed by @${currentPR.author}`;
+  document.getElementById("manifestDiffLegend").textContent = {
+    "new-slot": "Blue box: the newly proposed photo slot.",
+    remove: "Blue box with an X: this tracked slot is proposed for removal.",
+    structure: "Green box: current position. Blue box: proposed new position.",
+  }[currentPR.kind] || "";
+  updateAcceptButtonState();
+  renderReviewStatusLine();
+  loadReviewStatus();
+  log(`opened request #${currentPR.number} -- pick your own copy of the manual to render the real page.`);
+}
+
+async function renderManifestDiffPage() {
+  const { targetPage, isPatchedOutput } = await resolvePageForLocalPdf(pdfDoc, currentPR.page);
+  if (isPatchedOutput) {
+    log("This looks like an already-patched Blayde Manual, not the original scan -- adjusting for its extra cover page.");
+  }
+  const page = await pdfDoc.getPage(targetPage);
+  const viewport = page.getViewport({ scale: renderScale });
+  const canvas = document.createElement("canvas");
+  canvas.width = Math.round(viewport.width);
+  canvas.height = Math.round(viewport.height);
+  await page.render({ canvasContext: canvas.getContext("2d"), viewport }).promise;
+
+  const inner = document.getElementById("manifestDiffPageInner");
+  inner.innerHTML = `<img id="manifestDiffPageImg" alt="" style="display:block; max-width:100%;">`;
+  const img = document.getElementById("manifestDiffPageImg");
+  img.src = canvas.toDataURL();
+  img.onload = () => {
+    // Scale from the manifest's own composite_width_px/height_px (the
+    // space pixel_bbox coordinates are actually in) to this <img>'s
+    // real displayed size -- same conversion issue-requests.js's own
+    // boxToPixelBbox does in reverse.
+    const sx = img.clientWidth / (currentPR.composite_width_px || canvas.width);
+    const sy = img.clientHeight / (currentPR.composite_height_px || canvas.height);
+    const addBox = (bbox, className) => {
+      if (!bbox) return;
+      const [x0, y0, x1, y1] = bbox;
+      const el = document.createElement("div");
+      el.className = `overlay-box ${className}`;
+      el.style.left = (x0 * sx) + "px";
+      el.style.top = (y0 * sy) + "px";
+      el.style.width = ((x1 - x0) * sx) + "px";
+      el.style.height = ((y1 - y0) * sy) + "px";
+      inner.appendChild(el);
+    };
+    if (currentPR.kind === "new-slot") addBox(currentPR.newBbox, "diff-proposed");
+    else if (currentPR.kind === "remove") addBox(currentPR.oldBbox, "diff-remove");
+    else if (currentPR.kind === "structure") { addBox(currentPR.oldBbox, "touched"); addBox(currentPR.newBbox, "diff-proposed"); }
+  };
+  log(`rendered page ${currentPR.page} at ${canvas.width}x${canvas.height}.`);
+  updateAcceptButtonState();
+}
 
 async function renderPage() {
   // Shared with every other viewer that does this same local-context
@@ -1357,6 +1513,36 @@ wrap.addEventListener("mousemove", (e) => {
 });
 window.addEventListener("mouseup", () => { dragState = null; });
 
+// ---- manifest-change accept: no photo, no bbox fixup commit needed --
+// the proposed change already IS the manifest.json diff, so this is
+// just "run the Worker's real validation, then merge." ----
+async function acceptManifestChangePR() {
+  const session = BlaydeAuth.getSession();
+  document.getElementById("acceptBtn").disabled = true;
+  document.getElementById("acceptBtn").textContent = "Merging...";
+  document.getElementById("rejectBtn").disabled = true;
+  try {
+    log(`checking and merging request #${currentPR.number}...`);
+    const resp = await fetch(`${BlaydeAuth.AUTH_WORKER_URL}accept-manifest-change`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${session.token}` },
+      body: JSON.stringify({ repo_url: currentPR.repo_url, pr_number: currentPR.number }),
+    });
+    const result = await resp.json().catch(() => ({}));
+    if (!resp.ok || result.error) throw new Error(result.error || `Accept failed (${resp.status}).`);
+    log(`merged: ${result.summary}`);
+    document.getElementById("reviewArea").classList.remove("open");
+    showToast("Accepted! Change merged into the manual.");
+    initReviewTab();
+  } catch (e) {
+    log(`accept failed: ${e.message}`);
+    document.getElementById("acceptBtn").disabled = false;
+    document.getElementById("acceptBtn").textContent = "Accept & merge";
+    document.getElementById("rejectBtn").disabled = false;
+    loadReviewStatus();
+  }
+}
+
 // ---- accept: merge the PR for real, then a follow-up commit fixing
 // up manifest.json's pixel_bbox IF the maintainer adjusted it. Not
 // pushed onto the PR's own branch before merge -- that branch lives on
@@ -1367,6 +1553,7 @@ window.addEventListener("mouseup", () => { dragState = null; });
 // to) sidesteps that entirely -- two clearly-attributed commits
 // instead of one that might silently fail. ----
 document.getElementById("acceptBtn").addEventListener("click", async () => {
+  if (currentPR.isManifestChange) return acceptManifestChangePR();
   const note = (await blaydePrompt("Optional note for the contributor (e.g. \"looks great, thanks!\"):", "")) || "";
   const session = BlaydeAuth.getSession();
   const [owner, repo] = ownerRepo(currentPR.repo_url);

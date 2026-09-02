@@ -409,6 +409,78 @@ as "not yet built." That's a missing feature, not a security gap, but
 it means 7.4/7.9/7.10 above can't be exercised against a genuinely
 real, user-initiated recategorization yet, only a hand-crafted one.
 
+## Tier 8: manifest-fix proposals (`/accept-manifest-change`, manifest.json fork+PR)
+
+Added 2026-09-02. Same real gap Tier 7 covers for `registry.json` --
+anyone can propose a fix (a mispositioned/mis-sized box, a missed photo
+opportunity, an entry that shouldn't be tracked at all), a repo's own
+maintainer reviews and merges it -- applied here to a vehicle's own
+`manifest.json` instead of the org-wide registry, so the approval bar
+is per-repo push-or-better (same as `/accept-photo-pr`), not org-admin
+(`/accept-recategorization`'s bar): a manifest describes one vehicle's
+own content, not org-wide classification data.
+
+**The two things this tier covers:**
+- `POST /accept-manifest-change` -- the merge-time gate. Approves (or
+  dry-runs) a PR that changes exactly one of: one entry added, one
+  entry removed, or one entry's `pixel_bbox` changed -- nothing else,
+  on either side of the diff, including everything outside `entries`
+  (`page_geometry`, vehicle metadata) staying byte-identical. Same
+  negative-file-allowlist + single-change-diff shape as Tier 7's gate,
+  aimed at `<edition_id>/manifest.json` instead of `registry.json`.
+- **The client-side write path** (`issue-requests.js`'s
+  `submitManifestChange`, loaded from the Contributor Portal) -- fork
+  the vehicle repo with the *contributor's own OAuth token*, edit
+  `manifest.json` on a new branch, open a PR back to the org repo. Same
+  fork-then-PR shape as `submitRecategorizationProposal`; the real
+  security boundary is entirely the merge-time gate above, not this
+  step (anyone forking a public repo and opening a PR is just normal
+  GitHub, same "anyone can propose" posture as Tier 2.3/7.9).
+
+**Real, confirmed gap found and closed in the same pass, not specific
+to this endpoint:** direct question ("I swear we had repo policies in
+place that states you can't be one of the 2 approvers if you submitted
+it") led to checking rather than assuming. GitHub's own docs state
+"pull request authors cannot approve their own pull requests," but
+don't specify whether that's enforced platform-wide (including the raw
+REST API this app calls directly) or only surfaced through github.com's
+own UI -- not independently confirmed against a real API call here, and
+an earlier version of this note overstated that as "confirmed," which
+it wasn't. What IS confirmed: nothing in `handleAcceptPhotoPr`,
+`handleAcceptRecategorization`, or this endpoint checked the approver's
+identity against the real submitter at all before this fix, regardless
+of what GitHub's own platform separately does. Closed with `resolveRealSubmitter`
+(checks the photo's own filename convention first, since a Public-path
+PR's recorded `pr.user.login` is always the App's bot identity, never
+the real contributor; falls back to `pr.user.login` for the two
+fork-based paths, where it's already the real proposer) -- applied as
+an explicit block in all three accept/merge handlers, and as an
+exclusion in `handlePrReviewStatus` so a self-review never counts
+toward the required approval count in the first place, not just at
+final-merge time. `review-panel.js`'s Approve button is also disabled
+client-side for the real submitter, so the UI doesn't invite a click
+that would silently do nothing.
+
+| # | Call | Expected | Status |
+|---|---|---|---|
+| 8.1 | `POST /accept-manifest-change` with no `Authorization` header | `500`, `{"error":"Not signed in."}`, same Tier 1 pattern | Pending -- not yet run against live infra |
+| 8.2 | Same call, real signed-in identity, NOT a collaborator on the target repo | Rejected -- `"isn't a collaborator on..."`, same shape as `/accept-photo-pr`'s permission check | Pending |
+| 8.3 | Same call, real collaborator, but only `read`/`triage`, not `push`-or-better | Rejected -- `"needs push access or better..."` | Pending |
+| 8.4 | Real push-level maintainer, `dry_run: true`, against a real open manifest-fix PR proposing exactly one add/remove/reposition | `{"checked": true, summary}` | Pending -- have two real open PRs to test against once deployed |
+| 8.5 | Same, but the PR also touches a second file, or something outside `entries` in the same manifest.json | Rejected -- negative allowlist / "changes something besides its entries list" | Pending |
+| 8.6 | Same, but the diff adds AND removes/modifies more than one entry's worth | Rejected -- "not exactly 1" changed-entries check | Pending |
+| 8.7 | Same, but a newly added entry is missing a required field, doesn't start `needs_contributed_photo`, or has a malformed `pixel_bbox` | Rejected -- new-entry field validation | Pending |
+| 8.8 | **The real submitter of the PR being reviewed attempts to Accept or Approve their own proposal** | Rejected server-side (`resolveRealSubmitter` match); Approve button already disabled client-side; the review-status count excludes their own review even if one somehow got submitted | Pending -- this is the fix from the finding above; verify against a real self-submitted PR, and independently for `/accept-photo-pr` and `/accept-recategorization` too, since the same fix landed in all three |
+| 8.9 | A contributor forks a vehicle repo and opens a real PR via `submitManifestChange`, using their own OAuth token, NOT a maintainer of that repo | **Succeeds** -- by design, same "anyone can propose" posture as Tier 2.3/7.9; the real gate is 8.1-8.8 at merge time | Pending |
+
+**Not covered by this tier:** the Maintainer Portal's review UI
+(`review-panel.js`'s full-page color-coded diff view) is a display/UX
+concern, not a security boundary -- what a maintainer *sees* before
+clicking Accept has no bearing on what the Worker independently
+re-verifies at that moment. A maintainer who trusts a misleading render
+and clicks Accept anyway still only gets what 8.1-8.7 above allow
+through.
+
 ## What this plan does NOT cover
 
 - Load/rate-limit behavior of `/direct-submit` under real spam (SECURITY.md's known-gap note) -- worth a dedicated pass later, not blocking this merge.

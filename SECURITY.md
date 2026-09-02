@@ -282,6 +282,58 @@ the merge -- verified live: a normal merge attempt against a failing
 check is genuinely rejected ("the base branch policy prohibits the
 merge"), no override, nothing bypassed.
 
+## Self-approval is blocked at the app level, regardless of what GitHub itself does
+
+GitHub's own documentation states plainly that "pull request authors
+cannot approve their own pull requests," but doesn't specify whether
+that's enforced platform-wide (including the raw REST API this app
+uses) or only surfaced as a UI restriction on github.com -- and this
+hasn't been independently confirmed against a real API call in this
+project. Rather than build a security control on top of an ambiguous
+platform behavior, this app checks the approver's identity itself, so
+it doesn't matter which way that ambiguity resolves. Nothing in
+`handleAcceptPhotoPr`, `handleAcceptRecategorization`, or
+`handleAcceptManifestChange` checked the approver's identity against
+the real submitter before this was added (2026-09-02) -- each only
+ever verified the approver's *permission level*, never that they
+weren't the same person who opened the request. Direct instruction
+prompted this: "I swear we had repo policies in place that states you
+can't be one of the 2 approvers if you submitted it" -- checked rather
+than assumed, and found the app genuinely had no such check anywhere,
+whatever GitHub's own platform separately does or doesn't enforce.
+
+Closed with `resolveRealSubmitter(pr, files)`, used identically by all
+three accept handlers and by `handlePrReviewStatus`:
+
+- **Checks the photo's own filename convention first**
+  (`<procedure_id>__by_<login>...`) -- required for the Public
+  (direct-contribute) path, where the PR's recorded `pr.user.login` is
+  always the GitHub App's bot identity, never the real contributor, so
+  `pr.user.login` alone would never catch a Public-path self-approval
+  at all.
+- **Falls back to `pr.user.login`** for the two fork-based paths
+  (Private-path photos, recategorization proposals, manifest-change
+  proposals) -- already the real proposer there, since GitHub always
+  attributes a fork-based PR's authorship to whichever account's token
+  opened it.
+
+This runs in two places, not just one: `handlePrReviewStatus` excludes
+a matching self-review from ever counting toward `approved_count` in
+the first place (so self-approval can't even help reach the required
+count, not just "gets caught at the final click"), and each accept
+handler independently refuses to merge if the *caller requesting the
+merge* is the real submitter, regardless of review counts.
+`review-panel.js`'s Approve button is also disabled client-side for
+the real submitter -- the server-side block was already sufficient,
+this just keeps the UI from inviting a click that would silently do
+nothing.
+
+`/accept-manifest-change` (manifest-fix proposals -- see
+"Locked direct-submit repos" for the general shape this follows) ships
+with this check built in from the start, not retrofitted; see
+`SECURITY-TESTING.md`'s Tier 8 for its full validation shape and test
+matrix.
+
 ## vehicle-scaffold: the same checks, enforced by GitHub itself
 
 `BlaydeManual/vehicle-scaffold` is a real GitHub template repo
