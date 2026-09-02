@@ -915,23 +915,35 @@ async function handleApproveVehicle(request, env) {
   // like the grant above; failure here doesn't undo the approval, but
   // is worth actually checking, not just assuming succeeded.
   //
-  // required_status_checks makes vehicle-scaffold's "checker" job (the
-  // real GitHub Actions job name from validate-photo.yml) a hard
-  // requirement too, closing the gap /accept-photo-pr alone can't: that
-  // endpoint only runs when Accept is clicked through this site, but a
-  // native GitHub merge -- github.com's own button, or git/the API
-  // directly -- skips app-level logic entirely. A required check is
-  // GitHub's own enforcement, the same way the review-count requirement
-  // already is, so it applies no matter which UI initiates the merge.
-  // Verified live: a normal merge attempt against a failing "checker"
-  // run is genuinely rejected ("the base branch policy prohibits the
-  // merge"), no override, nothing bypassed.
+  // required_status_checks makes vehicle-scaffold's "checker" AND
+  // "validate" jobs (the real GitHub Actions job names from
+  // validate-photo.yml/validate-manifest.yml) a hard requirement too,
+  // closing the gap /accept-photo-pr and /accept-manifest-change alone
+  // can't: those endpoints only run when Accept is clicked through this
+  // site, but a native GitHub merge -- github.com's own button, or
+  // git/the API directly -- skips app-level logic entirely. A required
+  // check is GitHub's own enforcement, the same way the review-count
+  // requirement already is, so it applies no matter which UI initiates
+  // the merge. Verified live: a normal merge attempt against a failing
+  // "checker" run is genuinely rejected ("the base branch policy
+  // prohibits the merge"), no override, nothing bypassed.
+  //
+  // Real, confirmed bug fixed here, 2026-09-02: only "checker" was
+  // required, but a manifest-only PR never touches images/ at all, so
+  // validate-photo.yml's "checker" job never triggers for it -- GitHub
+  // blocks merge indefinitely for a required check that never posts a
+  // status, not just a failing one, so every manifest-change PR was
+  // permanently unmergeable. Both workflows were restructured (removed
+  // their path-filtered triggers, added an internal skip-with-success
+  // path for PRs that don't touch their own file type) so BOTH contexts
+  // now post a real status on every PR regardless of which files it
+  // touches, making it safe to require both.
   //
   // Fragile coupling, stated so nobody discovers it the hard way: the
-  // context string below ("checker") has to exactly match that job's
-  // real name in vehicle-scaffold's workflow YAML. Renaming that job
-  // there without updating this string doesn't fail loudly -- GitHub
-  // just never finds a matching check run again, and every future
+  // context strings below ("checker", "validate") have to exactly match
+  // those jobs' real names in vehicle-scaffold's workflow YAML. Renaming
+  // a job there without updating this string doesn't fail loudly --
+  // GitHub just never finds a matching check run again, and every future
   // vehicle repo's merges silently block forever, "expected, never
   // satisfied." Already-approved repos are unaffected by a scaffold
   // rename (their protection was set once, at their own approval time).
@@ -950,7 +962,7 @@ async function handleApproveVehicle(request, env) {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
-        required_status_checks: { strict: false, checks: [{ context: "checker" }] },
+        required_status_checks: { strict: false, checks: [{ context: "checker" }, { context: "validate" }] },
         enforce_admins: false,
         required_pull_request_reviews: { required_approving_review_count: 2 },
         restrictions: null,
