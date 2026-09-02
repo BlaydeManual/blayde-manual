@@ -18,6 +18,74 @@ and corrections in both directions -- see
 
 ## [Unreleased]
 
+- **Moved photo-location-fix proposals to the Contributor Portal** (PR
+  #92): any signed-in contributor, not just a manual's own maintainers,
+  can propose a box reposition, a missed photo slot, or flag one for
+  removal -- a real fork+PR, reviewed through a new
+  `/accept-manifest-change` Worker gate, matching the site's own
+  "requesting is Contributor, reviewing is Maintainer" rule already
+  used for photos and recategorizations. The maintainer-only tool this
+  started as (direct-write, no review step) was reverted before
+  shipping -- see SECURITY-TESTING.md's Tier 8 and ROADMAP.md for the
+  reasoning. Also closed a real, confirmed self-approval gap across all
+  three accept/merge gates (photo, recategorization, manifest change):
+  GitHub's website hides the Approve/merge controls for a PR's own
+  author, but the REST API this app uses does not enforce that. See
+  SECURITY.md's "Self-approval is blocked" section.
+- **Added tabs to the Contributor Portal** (My Reviewables /
+  Recategorize / Photo Location Fix) (PR #93), plus real submit-to-toast
+  feedback and a live-status tracking list for proposed fixes -- these
+  had been three separate real actions stacked as one long scroll of
+  cards.
+- **Built the Maintainer Portal's review UI for manifest-change
+  proposals** (PR #95): a full-page, color-coded diff view (proposed =
+  blue, current position = green, a removal = blue with a
+  corner-to-corner X) instead of the photo compare/annotate canvas,
+  wired to the same Accept/Reject actions as a photo request.
+- **Fixed: a local upload's status could never be corrected if the real
+  submission was made under a different account, or an earlier browser
+  session on a shared device** (PR #94) -- switched from a search
+  scoped to whoever's currently signed in to a direct per-PR state
+  check, which works regardless of who submitted it. Also fixed the "we
+  don't have this manual yet" CTA never clearing after a later
+  successful match, and tightened the proposed-fixes list into a
+  collapsible, compact list.
+- **Fixed the recategorization picker rendering one `<option>` per
+  approved registry entry with no limit** (PR #91) -- added a category
+  filter and live search, capped at 100 rendered options regardless of
+  registry size; the same picker pattern was reused for the
+  photo-location-fix feature above.
+- **Restored a review-status feature that had silently never reached
+  `main`** (PR #90) despite being reported as shipped -- a merge
+  commit's second parent turned out to be an earlier sibling commit,
+  not the one adding the feature. Replaced "View on GitHub" with an
+  inline review-status line reusing the same endpoint the Maintainer
+  Portal already used, and fixed submitted/accepted sharing the exact
+  same badge color.
+- **Fixed three real bugs in the reviewables/patching pipeline** (PR
+  #89): the Public-path submission search silently found nothing on
+  every request (GitHub's Search API doesn't handle a quoted phrase
+  containing an apostrophe -- confirmed directly against the live API),
+  a locally-saved upload's status never updated once the real PR was
+  merged or closed on GitHub, and `images/README.md` was being counted
+  as an "available photo" in the patcher's own log.
+- **Fixed: "Propose a recategorization" was visible to signed-out
+  visitors** (PR #88), inviting them to fill out a form that would only
+  hit a sign-in wall at Submit.
+- **Fixed a real factual error in the FAQ's repo-ownership answer, then
+  audited and corrected four more real drifts found by a full pass**
+  (PRs #86-87): a background research pass found the org-approval-quorum,
+  local-draft-storage, "passive" maintainer label, and photo-removal
+  answers all describing something the code never built or had since
+  moved past. Also rewrote every double-dash clause connector in the
+  FAQ into full sentences, and generalized its diagram/copy for the
+  category expansion.
+- **Fixed a real gap where every PR/review notification email GitHub
+  sends links straight into raw github.com, with no way back to the
+  site** (PR #85): every real PR body this project's own code
+  constructs now ends with a link back to the Contributor Portal.
+  Logged an in-portal notification feed as a ROADMAP.md stretch goal,
+  explicitly scoped to stay read-only with no new user data storage.
 - **Added a photo annotation editor to the PR review panel** (PRs #62-64):
   five tools (Arrow, Line, Circle, Number, Text) for drawing callouts on
   a submitted photo during review, stored as relative (0-100) vector
