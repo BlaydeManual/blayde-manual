@@ -1165,18 +1165,45 @@ async function openPrForUpload(uploadId) {
 // A local record's status is only ever set once, at submit/push time,
 // and nothing else in this file ever touches it again -- so it stays
 // frozen at "submitted" even after the real PR is merged or closed on
-// GitHub. GitHub is the one real source of truth for what happens to a
-// PR after that, so once a local record has a real PR attached
-// (prNumber + repoUrl), defer to whatever syncRealSubmissions() most
-// recently learned from the API instead of trusting the stale local
-// guess. Returns null while there's nothing to defer to yet (no PR, or
-// the API hasn't been checked/found this one) -- the local status
-// stands unchanged in that case.
+// GitHub. Real, confirmed bug in an earlier version of this function:
+// matching against remoteUploads only worked if the PR was findable by
+// a search scoped to the CURRENTLY signed-in username -- a local
+// record for a submission made under a different account (or an
+// earlier session on a shared browser) could never be corrected, since
+// that search would never include it. This device already knows the
+// exact prNumber + repoUrl regardless of who submitted it, so it
+// doesn't need a search at all: a direct per-PR state fetch
+// (prStateCache, populated by loadRealPrStates below) works for any
+// account's submission.
 function outcomeFor(upload) {
   if (upload.prNumber == null || !upload.repoUrl) return null;
-  const remote = remoteUploads.find((r) => r.prNumber === upload.prNumber && r.repoUrl === upload.repoUrl);
-  if (!remote || remote.status === upload.status) return null;
-  return { status: remote.status, note: null };
+  const real = prStateCache.get(`${upload.repoUrl}#${upload.prNumber}`);
+  if (!real || real === upload.status) return null;
+  return { status: real, note: null };
+}
+
+const prStateCache = new Map(); // `${repoUrl}#${prNumber}` -> "submitted"|"accepted"|"rejected"
+
+async function fetchRealPrState(repoUrl, prNumber) {
+  const session = BlaydeAuth.getSession();
+  const [owner, repo] = ownerRepo(repoUrl);
+  const pr = await githubApi(`/repos/${owner}/${repo}/pulls/${prNumber}`, session.token);
+  return pr.state === "open" ? "submitted" : pr.merged_at ? "accepted" : "rejected";
+}
+
+// Only worth checking a record still showing "submitted" -- once
+// locally marked accepted/rejected there's nothing left to correct.
+function loadRealPrStates(allUploads) {
+  allUploads
+    .filter((u) => u.status === "submitted" && u.prNumber != null && u.repoUrl && !prStateCache.has(`${u.repoUrl}#${u.prNumber}`))
+    .forEach((u) => {
+      const key = `${u.repoUrl}#${u.prNumber}`;
+      fetchRealPrState(u.repoUrl, u.prNumber).then((state) => {
+        const changed = state !== u.status;
+        prStateCache.set(key, state);
+        if (changed) renderUploads();
+      }).catch(() => { /* best-effort -- stays showing the local status until this succeeds */ });
+    });
 }
 
 // ---- real GitHub sync for "My Reviewables" -- finds every open OR
@@ -1542,6 +1569,7 @@ async function renderUploads() {
     btn.addEventListener("click", () => openPrForUpload(btn.dataset.openpr));
   });
   loadReviewStatusLines(allUploads);
+  loadRealPrStates(allUploads);
 }
 
 // Fire-and-forget, one fetch per still-open PR actually shown this

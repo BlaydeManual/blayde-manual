@@ -573,22 +573,28 @@ const manifestFixStatusCache = new Map();
 function renderManifestFixRequests() {
   const card = document.getElementById("issueRequestsCard");
   const list = document.getElementById("issueRequestsList");
+  const summary = document.getElementById("issueRequestsSummary");
   if (!manifestFixRequests.length) { card.style.display = "none"; return; }
   card.style.display = "block";
+  summary.textContent = `Your proposed fixes (${manifestFixRequests.length})`;
   list.innerHTML = "";
+  // Direct feedback: this used to be a big, spaced-out block per entry
+  // (bold vehicle name, several stacked lines) -- collapsed into a
+  // details/summary + scrollable list, same tight two-line-per-row
+  // density as My Reviewables' own .upload-row, not colored or fancy.
   manifestFixRequests.slice().reverse().forEach((req) => {
     const key = `${req.repoUrl}#${req.prNumber}`;
-    const row = document.createElement("div");
-    row.className = "issue-pending-row";
+    const statusId = `manifestfixstatus-${key.replace(/[^a-zA-Z0-9]/g, "")}`;
     // Older local records predate vehicleLabel -- falls back to
     // repoUrl+editionId rather than rendering blank.
     const vehicleLabel = req.vehicleLabel || `${req.repoUrl} (${req.editionId})`;
+    const row = document.createElement("div");
+    row.className = "upload-row";
+    row.style.padding = "6px 0";
     row.innerHTML = `
       <div>
-        <div style="font-weight:700;">${vehicleLabel}</div>
-        <div class="sub">${req.sectionHeading} <span>(${req.kind})</span></div>
-        <div class="sub"><a href="${req.prUrl}" target="_blank" rel="noopener" class="pr-link">Request #${req.prNumber}</a></div>
-        <div class="sub review-status-line" id="manifestfixstatus-${key.replace(/[^a-zA-Z0-9]/g, "")}">${reviewStatusText(manifestFixStatusCache.get(key))}</div>
+        <div class="upload-title" style="font-size:0.88rem;">${vehicleLabel} <span class="sub">&mdash; ${req.sectionHeading} (${req.kind})</span></div>
+        <div class="upload-meta"><a href="${req.prUrl}" target="_blank" rel="noopener" class="pr-link">Request #${req.prNumber}</a> &middot; <span id="${statusId}">${reviewStatusText(manifestFixStatusCache.get(key))}</span></div>
       </div>
     `;
     list.appendChild(row);
