@@ -332,7 +332,23 @@ issueWrap.addEventListener("mousedown", (e) => {
     newBox.style.left = x0 + "px"; newBox.style.top = y0 + "px";
     newBox.style.width = ISSUE_NEW_BOX_W + "px"; newBox.style.height = ISSUE_NEW_BOX_H + "px";
     newBox.innerHTML = `<div class="handle nw" data-corner="nw"></div><div class="handle ne" data-corner="ne"></div><div class="handle sw" data-corner="sw"></div><div class="handle se" data-corner="se"></div>`;
-    issueWrap.appendChild(newBox);
+    // Real, confirmed bug fixed here, 2026-09-03: every OTHER overlay
+    // box lives inside #issuePageInner -- the element that actually
+    // carries the CSS transform:scale() this whole editor uses to fit a
+    // full-resolution page render into the visible width (same pattern
+    // as contribute.js's own crop editor, see cssScale() there for the
+    // reconciled reference). Appending here instead to #issuePageWrap
+    // (the untransformed outer container) put this one box in the wrong
+    // coordinate space entirely: its left/top/width/height are canvas-
+    // pixel values like every other box's, but with no scale transform
+    // applied to it, a screen-space mouse delta divided down to canvas-
+    // pixel space (see the resize math above) landed on an unscaled
+    // box and grew it by 1/scale too much -- confirmed via direct
+    // measurement (a 50px real drag grew the box 169px on a 0.295
+    // scale page, matching 1/0.295 almost exactly). One-line fix:
+    // append to the same transformed container everything else uses.
+    document.getElementById("issuePageInner").appendChild(newBox);
+    newBox.addEventListener("contextmenu", (e) => { e.preventDefault(); openNewSlotRightClickMenu(e, newBox); });
     queueNewSlotIssue(newBox);
   }
 });
@@ -461,6 +477,30 @@ function openIssueRightClickMenu(e, entry, photoFilename) {
   });
   const closeMenu = () => { menu.style.display = "none"; document.removeEventListener("click", closeMenu); };
   setTimeout(() => document.addEventListener("click", closeMenu), 0);
+}
+
+// A just-added new-slot box has no manifest entry behind it -- nothing
+// to "flag a problem with" or "remove a tracked slot" from, it's a
+// mistake to undo. Real gap this closes: there was no way at all to
+// get rid of one after adding it, direct feedback, 2026-09-03.
+function openNewSlotRightClickMenu(e, box) {
+  const menu = document.getElementById("issueRightClickMenu");
+  menu.style.left = e.clientX + "px";
+  menu.style.top = e.clientY + "px";
+  menu.innerHTML = `<button id="rcDeleteNewSlot">Delete this box</button>`;
+  menu.style.display = "block";
+  document.getElementById("rcDeleteNewSlot").addEventListener("click", () => {
+    menu.style.display = "none";
+    deleteNewSlotIssue(box);
+  });
+  const closeMenu = () => { menu.style.display = "none"; document.removeEventListener("click", closeMenu); };
+  setTimeout(() => document.addEventListener("click", closeMenu), 0);
+}
+
+function deleteNewSlotIssue(box) {
+  pendingIssues = pendingIssues.filter((i) => !(i.kind === "new-slot" && i.procedure_id === box.dataset.id));
+  box.remove();
+  renderPendingIssues();
 }
 
 // Fork-based, same shape as contribute.js's submitRecategorizationProposal
