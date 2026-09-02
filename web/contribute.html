@@ -472,11 +472,16 @@
       </div>
       <div id="issuePageWrap" style="position:relative; max-width:100%; overflow:hidden; border:1px solid var(--steel-dark);">
         <div id="issuePageInner" style="position:relative; transform-origin: top left;">
-          <img id="issuePageImg" alt="" style="display:block; max-width:100%;">
+          <img id="issuePageImg" alt="" draggable="false" style="display:block; max-width:100%;">
         </div>
       </div>
       <div id="issueEditorFooter" style="padding:10px 0 0;">
-        <span class="sub" style="margin:0;">drag empty space to flag a missing/wrong slot &middot; drag an existing box to move it &middot; drag its corner to resize &middot; right-click an existing photo for more options</span>
+        <ul class="sub" style="margin:0; padding-left:20px; list-style-type:'👉 '; display:flex; flex-direction:column; gap:4px;">
+          <li>Spot a gap? Click empty space to drop a new box right there &mdash; no typing required.</li>
+          <li>Feeling clumsy? Drag any box by the middle to nudge it into place.</li>
+          <li>Too big, too small? Grab a corner handle and pull &mdash; all four corners work.</li>
+          <li>Right-click an existing photo for two more tricks: <b style="color:var(--text);">Problem with this photo &rarr;</b> (send a replacement through Contributor Portal) or <b style="color:var(--text);">Remove this slot</b> (flag it as not a real photo opportunity).</li>
+        </ul>
       </div>
       <div id="issueRightClickMenu" style="display:none; position:fixed; z-index:60; background:var(--black-2); border:1px solid var(--steel-dark); border-radius:6px; padding:4px; font-size: 0.92rem;"></div>
     </div>

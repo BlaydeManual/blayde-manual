@@ -271,9 +271,10 @@ function renderIssueOverlays() {
     if (pendingIssues.some((i) => i.kind === "remove" && i.procedure_id === entry.procedure_id)) {
       box.classList.add("queued-remove");
     }
-    box.innerHTML = `<div class="handle nw" data-corner="nw"></div><div class="handle se" data-corner="se"></div>`;
+    box.innerHTML = `<div class="handle nw" data-corner="nw"></div><div class="handle ne" data-corner="ne"></div><div class="handle sw" data-corner="sw"></div><div class="handle se" data-corner="se"></div>`;
     if (photoFilename) {
       const img = document.createElement("img");
+      img.draggable = false;
       const bytes = issuePhotos.get(photoFilename);
       // Real fetched bytes -> real blob URL. Mock fallback has no real
       // bytes (nothing's live yet, see LEGAL.md) -- a stand-in demo
@@ -287,11 +288,26 @@ function renderIssueOverlays() {
   });
 }
 
-// ---- drag to move/resize an existing box, or draw a new one on empty
-// space -- same interaction pattern as indexer-review.js's page modal,
-// reused rather than reinvented. The difference: touching a box here
+// ---- click empty space to add a fixed-size box, drag an existing box
+// to move it, drag its corner to resize -- same interaction pattern as
+// indexer-review.js's page modal (see that file's own addFigureAt for
+// the full reasoning), reused rather than reinvented. Two real,
+// confirmed bugs this fixes, found via direct testing: (1) the
+// underlying page image had no draggable="false", so starting a drag
+// on empty space was indistinguishable from the browser's own native
+// image-drag, not a rectangle draw -- indexer-review.js hit this exact
+// bug first and fixed it the same way (see contribute.html's
+// #issuePageImg). (2) Drag-to-draw plus a free-text label prompt was
+// also just the wrong interaction entirely once indexer-review.js
+// dropped both for the exact same reason LEGAL.md gives: a human
+// describing what they see from the manual is functionally the same
+// act as OCR, just done by hand, and a fixed-size click-to-add box
+// (resizable after, with the same handles as any other box) is both
+// easier to place precisely and never asks for a description. The
+// difference from indexer-review.js's version: touching a box here
 // doesn't edit an in-progress manifest, it queues an issue. ----
-let issueDrag = null, issueNewDrag = null;
+const ISSUE_NEW_BOX_W = 160, ISSUE_NEW_BOX_H = 110;
+let issueDrag = null;
 const issueWrap = document.getElementById("issuePageWrap");
 issueWrap.addEventListener("mousedown", (e) => {
   if (!issueManifest) return;
@@ -307,53 +323,53 @@ issueWrap.addEventListener("mousedown", (e) => {
     issueDrag = { mode: "move", id: box.dataset.id, box, startX: x, startY: y,
       orig: { left: parseFloat(box.style.left), top: parseFloat(box.style.top), width: parseFloat(box.style.width), height: parseFloat(box.style.height) } };
   } else {
-    issueNewDrag = { startX: x, startY: y };
+    const canvasInfo = issuePageCache[issuePageNum];
+    const maxW = canvasInfo.canvas.width, maxH = canvasInfo.canvas.height;
+    const x0 = Math.max(0, Math.min(x - ISSUE_NEW_BOX_W / 2, maxW - ISSUE_NEW_BOX_W));
+    const y0 = Math.max(0, Math.min(y - ISSUE_NEW_BOX_H / 2, maxH - ISSUE_NEW_BOX_H));
+    const newBox = document.createElement("div");
+    newBox.className = "overlay-box new-slot touched";
+    newBox.style.left = x0 + "px"; newBox.style.top = y0 + "px";
+    newBox.style.width = ISSUE_NEW_BOX_W + "px"; newBox.style.height = ISSUE_NEW_BOX_H + "px";
+    newBox.innerHTML = `<div class="handle nw" data-corner="nw"></div><div class="handle ne" data-corner="ne"></div><div class="handle sw" data-corner="sw"></div><div class="handle se" data-corner="se"></div>`;
+    issueWrap.appendChild(newBox);
+    queueNewSlotIssue(newBox);
   }
 });
 issueWrap.addEventListener("mousemove", (e) => {
+  if (!issueDrag) return;
   const rect = issueWrap.getBoundingClientRect();
   const scale = issueDisplayScale();
   const x = (e.clientX - rect.left + issueWrap.scrollLeft) / scale, y = (e.clientY - rect.top + issueWrap.scrollTop) / scale;
-  if (issueDrag) {
-    const dx = x - issueDrag.startX, dy = y - issueDrag.startY;
-    const o = issueDrag.orig;
-    let left = o.left, top = o.top, width = o.width, height = o.height;
-    if (issueDrag.mode === "move") { left = o.left + dx; top = o.top + dy; }
-    else {
-      if (issueDrag.corner === "nw") { left = o.left + dx; top = o.top + dy; width = o.width - dx; height = o.height - dy; }
-      else { width = o.width + dx; height = o.height + dy; }
-    }
-    if (width > 8 && height > 8) {
-      issueDrag.box.style.left = left + "px"; issueDrag.box.style.top = top + "px";
-      issueDrag.box.style.width = width + "px"; issueDrag.box.style.height = height + "px";
-      issueDrag.box.classList.add("touched");
-    }
+  const dx = x - issueDrag.startX, dy = y - issueDrag.startY;
+  const o = issueDrag.orig;
+  let left = o.left, top = o.top, width = o.width, height = o.height;
+  if (issueDrag.mode === "move") { left = o.left + dx; top = o.top + dy; }
+  else {
+    // Every corner independently moves only its own two edges -- "ne"
+    // moves the top and right edges, leaving left/bottom fixed, etc.
+    // Previously only nw/se existed and any other corner would have
+    // wrongly reused se's math; now each of the four is explicit and
+    // correct, matching indexer-review.js's own fix for this.
+    const c = issueDrag.corner;
+    if (c === "nw" || c === "sw") { left = o.left + dx; width = o.width - dx; } else { width = o.width + dx; }
+    if (c === "nw" || c === "ne") { top = o.top + dy; height = o.height - dy; } else { height = o.height + dy; }
+  }
+  if (width > 8 && height > 8) {
+    issueDrag.box.style.left = left + "px"; issueDrag.box.style.top = top + "px";
+    issueDrag.box.style.width = width + "px"; issueDrag.box.style.height = height + "px";
+    issueDrag.box.classList.add("touched");
   }
 });
-issueWrap.addEventListener("mouseup", async (e) => {
-  if (issueDrag) {
+issueWrap.addEventListener("mouseup", () => {
+  if (!issueDrag) return;
+  if (issueDrag.box.classList.contains("new-slot")) {
+    updateNewSlotIssueBbox(issueDrag.box);
+  } else {
     const entry = issueManifest.entries.find((x) => x.procedure_id === issueDrag.id);
     queueStructureIssue(entry, issueDrag.box);
-    issueDrag = null;
-    return;
   }
-  if (issueNewDrag) {
-    const rect = issueWrap.getBoundingClientRect();
-    const scale = issueDisplayScale();
-    const x = (e.clientX - rect.left + issueWrap.scrollLeft) / scale, y = (e.clientY - rect.top + issueWrap.scrollTop) / scale;
-    const x0 = Math.min(x, issueNewDrag.startX), x1 = Math.max(x, issueNewDrag.startX);
-    const y0 = Math.min(y, issueNewDrag.startY), y1 = Math.max(y, issueNewDrag.startY);
-    issueNewDrag = null;
-    if (x1 - x0 < 15 || y1 - y0 < 15) return;
-    const label = await blaydePrompt("What should be here? (short label)");
-    if (label === null) return;
-    const box = document.createElement("div");
-    box.className = "overlay-box new-slot";
-    box.style.left = x0 + "px"; box.style.top = y0 + "px";
-    box.style.width = (x1 - x0) + "px"; box.style.height = (y1 - y0) + "px";
-    issueWrap.appendChild(box);
-    queueNewSlotIssue(label, box);
-  }
+  issueDrag = null;
 });
 
 function boxToPixelBbox(box) {
@@ -374,10 +390,27 @@ function queueStructureIssue(entry, box) {
   renderPendingIssues();
 }
 
-function queueNewSlotIssue(label, box) {
+// No label/description asked here, on purpose -- same reasoning as
+// indexer-review.js's own addFigureAt: describing what's in the manual
+// by hand is functionally the same act as OCR, and the crop thumbnail
+// itself (visible in the review queue once a maintainer opens this)
+// is the real identifying signal, not a free-text guess typed here.
+function queueNewSlotIssue(box) {
   const bbox = boxToPixelBbox(box);
-  const pid = `p${String(issuePageNum).padStart(3, "0")}_${label.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/(^-|-$)/g, "")}_issueadd${Date.now()}`;
-  pendingIssues.push({ kind: "new-slot", procedure_id: pid, page: issuePageNum, section_heading: label, bbox });
+  const pid = `p${String(issuePageNum).padStart(3, "0")}_issueadd${Date.now()}`;
+  box.dataset.id = pid;
+  pendingIssues.push({ kind: "new-slot", procedure_id: pid, page: issuePageNum, section_heading: "New photo slot", bbox });
+  renderPendingIssues();
+}
+
+// Fires on every subsequent move/resize of a just-added new-slot box --
+// queueNewSlotIssue only runs once, at the initial click-to-add, so a
+// drag afterward needs its own path back to the same pendingIssues
+// entry (matched via box.dataset.id, set above) rather than pushing a
+// second, duplicate issue.
+function updateNewSlotIssueBbox(box) {
+  const issue = pendingIssues.find((i) => i.kind === "new-slot" && i.procedure_id === box.dataset.id);
+  if (issue) issue.bbox = boxToPixelBbox(box);
   renderPendingIssues();
 }
 
