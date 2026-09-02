@@ -514,7 +514,13 @@ function updateAcceptButtonState() {
 // APPROVE review from the same person but it's just noise once cast.
 function updateApproveButtonState() {
   const btn = document.getElementById("approveBtn");
-  if (!submittedPhotoImg || !reviewStatus || reviewStatus.error) {
+  // Real, confirmed bug fixed here, 2026-09-02: a manifest-change PR
+  // never loads a photo at all -- this gate, unguarded, left Approve
+  // permanently disabled for every manifest-change PR regardless of
+  // who was signed in or the real review/self-approval state.
+  // updateAcceptButtonState got this same guard already; this one was
+  // missed. Confirmed live against suzuki-sv650-1999 PR #10.
+  if ((!currentPR?.isManifestChange && !submittedPhotoImg) || !reviewStatus || reviewStatus.error) {
     btn.disabled = true;
     btn.textContent = "Approve";
     return;
