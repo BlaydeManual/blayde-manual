@@ -246,6 +246,18 @@
   .overlay-box .handle.ne { top: -6px; right: -6px; cursor: nesw-resize; }
   .overlay-box .handle.sw { bottom: -6px; left: -6px; cursor: nesw-resize; }
   .overlay-box .handle.se { bottom: -6px; right: -6px; cursor: nwse-resize; }
+  /* Manifest-change review, color-coded: proposed state always blue,
+     previous position (only shown for a reposition) reuses the
+     existing green .touched, a removal is blue with a corner-to-corner
+     X drawn as two diagonal gradient lines. No handles on these -- this
+     view is read-only, nothing here is draggable. */
+  .overlay-box.diff-proposed { border-color: #5b9bf7; background: rgba(91,155,247,0.12); }
+  .overlay-box.diff-remove {
+    border-color: #5b9bf7;
+    background:
+      linear-gradient(to top right, transparent 49%, #5b9bf7 49.5%, #5b9bf7 50.5%, transparent 51%),
+      linear-gradient(to top left, transparent 49%, #5b9bf7 49.5%, #5b9bf7 50.5%, transparent 51%);
+  }
   #pageModalFooter { padding: 10px; display: flex; gap: 8px; align-items: center; }
   #pageModalFooter button { margin: 0; }
 
@@ -436,6 +448,22 @@
             </div>
           </div>
         </div>
+
+        <!-- ============ Manifest-change diff (a proposed add/remove/
+             reposition on manifest.json, not a photo) -- full page,
+             color-coded: proposed = blue, previous position = green,
+             a removal = blue with a corner-to-corner X. Bbox review
+             only makes sense against real page context, same reasoning
+             issue-requests.js's own editor already follows. ============ -->
+        <div id="manifestDiffArea" style="display:none;">
+          <p class="sub" id="manifestDiffLegend" style="margin:0 0 8px;"></p>
+          <div id="manifestDiffPageWrap" style="position:relative; max-width:100%; overflow:hidden; border:1px solid var(--steel-dark);">
+            <div id="manifestDiffPageInner" style="position:relative;">
+              <img id="manifestDiffPageImg" alt="" style="display:block; max-width:100%;">
+            </div>
+          </div>
+        </div>
+
         <div id="viewModeRow">
           <button type="button" class="secondary" id="toggleOriginalBtn" style="display:none;" title="See the original manual page through the box, to place annotations against what was really there">Show original page</button>
           <button type="button" class="secondary" id="viewFullPageBtn">View in full page (adjust position)</button>
