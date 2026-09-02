@@ -1007,7 +1007,7 @@ async function openPrFromFork(upload) {
     // setting we're missing), so this is the one thing we DO control:
     // once someone lands on the PR, offer the easier path, not a
     // demand to stop using the platform they're already on.
-    `_Track this anytime from [My Reviewables](https://blaydemanual.com/contribute.html)._`,
+    `_Track this anytime from [My Photos](https://blaydemanual.com/contribute.html)._`,
   ].join("\n");
   const pr = await githubApi(`/repos/${owner}/${repo}/pulls`, session.token, {
     method: "POST",
@@ -1129,7 +1129,7 @@ async function markSubmitted(uploadId) {
         upload.defaultBranch = forked.defaultBranch;
         saveUploads();
         renderUploads();
-        log(`Pushed to your own fork -- nothing proposed yet. Open the pull request from My Reviewables whenever you're ready.`);
+        log(`Pushed to your own fork -- nothing proposed yet. Open the pull request from My Photos whenever you're ready.`);
         showToast("Pushed privately. Open the pull request whenever you're ready.");
       } catch (err) {
         log(`Push failed: ${err.message}`);

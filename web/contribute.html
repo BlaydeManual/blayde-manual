@@ -253,7 +253,16 @@
   /* ---- Propose a photo location fix -- full-page box editor, same
      interaction pattern indexer-review.js's own confirm-boxes step and
      the Maintainer Portal's photo review already use. ---- */
-  .overlay-box { position: absolute; border: 3px solid var(--steel); background: rgba(138,143,152,0.1); cursor: move; box-sizing: border-box; }
+  /* Real feedback, 2026-09-03: a plain --steel (grey) border is hard to
+     see against a real manual page, which is usually white/light-grey
+     paper, not this site's own dark background. Same halo trick as
+     --red-halo above, applied as a border instead of a text-shadow: a
+     white line right against a black line means at least one of the
+     two contrasts with whatever's underneath, light page or dark. Kept
+     as box-shadow, not a second/third border, so it layers outside the
+     existing colored border (steel/green/red per state below) without
+     touching that color's own meaning. */
+  .overlay-box { position: absolute; border: 3px solid var(--steel); background: rgba(138,143,152,0.1); cursor: move; box-sizing: border-box; box-shadow: 0 0 0 1px rgba(255,255,255,0.95), 0 0 0 2px rgba(0,0,0,0.95); }
   .overlay-box.touched { border-color: #1d9e75; }
   .overlay-box .handle { position: absolute; width: 12px; height: 12px; background: var(--red); border: 2px solid #fff; border-radius: 50%; }
   .overlay-box .handle.nw { top: -6px; left: -6px; cursor: nwse-resize; }
@@ -362,14 +371,14 @@
   </div>
 
   <div id="tabNav">
-    <button class="tab-btn active" data-tab="reviewables">My Reviewables</button>
+    <button class="tab-btn active" data-tab="reviewables">My Photos</button>
     <button class="tab-btn" data-tab="recategorize">Recategorize</button>
     <button class="tab-btn" data-tab="issue">Photo Location Fix</button>
   </div>
 
   <div class="tab-panel active" id="tab-reviewables">
   <div class="card" id="uploadsSection">
-    <h2>My Reviewables</h2>
+    <h2>My Photos</h2>
     <p class="sub" style="margin:0 0 8px;">Blayde Manual recommends using the blaydemanual.com interface for all submissions rather than GitHub directly. Each of your contributions will be grouped below:</p>
     <p class="sub" id="uploadsEmpty" style="margin:0;">Nothing yet -- photos you save for review will show up here.</p>
     <div id="uploadsList"></div>
@@ -491,7 +500,7 @@
           </li>
           <li style="display:flex; align-items:flex-start; gap:8px;">
             <svg viewBox="0 0 24 24" fill="none" stroke="var(--red)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:16px; height:16px; flex-shrink:0; margin-top:2px;"><circle cx="5" cy="12" r="1.2" fill="var(--red)"/><circle cx="12" cy="12" r="1.2" fill="var(--red)"/><circle cx="19" cy="12" r="1.2" fill="var(--red)"/></svg>
-            <span>Right-click a box: <b style="color:var(--text);">Problem with this photo &rarr;</b> (send a replacement) &middot; <b style="color:var(--text);">Remove this slot</b> (flag it as not real) &middot; <b style="color:var(--text);">Delete this box</b> (a new one you just added, undo it).</span>
+            <span>Right-click a box: <b style="color:var(--text);">Problem</b> (request removal of the submitted photo) &middot; <b style="color:var(--text);">Delete</b> (remove this photo slot &mdash; not needed, or undo one you just added).</span>
           </li>
         </ul>
       </div>

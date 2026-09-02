@@ -461,8 +461,8 @@ function openIssueRightClickMenu(e, entry, photoFilename) {
   menu.style.left = e.clientX + "px";
   menu.style.top = e.clientY + "px";
   menu.innerHTML = `
-    <button id="rcProblem">Problem with this photo &rarr;</button>
-    <button id="rcRemove">Remove this slot</button>
+    <button id="rcProblem">Problem</button>
+    <button id="rcRemove">Delete</button>
   `;
   menu.style.display = "block";
   document.getElementById("rcProblem").addEventListener("click", () => {
@@ -487,7 +487,7 @@ function openNewSlotRightClickMenu(e, box) {
   const menu = document.getElementById("issueRightClickMenu");
   menu.style.left = e.clientX + "px";
   menu.style.top = e.clientY + "px";
-  menu.innerHTML = `<button id="rcDeleteNewSlot">Delete this box</button>`;
+  menu.innerHTML = `<button id="rcDeleteNewSlot">Delete</button>`;
   menu.style.display = "block";
   document.getElementById("rcDeleteNewSlot").addEventListener("click", () => {
     menu.style.display = "none";
