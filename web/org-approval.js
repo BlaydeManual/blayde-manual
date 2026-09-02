@@ -26,6 +26,10 @@
 const ORG_CHUNK_SIZE = 10;
 let orgPending = []; // [{name, html_url, manifest, submitted_by, submitted_at}] from /pending-vehicles
 let orgManifest = null;
+// Separate cache from indexer-review.js's own manualTypesCache -- same
+// data, but a stale cache from an indexing session left open in another
+// tab shouldn't silently answer an approval-tab lookup, or vice versa.
+let orgManualTypesCache = null;
 let orgPdfDoc = null;
 let orgPdfIsPatchedOutput = false;
 let orgPageCache = {};
@@ -94,12 +98,21 @@ async function renderPendingList() {
     const total = v.manifest.entries.length;
     const touched = v.manifest.entries.filter((e) => e._touched || e._seen).length;
     const pct = total ? Math.round((touched / total) * 100) : 0;
+    // category/manual_type are raw ids at this point (e.g. "garage",
+    // not "Garage") -- resolving to real labels here would mean loading
+    // manual-types.json before the list even renders, for a value
+    // that's only really needed once you open a specific one to review.
+    // Good enough for a queue-scan; the review header resolves the real
+    // label.
+    const categoryBit = v.manifest.category
+      ? ` &middot; ${v.manifest.category}${v.manifest.manual_type ? ` / ${v.manifest.manual_type}` : ""}`
+      : ` &middot; <span style="color:#ffcc66;">no category set</span>`;
     const row = document.createElement("div");
     row.className = "pr-row";
     row.innerHTML = `
       <div>
         <div class="pr-title">${v.vehicle_slug || v.manifest.vehicle} -- ${v.manifest.edition_id || "(edition not set)"}${v.is_new_edition ? ` <span class="sub" style="color:#ffcc66;">(new edition for existing vehicle)</span>` : ""}</div>
-        <div class="pr-meta">submitted by ${v.submitted_by ? `@${v.submitted_by}` : "(unknown -- see verification below)"}${v.submitted_at ? ` on ${v.submitted_at.slice(0, 10)}` : ""} &middot; ${total} candidates, ${touched}/${total} reviewed (${pct}%)</div>
+        <div class="pr-meta">submitted by ${v.submitted_by ? `@${v.submitted_by}` : "(unknown -- see verification below)"}${v.submitted_at ? ` on ${v.submitted_at.slice(0, 10)}` : ""} &middot; ${total} candidates, ${touched}/${total} reviewed (${pct}%)${categoryBit}</div>
       </div>
       <button data-idx="${idx}">Review</button>
     `;
@@ -109,6 +122,65 @@ async function renderPendingList() {
     btn.addEventListener("click", () => openPendingVehicle(parseInt(btn.dataset.idx, 10)));
   });
 }
+
+// Category/type/display-name are registry labels only -- they're
+// validated against manual-types.json server-side but never part of
+// the notarized manifest.json hash, so correcting them here before
+// approving is safe: it can't be used to slip a different photo/bbox
+// past the notarization check, only to fix a mis-typed or mis-picked
+// label before it goes into the public registry. Mirrors
+// indexer-review.js's populateCategoryOptions/populateManualTypeOptions
+// against the same manual-types.json, but against this tab's own
+// orgManualTypesCache/orgCategorySelect/orgManualTypeSelect elements.
+async function populateOrgCategoryOptions(selectedCategoryId) {
+  const select = document.getElementById("orgCategorySelect");
+  if (!orgManualTypesCache) {
+    try {
+      orgManualTypesCache = await loadRegistry(MANUAL_TYPES_URL);
+    } catch (e) {
+      select.innerHTML = '<option value="">(couldn\'t load manual-types.json)</option>';
+      return;
+    }
+  }
+  select.innerHTML = '<option value="">(none)</option>';
+  for (const cat of orgManualTypesCache.categories) {
+    const opt = document.createElement("option");
+    opt.value = cat.id;
+    opt.textContent = cat.label;
+    select.appendChild(opt);
+  }
+  select.value = orgManualTypesCache.categories.some((c) => c.id === selectedCategoryId) ? selectedCategoryId : "";
+}
+
+function populateOrgManualTypeOptions(categoryId, selectedTypeId) {
+  const select = document.getElementById("orgManualTypeSelect");
+  const category = orgManualTypesCache?.categories.find((c) => c.id === categoryId);
+  if (!category) {
+    select.innerHTML = '<option value="">(choose a category first)</option>';
+    select.disabled = true;
+    return;
+  }
+  select.innerHTML = '<option value="">(none)</option>';
+  for (const type of category.types) {
+    const opt = document.createElement("option");
+    opt.value = type.id;
+    opt.textContent = type.label;
+    select.appendChild(opt);
+  }
+  select.disabled = false;
+  select.value = category.types.some((t) => t.id === selectedTypeId) ? selectedTypeId : "";
+}
+
+document.getElementById("orgCategorySelect").addEventListener("change", (e) => {
+  populateOrgManualTypeOptions(e.target.value, null);
+  if (orgCurrentEntry) runOrgChecks();
+});
+document.getElementById("orgManualTypeSelect").addEventListener("change", () => {
+  if (orgCurrentEntry) runOrgChecks();
+});
+document.getElementById("orgDisplayNameInput").addEventListener("change", () => {
+  if (orgCurrentEntry) runOrgChecks();
+});
 
 async function openPendingVehicle(idx) {
   const entry = orgPending[idx];
@@ -136,6 +208,10 @@ async function openPendingVehicle(idx) {
   sourceLink.href = sourceUrl || "#";
   sourceLink.textContent = sourceUrl || "(no source URL on this submission -- shouldn't happen, flag it)";
 
+  await populateOrgCategoryOptions(entry.manifest.category);
+  populateOrgManualTypeOptions(entry.manifest.category, entry.manifest.manual_type);
+  document.getElementById("orgDisplayNameInput").value = entry.manifest.vehicle || "";
+
   const registryData = await loadRegistry(CANONICAL_REGISTRY_URL).catch(() => ({ vehicles: [] }));
   const existing = (registryData.vehicles || []).filter((v) => v.vehicle_slug === entry.manifest.vehicle);
   const existingWrap = document.getElementById("orgExistingEditions");
@@ -160,10 +236,22 @@ async function openPendingVehicle(idx) {
   runOrgChecks();
 }
 
+// Read fresh at call time, not cached from openPendingVehicle -- a
+// maintainer can change these fields, then re-check or approve,
+// without reopening the entry.
+function orgCorrectableOverrides() {
+  return {
+    category_override: document.getElementById("orgCategorySelect").value || null,
+    manual_type_override: document.getElementById("orgManualTypeSelect").value || null,
+    display_name_override: document.getElementById("orgDisplayNameInput").value.trim() || null,
+  };
+}
+
 // Runs the EXACT same checks the real Approve action does (dry_run),
 // server-side, using the installation token -- not a lighter
 // client-side approximation. Approve stays disabled until this comes
-// back clean.
+// back clean. Includes the correctable-field overrides so a bad
+// category/type pick is caught here, before Approve, not after.
 async function runOrgChecks() {
   const listEl = document.getElementById("orgChecksList");
   const approveBtn = document.getElementById("orgApproveBtn");
@@ -174,7 +262,7 @@ async function runOrgChecks() {
     const resp = await fetch(`${BlaydeAuth.AUTH_WORKER_URL}approve-vehicle`, {
       method: "POST",
       headers: { "Content-Type": "application/json", Authorization: `Bearer ${session.token}` },
-      body: JSON.stringify({ repo_name: orgCurrentEntry.name, dry_run: true }),
+      body: JSON.stringify({ repo_name: orgCurrentEntry.name, dry_run: true, ...orgCorrectableOverrides() }),
     });
     const result = await resp.json().catch(() => ({}));
     if (!resp.ok || result.error) {
@@ -292,7 +380,7 @@ document.getElementById("orgApproveBtn").addEventListener("click", async () => {
     const resp = await fetch(`${BlaydeAuth.AUTH_WORKER_URL}approve-vehicle`, {
       method: "POST",
       headers: { "Content-Type": "application/json", Authorization: `Bearer ${session.token}` },
-      body: JSON.stringify({ repo_name: orgCurrentEntry.name, edition_id: orgCurrentEntry.manifest.edition_id }),
+      body: JSON.stringify({ repo_name: orgCurrentEntry.name, edition_id: orgCurrentEntry.manifest.edition_id, ...orgCorrectableOverrides() }),
     });
     const result = await resp.json().catch(() => ({}));
     if (!resp.ok || result.error) throw new Error(result.error || `Approve failed (${resp.status}).`);

@@ -659,7 +659,16 @@ async function handleApproveVehicle(request, env) {
   // edition_id is NOT read from the body -- see step 1 below, which
   // derives it from the repo's own real folder structure instead of
   // trusting a caller-supplied value for anything that gates approval.
-  const { repo_name: repoName, dry_run: dryRun } = body;
+  //
+  // category_override/manual_type_override/display_name_override ARE
+  // read and trusted here, unlike edition_id -- they're an approver's
+  // own correction, not a submitter-supplied value, and they never
+  // touch the notarized manifest.json or anything the file-allowlist/
+  // notarization/schema checks below cover. They only ever replace
+  // what gets written into registry.json's public label fields.
+  // category_override/manual_type_override still get validated against
+  // manual-types.json below, same as the submission's own values would.
+  const { repo_name: repoName, dry_run: dryRun, category_override: categoryOverride, manual_type_override: manualTypeOverride, display_name_override: displayNameOverride } = body;
   if (!repoName) return json({ error: "missing repo_name" }, 400);
   // The file-allowlist check below would reject any of BlaydeManual's
   // own real repos anyway (they all have far more than two files) --
@@ -748,15 +757,24 @@ async function handleApproveVehicle(request, env) {
   // submission may have neither), but a present value has to be real --
   // same manual-types.json check handleAcceptRecategorization already
   // applies to a registry.json edit PR, applied here too.
-  if (manifest.category || manifest.manual_type) {
+  // effectiveCategory/effectiveManualType/effectiveDisplayName: an
+  // approver's override, when given, wins over whatever the submitter's
+  // own manifest said -- the override still has to pass this exact
+  // same manual-types.json check, so an approver can't push through a
+  // category/type that doesn't really exist any more than a submitter
+  // could.
+  const effectiveCategory = categoryOverride || manifest.category;
+  const effectiveManualType = manualTypeOverride || manifest.manual_type;
+  const effectiveDisplayName = displayNameOverride || manifest.vehicle;
+  if (effectiveCategory || effectiveManualType) {
     const manualTypesFile = await ghApi(`/repos/${REGISTRY_OWNER}/${REGISTRY_REPO}/contents/manual-types.json`, installationToken);
     const manualTypes = JSON.parse(base64ToUtf8(manualTypesFile.content));
-    const category = manualTypes.categories?.find((c) => c.id === manifest.category);
-    if (manifest.category && !category) {
-      throw new Error(`Rejected: "${manifest.category}" isn't a real category in manual-types.json.`);
+    const category = manualTypes.categories?.find((c) => c.id === effectiveCategory);
+    if (effectiveCategory && !category) {
+      throw new Error(`Rejected: "${effectiveCategory}" isn't a real category in manual-types.json.`);
     }
-    if (manifest.manual_type && !category?.types?.some((t) => t.id === manifest.manual_type)) {
-      throw new Error(`Rejected: "${manifest.manual_type}" isn't a real manual type under "${manifest.category}" in manual-types.json.`);
+    if (effectiveManualType && !category?.types?.some((t) => t.id === effectiveManualType)) {
+      throw new Error(`Rejected: "${effectiveManualType}" isn't a real manual type under "${effectiveCategory}" in manual-types.json.`);
     }
   }
 
@@ -832,10 +850,10 @@ async function handleApproveVehicle(request, env) {
     registryData.vehicles.push({
       vehicle_slug: logEntry.vehicle_slug,
       edition_id: editionId,
-      vehicle_display_name: sibling?.vehicle_display_name || manifest.vehicle,
+      vehicle_display_name: sibling?.vehicle_display_name || effectiveDisplayName,
       vehicle_class: sibling?.vehicle_class || manifest.vehicle_class || null,
-      category: sibling?.category || manifest.category || null,
-      manual_type: sibling?.manual_type || manifest.manual_type || null,
+      category: sibling?.category || effectiveCategory || null,
+      manual_type: sibling?.manual_type || effectiveManualType || null,
       repo_url: logEntry.target_repo_url,
       source_pdf_sha256: manifest.source_pdf_sha256 || null,
       status: "approved",
@@ -977,10 +995,10 @@ async function handleApproveVehicle(request, env) {
   registryData.vehicles.push({
     vehicle_slug: manifest.vehicle,
     edition_id: editionId,
-    vehicle_display_name: manifest.vehicle,
+    vehicle_display_name: effectiveDisplayName,
     vehicle_class: manifest.vehicle_class || null,
-    category: manifest.category || null,
-    manual_type: manifest.manual_type || null,
+    category: effectiveCategory || null,
+    manual_type: effectiveManualType || null,
     repo_url: `https://github.com/${REGISTRY_OWNER}/${repoName}`,
     // manifest.source_pdf_sha256, not logEntry.manifest_sha256 -- real,
     // live bug found and fixed here: this previously stored the
