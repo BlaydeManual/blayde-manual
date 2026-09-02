@@ -78,6 +78,7 @@ function startReview(manifest, savedChunkIdx) {
   });
   reviewChunkIdx = savedChunkIdx || 0; // renderReviewGallery() below clamps this to a valid range
   document.getElementById("reviewSection").style.display = "block";
+  manifest.vehicle = slugify(manifest.vehicle);
   document.getElementById("vehicleSlugConfirm").value = manifest.vehicle;
   document.getElementById("vehicleSlugSimilarNote").style.display = "none";
   checkSimilarVehicleSlugs(manifest.vehicle);
@@ -238,12 +239,35 @@ populateCategoryOptions().then(() => {
   updateIndexReadiness?.();
 });
 
+// vehicle_slug becomes a literal GitHub repo name (see auth-worker's
+// handleDirectSubmit) and every example in this field's own naming-
+// convention text above it is lowercase-only -- nothing enforced that
+// before, direct feedback, 2026-09-02, so a maintainer typing (or an
+// OCR guess landing on) mixed case could create a repo whose real name
+// doesn't match the convention it was supposed to follow. Reuses
+// indexer-core.js's own slugify() rather than a bespoke sanitizer --
+// same rules already applied to an OCR-guessed slug, now also applied
+// live as the maintainer types or edits it by hand. Edition ID is
+// deliberately NOT put through this -- "OEM"/"Haynes"/"Chilton" are
+// real, correct, case-preserved values (see the edition folder this
+// becomes, e.g. the real OEM/manifest.json path), forcing it lowercase
+// would break that convention, not enforce one.
+document.getElementById("vehicleSlugConfirm").addEventListener("input", (e) => {
+  const before = e.target.value;
+  const sanitized = slugify(before);
+  if (sanitized === before) return;
+  const cursor = Math.min(e.target.selectionStart, sanitized.length);
+  e.target.value = sanitized;
+  e.target.setSelectionRange(cursor, cursor);
+});
+
 // Re-derives contributed_photo_path for every entry whenever the
 // maintainer edits the confirmed slug -- cheap and idempotent, so it
 // doesn't matter whether this fires before or after new figures get
 // added in the page modal.
 document.getElementById("vehicleSlugConfirm").addEventListener("change", async (e) => {
-  const slug = e.target.value.trim();
+  const slug = slugify(e.target.value.trim());
+  e.target.value = slug;
   if (!reviewManifest || !slug) return;
   finalizeVehicleSlug(reviewManifest, slug);
   checkEditionIdCollision();
