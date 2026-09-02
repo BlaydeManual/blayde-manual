@@ -527,6 +527,17 @@
 
         <p class="sub" style="margin:0 0 10px;">Submitter's source: <a id="orgSourceLink" href="#" target="_blank" rel="noopener" style="color:#9fe1cb;"></a></p>
 
+        <div class="card" id="orgCorrectableFields" style="background:#000; margin-bottom:14px;">
+          <h2 style="font-size: 0.95rem; margin:0 0 4px;">Category, type, and display name</h2>
+          <p class="sub" style="margin:0 0 10px;">Pre-filled from the submission -- correct any of these before approving if something's off. These are registry labels only; they never touch the notarized manifest.json.</p>
+          <label style="display:block; font-size:0.85rem; color:var(--steel); margin-bottom:4px;">Category</label>
+          <select id="orgCategorySelect" style="margin-bottom:10px;"></select>
+          <label style="display:block; font-size:0.85rem; color:var(--steel); margin-bottom:4px;">Manual type</label>
+          <select id="orgManualTypeSelect" style="margin-bottom:10px;"></select>
+          <label style="display:block; font-size:0.85rem; color:var(--steel); margin-bottom:4px;">Display name</label>
+          <input type="text" id="orgDisplayNameInput" style="margin-bottom:4px;">
+        </div>
+
         <div class="card" id="orgExistingEditions" style="display:none; background:#000; margin-bottom:14px;">
           <h2 style="font-size: 0.95rem; margin:0 0 6px; color:#ffcc66;">This item already has a repo</h2>
           <p class="sub" id="orgExistingEditionsSummary" style="margin:0 0 8px;"></p>
