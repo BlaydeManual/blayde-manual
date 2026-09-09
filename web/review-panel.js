@@ -691,10 +691,17 @@ function openManifestChangeReview() {
   document.getElementById("reviewTitle").textContent =
     `${kindLabel}: ${formatProcedureLabel(currentPR.procedure_id, currentPR.page, currentPR.section_heading)} - Request #${currentPR.number}`;
   document.getElementById("reviewMeta").textContent = `Proposed by @${currentPR.author}`;
-  document.getElementById("manifestDiffLegend").textContent = {
-    "new-slot": "Blue box: the newly proposed photo slot.",
-    remove: "Blue box with an X: this tracked slot is proposed for removal.",
-    structure: "Green box: current position. Blue box: proposed new position.",
+  // innerHTML with real pill spans, not textContent -- the words "blue"
+  // and "green" naming a color in plain grey legend text don't actually
+  // read as that color, so the legend didn't visually match the boxes
+  // it was describing. Colors match the real overlay CSS exactly
+  // (.diff-proposed's #5b9bf7, .touched's #1d9e75), not approximated.
+  const bluePill = `<span style="display:inline-block; padding:1px 9px; border-radius:999px; background:rgba(91,155,247,0.16); color:#5b9bf7; font-weight:700; font-size:0.85em;">Blue</span>`;
+  const greenPill = `<span style="display:inline-block; padding:1px 9px; border-radius:999px; background:rgba(29,158,117,0.16); color:#3ecf8e; font-weight:700; font-size:0.85em;">Green</span>`;
+  document.getElementById("manifestDiffLegend").innerHTML = {
+    "new-slot": `${bluePill} box: the newly proposed photo slot.`,
+    remove: `${bluePill} box with an X: this tracked slot is proposed for removal.`,
+    structure: `${greenPill} box: current position. ${bluePill} box: proposed new position.`,
   }[currentPR.kind] || "";
   updateAcceptButtonState();
   renderReviewStatusLine();
