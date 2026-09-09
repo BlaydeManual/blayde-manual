@@ -428,10 +428,6 @@ document.getElementById("changePhotoBtn").addEventListener("click", () => {
   }
   renderUploads();
 });
-document.getElementById("stripSubmitBtn").addEventListener("click", () => {
-  const upload = currentProcedureUpload();
-  if (upload) markSubmitted(upload.id);
-});
 document.getElementById("forkedOpenPrBtn").addEventListener("click", () => {
   const upload = currentProcedureUpload();
   if (upload) openPrForUpload(upload.id);
@@ -1165,10 +1161,19 @@ async function markSubmitted(uploadId) {
     if (!(await performSignIn())) return;
   }
 
-  const goPublic = await blaydeConfirm(
+  // Real gap fixed here, 2026-09-03: this used to be a two-way
+  // blaydeConfirm with Cancel's own slot repurposed to mean "Private" --
+  // there was no way to actually back out of this prompt at all, and
+  // Escape (blaydeConfirm's Escape always resolves false) silently
+  // fired the Private path instead of dismissing anything. A real
+  // three-way choice needs a real Cancel that isn't secretly one of
+  // the two real options.
+  const choice = await blaydeThreeWayChoice(
     `Submit "${upload.sectionHeading || upload.procedureId}" as Public (opens a real pull request immediately, no personal copy kept) or Private (pushes to your own fork first -- nothing is proposed until you open the pull request yourself, whenever you're ready)?`,
-    { okLabel: "Public", cancelLabel: "Private" }
+    "Public", "Private"
   );
+  if (choice === null) return; // cancelled -- nothing submitted, nothing changed
+  const goPublic = choice === "a";
   submittingIds.add(uploadId);
   document.querySelectorAll(`[data-submit="${uploadId}"]`).forEach((btn) => { btn.disabled = true; });
   try {

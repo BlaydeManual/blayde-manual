@@ -168,6 +168,59 @@ function blaydeConfirm(message, { dontAskKey, okLabel, cancelLabel } = {}) {
   });
 }
 
+// Real gap blaydeConfirm can't cover on its own, found via direct
+// report: markSubmitted's Public-vs-Private choice repurposed
+// blaydeConfirm's Cancel slot to mean "Private" instead of an actual
+// cancel, so there was no way to back out of that prompt at all --
+// clicking the backdrop did nothing, and Escape actively fired
+// "Private" (blaydeConfirm's own Escape handler resolves false, which
+// that call site read as the Private branch). A real third choice
+// needs a real third button, and a real cancel needs to resolve to
+// something neither of the two real choices could ever collide with --
+// null, not a hijacked false. Returns "a", "b", or null (cancelled via
+// the Cancel button, Escape, or the backdrop).
+function blaydeThreeWayChoice(message, aLabel, bLabel) {
+  ensureBlaydeDialogStyles();
+  return new Promise((resolve) => {
+    const overlay = document.createElement("div");
+    overlay.className = "blayde-dialog-overlay";
+    overlay.innerHTML = `
+      <div class="blayde-dialog">
+        <p></p>
+        <div class="blayde-dialog-actions">
+          <button class="secondary" data-action="cancel">Cancel</button>
+          <button class="secondary" data-action="b">${bLabel}</button>
+          <button data-action="a">${aLabel}</button>
+        </div>
+      </div>`;
+    overlay.querySelector("p").textContent = message;
+    document.body.appendChild(overlay);
+    const aBtn = overlay.querySelector('[data-action="a"]');
+    aBtn.focus(); // same reasoning as blaydeConfirm's own okBtn.focus()
+    function finish(result) {
+      overlay.remove();
+      resolve(result);
+    }
+    // Clicking the backdrop itself (e.target === overlay, not a button
+    // inside it) is also a real cancel gesture, same as it already is
+    // for every native browser dialog -- blaydeConfirm never wired
+    // this either, but that one's Cancel button always meant a real
+    // cancel already, so the only real gap there was the Escape key.
+    // Here both gaps mattered, since neither "false" nor a missing
+    // gesture could safely mean cancel once Cancel had to be a third,
+    // distinct outcome from the two real choices.
+    overlay.addEventListener("click", (e) => {
+      const action = e.target.dataset.action;
+      if (action === "a") finish("a");
+      else if (action === "b") finish("b");
+      else if (action === "cancel" || e.target === overlay) finish(null);
+    });
+    overlay.addEventListener("keydown", (e) => {
+      if (e.key === "Escape") finish(null);
+    });
+  });
+}
+
 function blaydePrompt(message, defaultValue = "") {
   ensureBlaydeDialogStyles();
   return new Promise((resolve) => {
