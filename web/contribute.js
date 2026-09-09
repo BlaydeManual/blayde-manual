@@ -358,6 +358,89 @@ if (hasProcedureContext) {
   document.getElementById("landingSignIn").style.display = signedIn ? "none" : "block";
 }
 
+// The most recent upload this device already has for THIS exact
+// procedure, if any -- uploads.push() only ever appends, so the last
+// match is the most recent. Lets a reader who clicks the same in-PDF
+// link twice (drafted it, closed the tab, came back; or already
+// submitted it entirely) land on the real state of what they already
+// did instead of an empty form inviting a duplicate.
+function currentProcedureUpload() {
+  if (!hasProcedureContext) return null;
+  for (let i = uploads.length - 1; i >= 0; i--) {
+    if (uploads[i].procedureId === procedureId) return uploads[i];
+  }
+  return null;
+}
+
+// Direct feedback, 2026-09-03: once something's saved, the full form
+// (file picker, crop editor, consent checkboxes) has nothing left to
+// do here -- this deep link is scoped to one procedure, and finishing
+// it is this page's whole job. Swaps between exactly one of: the empty
+// form, a collapsed "saved, ready to submit" strip, a "pushed
+// privately" strip, or a scrolled-to-top "submitted" banner -- driven
+// entirely by currentProcedureUpload()'s real status, so a page reload
+// (or the same QR clicked again) lands on the truth, not the form.
+// Called from the end of renderUploads(), which every save/submit/
+// delete path already calls -- one hook point, not one per action.
+function renderProcedureState() {
+  if (!hasProcedureContext) return;
+  const formCard = document.getElementById("uploadFormCard");
+  const savedStrip = document.getElementById("savedStripCard");
+  const forkedStrip = document.getElementById("forkedStripCard");
+  const submittedBanner = document.getElementById("submittedBannerCard");
+  formCard.style.display = "none";
+  savedStrip.style.display = "none";
+  forkedStrip.style.display = "none";
+  submittedBanner.style.display = "none";
+
+  const upload = currentProcedureUpload();
+  if (!upload) { formCard.style.display = "block"; return; }
+
+  if (upload.status === "draft") {
+    savedStrip.style.display = "block";
+    document.getElementById("savedStripMeta").textContent = upload.photoFilename || "";
+    const thumb = document.getElementById("savedStripThumb");
+    if (upload.photoDataUrl) { thumb.src = upload.photoDataUrl; thumb.style.display = "block"; }
+    else thumb.style.display = "none";
+  } else if (upload.status === "forked") {
+    forkedStrip.style.display = "block";
+  } else if (upload.status === "submitted") {
+    submittedBanner.style.display = "block";
+    document.getElementById("submittedBannerMeta").textContent = upload.prNumber != null ? `Pull request #${upload.prNumber}` : "";
+    const link = document.getElementById("submittedBannerLink");
+    if (upload.prUrl) { link.href = upload.prUrl; link.style.display = "inline"; } else link.style.display = "none";
+    // Submit itself can happen from further down the page (My Photos'
+    // own row) or from savedStrip's own Submit button above the fold --
+    // either way, "you're done" belongs at the top, not wherever the
+    // click happened to be. Harmless no-op on a plain reload of an
+    // already-submitted link, since the page is already at the top.
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  } else {
+    formCard.style.display = "block";
+  }
+}
+
+document.getElementById("changePhotoBtn").addEventListener("click", () => {
+  const upload = currentProcedureUpload();
+  if (upload && upload.status === "draft") {
+    uploads = uploads.filter((u) => u.id !== upload.id);
+    saveUploads();
+  }
+  renderUploads();
+});
+document.getElementById("stripSubmitBtn").addEventListener("click", () => {
+  const upload = currentProcedureUpload();
+  if (upload) markSubmitted(upload.id);
+});
+document.getElementById("forkedOpenPrBtn").addEventListener("click", () => {
+  const upload = currentProcedureUpload();
+  if (upload) openPrForUpload(upload.id);
+});
+document.getElementById("proposeAnotherBtn").addEventListener("click", () => {
+  document.getElementById("submittedBannerCard").style.display = "none";
+  document.getElementById("uploadFormCard").style.display = "block";
+});
+
 // Shared by both sign-in buttons -- one real GitHub OAuth flow, not two
 // separate implementations that could drift.
 async function performSignIn() {
@@ -1593,6 +1676,7 @@ async function renderUploads() {
   });
   loadReviewStatusLines(allUploads);
   loadRealPrStates(allUploads);
+  renderProcedureState();
 }
 
 // Fire-and-forget, one fetch per still-open PR actually shown this
