@@ -599,6 +599,7 @@ async function openPR(number) {
   submittedPhotoImg = null;
   reviewStatus = null;
   document.getElementById("prLog").textContent = "";
+  document.getElementById("reviewPlaceholder").style.display = "none";
   document.getElementById("reviewArea").classList.add("open");
   document.getElementById("rejectBtn").disabled = false;
 
@@ -1587,6 +1588,7 @@ async function acceptManifestChangePR() {
     if (!resp.ok || result.error) throw new Error(result.error || `Accept failed (${resp.status}).`);
     log(`merged: ${result.summary}`);
     document.getElementById("reviewArea").classList.remove("open");
+    document.getElementById("reviewPlaceholder").style.display = "flex";
     showToast("Accepted! Change merged into the manual.");
     removeCurrentPRFromList();
   } catch (e) {
@@ -1686,6 +1688,7 @@ document.getElementById("acceptBtn").addEventListener("click", async () => {
     // direct request, matching org-approval.js's Approve, which already
     // does this same close-out on its own success path.
     document.getElementById("reviewArea").classList.remove("open");
+    document.getElementById("reviewPlaceholder").style.display = "flex";
     showToast("Accepted! Photo merged into the manual.");
     removeCurrentPRFromList();
   } catch (e) {
@@ -1722,6 +1725,7 @@ document.getElementById("rejectBtn").addEventListener("click", async () => {
     // log, even once the request list above it had already refreshed
     // to "No open photo requests."
     document.getElementById("reviewArea").classList.remove("open");
+    document.getElementById("reviewPlaceholder").style.display = "flex";
     showToast(note ? "Rejected. The contributor's been notified." : "Rejected. Request closed.");
     removeCurrentPRFromList();
   } catch (e) {
