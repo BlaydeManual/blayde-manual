@@ -1182,6 +1182,16 @@ function outcomeFor(upload) {
   return { status: real, note: null };
 }
 
+// Same displayStatus derivation renderUploadGroup's own row rendering
+// uses (outcome, once a maintainer's acted on it, wins over the
+// locally-stored status) -- shared here so the category/vehicle
+// <details> collapse decision below can't drift from what a reader
+// actually sees per row.
+function isAlreadySubmitted(upload) {
+  const outcome = outcomeFor(upload);
+  return (outcome ? outcome.status : upload.status) === "submitted";
+}
+
 const prStateCache = new Map(); // `${repoUrl}#${prNumber}` -> "submitted"|"accepted"|"rejected"
 
 async function fetchRealPrState(repoUrl, prNumber) {
@@ -1347,7 +1357,11 @@ function renderUploadGroup(uploadList, container, maintainRowShown, categoryByVe
     let categoryContainer = container;
     if (showCategoryHeadings) {
       const categoryGroup = document.createElement("details");
-      categoryGroup.open = true;
+      // Collapsed by default when everything in this category is
+      // already submitted (a real PR open, awaiting review) -- nothing
+      // in it needs the contributor's attention right now. Same
+      // reasoning applied one tier down, per vehicle group, below.
+      categoryGroup.open = !categoryUploads.every(isAlreadySubmitted);
       categoryGroup.className = "category-group";
       if (categoryKey) categoryGroup.style.setProperty("--accent", CATEGORY_STYLE[categoryKey].accent);
       const label = categoryKey ? categoryKey[0].toUpperCase() + categoryKey.slice(1) : "Uncategorized";
@@ -1370,7 +1384,11 @@ function renderUploadGroup(uploadList, container, maintainRowShown, categoryByVe
     byVehicle.forEach((group, vehicleKey) => {
     group.sort((a, b) => (a.page || 0) - (b.page || 0));
     const details = document.createElement("details");
-    details.open = true;
+    // Direct feedback, 2026-09-03: this used to always default open, so
+    // confirming even one already-submitted vehicle's card meant wading
+    // past a wall of "nothing to do here, it's already in review"
+    // before finding what actually needed a look.
+    details.open = !group.every(isAlreadySubmitted);
     details.className = "vehicle-group";
     const summary = document.createElement("summary");
     summary.className = "vehicle-bar";
@@ -1530,10 +1548,15 @@ async function renderUploads() {
   // (see the bottom of this file) before a top-level const declared
   // later in the file would be initialized, so this has to be created
   // fresh on every call rather than hoisted-and-shared.
+  // Drafts first, not last -- direct feedback, 2026-09-03: saving a
+  // draft used to land it at the very bottom, below every already-
+  // submitted upload, so confirming your own save just made meant
+  // scrolling past everything else. The thing you just did belongs
+  // right after Save, not buried under it.
   const visibilitySections = [
+    { key: "draft", cls: "is-draft", icon: "📝", title: "Drafts", desc: "Only ever lived on this device. Not submitted anywhere yet." },
     { key: "public", cls: "is-public", icon: "🌍", title: "Public", desc: "Public-facing submission requests. Status shown below for each one. No personal copy kept." },
     { key: "private", cls: "is-private", icon: "🔒", title: "Private", desc: "Saved to your own personal copy. Nothing proposed to reviewers until you choose to submit it." },
-    { key: "draft", cls: "is-draft", icon: "📝", title: "Drafts", desc: "Only ever lived on this device. Not submitted anywhere yet." },
   ];
 
   const maintainRowShown = new Set();
