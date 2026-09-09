@@ -72,6 +72,12 @@ function reposToCheck() {
 
 let currentPR = null;
 let currentPRs = []; // last loaded batch, across all maintained repos
+// Set once per initReviewTab() run, reused by removeCurrentPRFromList()
+// below -- renderPRList() needs this same list for its own category
+// grouping, and re-deriving it (reposToCheck() + a real registry check
+// per repo) is exactly the expensive step a local list update is
+// supposed to skip.
+let lastApprovedRepos = [];
 let pdfDoc = null;
 let renderScale = 2.0; // CSS px per PDF point -- fixed, keeps the compare view a manageable size
 let box = null; // {x0,y0,x1,y1} in canvas-pixel space, live during drag
@@ -114,7 +120,26 @@ async function initReviewTab() {
     ]).then(([photos, manifestChanges]) => [...photos, ...manifestChanges])
   ));
   currentPRs = perRepo.flat();
+  lastApprovedRepos = approved;
   await renderPRList(approved);
+}
+
+// Real, confirmed slowness fixed here, 2026-09-03: Accept/Reject used
+// to call initReviewTab() to refresh the list -- which re-checks every
+// repo's registry approval from scratch, then re-lists every open PR
+// on every repo, then re-fetches each PR's files and manifest.json to
+// rebuild it, all over again, just to remove the ONE row whose outcome
+// this action already knows for certain. For a maintainer covering
+// several vehicles this took several seconds and read as "the list
+// doesn't update." Since the outcome of THIS pr is already known, no
+// re-fetch is needed for it at all -- just drop it from the in-memory
+// list and re-render from what's left. renderPRList still re-fetches
+// review status for the REMAINING rows (another maintainer's review on
+// a different PR could genuinely have changed), so this isn't zero
+// network calls, just far fewer and far cheaper than a full relist.
+async function removeCurrentPRFromList() {
+  currentPRs = currentPRs.filter((pr) => !(pr.number === currentPR.number && pr.repo_url === currentPR.repo_url));
+  await renderPRList(lastApprovedRepos);
 }
 
 // Real open PRs on this repo, filtered to ones that actually add a
@@ -1563,7 +1588,7 @@ async function acceptManifestChangePR() {
     log(`merged: ${result.summary}`);
     document.getElementById("reviewArea").classList.remove("open");
     showToast("Accepted! Change merged into the manual.");
-    initReviewTab();
+    removeCurrentPRFromList();
   } catch (e) {
     log(`accept failed: ${e.message}`);
     document.getElementById("acceptBtn").disabled = false;
@@ -1662,7 +1687,7 @@ document.getElementById("acceptBtn").addEventListener("click", async () => {
     // does this same close-out on its own success path.
     document.getElementById("reviewArea").classList.remove("open");
     showToast("Accepted! Photo merged into the manual.");
-    initReviewTab();
+    removeCurrentPRFromList();
   } catch (e) {
     log(`accept failed: ${e.message}`);
     // Re-check rather than just re-enabling -- a failed merge attempt
@@ -1698,7 +1723,7 @@ document.getElementById("rejectBtn").addEventListener("click", async () => {
     // to "No open photo requests."
     document.getElementById("reviewArea").classList.remove("open");
     showToast(note ? "Rejected. The contributor's been notified." : "Rejected. Request closed.");
-    initReviewTab();
+    removeCurrentPRFromList();
   } catch (e) {
     log(`reject failed: ${e.message}`);
     updateAcceptButtonState();

@@ -299,6 +299,23 @@
   .pr-status-badge.status-loading { background: var(--black-2); color: var(--steel); border: 1px solid var(--steel-dark); }
   #reviewArea, #orgReviewArea { display: none; }
   #reviewArea.open, #orgReviewArea.open { display: block; }
+  /* Direct request, 2026-09-03: the queue and the open request used to
+     be stacked, so opening one meant the queue scrolled out of view --
+     getting back to "what's next" meant scrolling back up past
+     everything you just closed. Split instead: queue on the left,
+     sticky so it stays put and scrolls on its own, detail pane on the
+     right. #prListCard and #reviewArea are already two independent
+     containers (see review-panel.js), so this is a layout change only,
+     not a rework of either one's own rendering. */
+  #reviewSplit { display: grid; grid-template-columns: 26% 1fr; gap: 16px; align-items: start; }
+  #reviewSplit #prListCard { position: sticky; top: 16px; max-height: calc(100vh - 32px); overflow-y: auto; margin-bottom: 0; }
+  /* A 26% column has nothing useful to offer on a narrow screen -- back
+     to the original stacked layout below that width, same as before
+     this change existed at all. */
+  @media (max-width: 720px) {
+    #reviewSplit { display: block; }
+    #reviewSplit #prListCard { position: static; max-height: none; overflow-y: visible; margin-bottom: 14px; }
+  }
   /* ---- two view modes, direct spec: a big zoomed compare/annotate
      view is the default working view; "View in full page" is a
      separate, secondary mode purely for dragging/resizing the box,
@@ -421,6 +438,7 @@
     <!-- ============ Review Photo Requests (review-panel.js) ============ -->
     <div class="tab-panel active" id="tab-review">
       <p class="sub" id="repoScopeStatus"></p>
+      <div id="reviewSplit">
       <div class="card" id="prListCard" style="display:none;">
         <h2 style="font-size: 1.05rem; margin:0 0 4px;">Photo requests</h2>
         <div id="prList"></div>
@@ -503,6 +521,7 @@
         </div>
 
         <div id="prLog"></div>
+      </div>
       </div>
     </div>
 
