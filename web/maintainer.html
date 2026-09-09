@@ -49,7 +49,14 @@
     background: var(--black); color: var(--text); margin: 0; padding: 32px 24px;
     font-family: -apple-system, "Segoe UI", Roboto, sans-serif; line-height: 1.5;
   }
-  main { max-width: 960px; margin: 0 auto; }
+  /* 960px was sized for this page's original single-column forms
+     (indexing, approving a manual) -- reasonable there, but cramped
+     now that Review Photo Requests is a real two-column list/detail
+     split needing room for a full manual page image beside the queue.
+     Widened for the whole page rather than carved out per-tab, since
+     the other tabs' own cards/forms read fine at this width too, just
+     with a bit more breathing room than before. */
+  main { max-width: 1280px; margin: 0 auto; }
   .top-nav { display: flex; justify-content: flex-end; align-items: center; gap: 10px; margin-bottom: 14px; }
   .pill-link {
     font-size: 0.88rem; font-weight: 700; text-decoration: none;
@@ -316,6 +323,50 @@
     #reviewSplit { display: block; }
     #reviewSplit #prListCard { position: static; max-height: none; overflow-y: visible; margin-bottom: 14px; }
   }
+  /* Real, confirmed regression from the split above: .pr-row's own
+     layout (title left, badge+Review button right, space-between) was
+     built for the card's old full page width -- squeezed into a ~26%
+     column, the badge text alone ("0/2 - Needs your review") leaves no
+     room beside it for the button, which overflowed past the column's
+     right edge instead of wrapping, reading as "no Review button at
+     all." Scoped to #prList specifically, not the shared .pr-row class
+     itself (org-approval.js and my-vehicles.js still use it at full
+     width and shouldn't be affected): stack title/meta/badge/button
+     top to bottom instead of trying to fit them on one wide line. */
+  #prList .pr-row { flex-direction: column; align-items: flex-start; }
+  #prList .pr-row-actions { flex-wrap: wrap; width: 100%; }
+  /* The badge's own single-line pill shape (white-space: nowrap, sized
+     for the card's old full width) still doesn't fit a ~26% column at
+     its original font-size -- caught in the same pass as the row
+     layout above, before it shipped: the badge text itself was forcing
+     a horizontal scrollbar on the whole list. Letting it wrap onto two
+     lines at a smaller size keeps the pill shape without the overflow. */
+  #prList .pr-status-badge { font-size: 0.82rem; padding: 4px 10px; white-space: normal; text-align: center; }
+  /* A plain default scrollbar looked out of place against the rest of
+     this page's own styling -- thin, dark-toned, matching --steel-dark/
+     --black-2 rather than the browser's stock light-grey chrome.
+     Scoped to the list panel specifically (its own scroll region, not
+     the whole page) via a class rather than the #prListCard id, so the
+     same treatment is reusable anywhere else a scroll region like this
+     shows up later. Firefox's two scrollbar-* properties plus the
+     WebKit/Blink -webkit-scrollbar pseudo-elements together cover every
+     real browser this site is expected to run in. */
+  .styled-scroll { scrollbar-width: thin; scrollbar-color: var(--steel-dark) var(--black-2); }
+  .styled-scroll::-webkit-scrollbar { width: 8px; }
+  .styled-scroll::-webkit-scrollbar-track { background: var(--black-2); }
+  .styled-scroll::-webkit-scrollbar-thumb { background: var(--steel-dark); border-radius: 999px; }
+  .styled-scroll::-webkit-scrollbar-thumb:hover { background: var(--steel); }
+  /* Empty state for the right pane before anything's been opened --
+     direct request: a blank gap next to a full queue read as broken,
+     not "nothing selected yet." Shown by default, hidden the moment a
+     real request opens (openPR), shown again on Accept/Reject's own
+     close-out -- exactly the inverse of #reviewArea's own .open toggle,
+     driven by the same four call sites rather than a CSS trick, so the
+     two can never drift out of sync from each other. */
+  #reviewPlaceholder {
+    display: flex; align-items: center; justify-content: center; min-height: 320px;
+    color: var(--steel); font-size: 1rem; text-align: center;
+  }
   /* ---- two view modes, direct spec: a big zoomed compare/annotate
      view is the default working view; "View in full page" is a
      separate, secondary mode purely for dragging/resizing the box,
@@ -439,10 +490,12 @@
     <div class="tab-panel active" id="tab-review">
       <p class="sub" id="repoScopeStatus"></p>
       <div id="reviewSplit">
-      <div class="card" id="prListCard" style="display:none;">
+      <div class="card styled-scroll" id="prListCard" style="display:none;">
         <h2 style="font-size: 1.05rem; margin:0 0 4px;">Photo requests</h2>
         <div id="prList"></div>
       </div>
+
+      <div class="card" id="reviewPlaceholder">Choose a request from the list to review it.</div>
 
       <div class="card" id="reviewArea">
         <h2 style="font-size: 1.05rem; margin:0 0 4px;" id="reviewTitle"></h2>
