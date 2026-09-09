@@ -447,7 +447,7 @@ function renderPendingIssues() {
   pendingIssues.forEach((issue) => {
     const row = document.createElement("div");
     row.className = "issue-pending-row";
-    row.innerHTML = `<span>PG. ${issue.page} &mdash; ${labels[issue.kind]}: ${issue.section_heading}</span>`;
+    row.innerHTML = `<span>PG. ${issue.page}, ${labels[issue.kind]}: ${issue.section_heading}</span>`;
     list.appendChild(row);
   });
 }
@@ -666,7 +666,7 @@ function renderManifestFixRequests() {
     row.style.padding = "6px 0";
     row.innerHTML = `
       <div>
-        <div class="upload-title" style="font-size:0.88rem;">${vehicleLabel} <span class="sub">&mdash; ${req.sectionHeading} (${req.kind})</span></div>
+        <div class="upload-title" style="font-size:0.88rem;">${vehicleLabel} <span class="sub">: ${req.sectionHeading} (${req.kind})</span></div>
         <div class="upload-meta"><a href="${req.prUrl}" target="_blank" rel="noopener" class="pr-link">Request #${req.prNumber}</a> &middot; <span id="${statusId}">${reviewStatusText(manifestFixStatusCache.get(key))}</span></div>
       </div>
     `;

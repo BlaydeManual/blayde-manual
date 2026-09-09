@@ -1403,7 +1403,7 @@ function renderUploadGroup(uploadList, container, maintainRowShown, categoryByVe
         // text says that instead, without needing to rename the
         // internal status value everywhere it's checked elsewhere.
         const statusLabel = { draft: "Reviewable" }[displayStatus] || displayStatus;
-        const pageLabel = u.page != null ? `PG. ${u.page} &mdash; ` : "";
+        const pageLabel = u.page != null ? `PG. ${u.page}: ` : "";
         const row = document.createElement("div");
         row.className = "upload-row";
         row.innerHTML = `
@@ -1412,7 +1412,7 @@ function renderUploadGroup(uploadList, container, maintainRowShown, categoryByVe
             <div>
               <div class="upload-title">${pageLabel}${u.sectionHeading}<span class="upload-status ${displayStatus}">${statusLabel}</span></div>
               <div class="upload-meta">${u.procedureId}${u.prNumber != null ? ` &middot; ${u.prUrl ? `<a href="${u.prUrl}" target="_blank" rel="noopener" class="pr-link">Request #${u.prNumber}</a>` : `Request #${u.prNumber}`}` : ""}</div>
-              ${outcome && outcome.note ? `<div class="upload-note">&ldquo;${outcome.note}&rdquo; &mdash; maintainer note</div>` : ""}
+              ${outcome && outcome.note ? `<div class="upload-note">&ldquo;${outcome.note}&rdquo; (maintainer note)</div>` : ""}
               ${displayStatus === "submitted" && u.prNumber != null ? `<div class="sub review-status-line" id="reviewstatus-${u.id}" style="margin-top:4px;">${reviewStatusText(reviewStatusCache.get(`${u.repoUrl}#${u.prNumber}`))}</div>` : ""}
             </div>
           </div>
