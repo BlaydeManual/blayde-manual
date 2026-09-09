@@ -327,7 +327,7 @@
       <p class="sub" id="contextMeta" style="margin:0;"></p>
     </div>
 
-    <div class="card">
+    <div class="card" id="uploadFormCard">
       <h2>Propose a photo for this procedure</h2>
       <label>Pick a photo from your device</label>
       <input type="file" id="photoInput" accept="image/*">
@@ -365,8 +365,34 @@
       <div>
         <button id="saveDraftBtn" disabled>Save for Review</button>
       </div>
-      <p class="sub" style="margin:8px 0 0;"><strong>Save for Review</strong> only saves this to this device, in this browser -- no account needed, nothing sent anywhere, and no one else can see it. Nothing is ever proposed publicly from this screen. Find it below afterward to view it side by side with the original page, and only once you're sure it's the right shot, Submit it for real from there.</p>
+      <p class="sub" style="margin:8px 0 0;"><strong>Save for Review</strong> only saves this to this device, in this browser -- no account needed, nothing sent anywhere, and no one else can see it. Nothing is ever proposed publicly from this screen. Once saved, you can review it and Submit it for real right here, or find it anytime in My Photos below.</p>
       <div id="log"></div>
+    </div>
+
+    <div class="card" id="savedStripCard" style="display:none; padding:14px 18px;">
+      <div style="display:flex; align-items:center; gap:12px; flex-wrap:wrap;">
+        <img id="savedStripThumb" alt="" style="width:48px; height:36px; object-fit:cover; border-radius:4px; flex-shrink:0; display:none;">
+        <div style="flex:1; min-width:160px;">
+          <div style="font-size:0.98rem; font-weight:700;">Saved for review</div>
+          <p class="sub" id="savedStripMeta" style="margin:0;"></p>
+        </div>
+        <button class="secondary" id="changePhotoBtn" style="margin:0;">Change photo</button>
+        <button id="stripSubmitBtn" style="margin:0;">Submit&hellip;</button>
+      </div>
+    </div>
+
+    <div class="card" id="forkedStripCard" style="display:none; padding:14px 18px;">
+      <div style="font-size:0.98rem; font-weight:700; margin-bottom:4px;">Pushed privately, not yet submitted</div>
+      <p class="sub" style="margin:0 0 10px;">This photo is already sitting on your own fork. Nothing's been proposed to reviewers yet.</p>
+      <button id="forkedOpenPrBtn" style="margin:0;">Open pull request</button>
+    </div>
+
+    <div class="card" id="submittedBannerCard" style="display:none; border-left-color:#1d9e75; padding:16px 18px;">
+      <div style="font-size:1.05rem; font-weight:700; color:#1d9e75; margin-bottom:4px;">Submitted</div>
+      <p class="sub" id="submittedBannerMeta" style="margin:0 0 8px;"></p>
+      <p style="margin:0 0 10px; color:var(--text);">This page is safe to close, or go back to return to your PDF.</p>
+      <a id="submittedBannerLink" href="#" target="_blank" rel="noopener" style="color:var(--mint); display:none;">View pull request &rarr;</a>
+      <div style="margin-top:10px;"><button class="secondary" id="proposeAnotherBtn" style="margin:0;">Propose a different photo instead</button></div>
     </div>
   </div>
 
