@@ -670,6 +670,23 @@ function openManifestChangeReview() {
   document.getElementById("resetBoxBtn").style.display = "none";
   document.getElementById("zoomViewport").style.display = "none";
   document.getElementById("viewModeRow").style.display = "none";
+  // Real, confirmed bug fixed here, 2026-09-03: switching to a new
+  // manifest-change request without a full page reload left whatever
+  // page/overlay was already rendered for the PREVIOUS request sitting
+  // on screen, under this request's own (correctly updated) title and
+  // legend -- a maintainer reviewing several requests in one sitting on
+  // the same vehicle could easily not notice their already-loaded PDF
+  // never actually got re-rendered for THIS request, and approve it
+  // having only ever visually verified a different one. The photo
+  // review path already avoids this the same way: zoomViewport (just
+  // hidden above) only comes back once renderPage() actually runs for
+  // the current PR, never left showing a prior one's canvas. pdfDoc is
+  // already reset to null by openPR() before this runs; clearing the
+  // picker's own value too means the file input doesn't visually
+  // suggest a file is still selected for a request it was never
+  // rendered against.
+  document.getElementById("manifestDiffPageInner").innerHTML = "";
+  document.getElementById("pdfPicker").value = "";
   const kindLabel = { "new-slot": "Add", remove: "Remove", structure: "Reposition" }[currentPR.kind];
   document.getElementById("reviewTitle").textContent =
     `${kindLabel}: ${formatProcedureLabel(currentPR.procedure_id, currentPR.page, currentPR.section_heading)} - Request #${currentPR.number}`;
