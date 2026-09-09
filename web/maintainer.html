@@ -239,7 +239,11 @@
   #pageModalJump button { margin: 0; padding: 6px 12px; font-size: 0.88rem; background: var(--steel-dark); }
   #pageModalWrap { position: relative; max-width: 90vw; max-height: 78vh; overflow: auto; border: 1px solid var(--steel-dark); }
   #pageModalImg { display: block; max-width: none; }
-  .overlay-box { position: absolute; border: 3px solid var(--steel); background: rgba(138,143,152,0.1); cursor: move; box-sizing: border-box; }
+  /* Same white-line-against-black-line halo as contribute.html's own
+     .overlay-box (real feedback, 2026-09-03: a plain --steel border is
+     hard to see against a real manual page's white/light-grey paper) --
+     reconciled here rather than left as a separate, un-fixed copy. */
+  .overlay-box { position: absolute; border: 3px solid var(--steel); background: rgba(138,143,152,0.1); cursor: move; box-sizing: border-box; box-shadow: 0 0 0 1px rgba(255,255,255,0.95), 0 0 0 2px rgba(0,0,0,0.95); }
   .overlay-box.touched { border-color: #1d9e75; }
   .overlay-box .handle { position: absolute; width: 12px; height: 12px; background: var(--red); border: 2px solid #fff; border-radius: 50%; }
   .overlay-box .handle.nw { top: -6px; left: -6px; cursor: nwse-resize; }
