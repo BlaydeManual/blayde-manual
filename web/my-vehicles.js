@@ -45,6 +45,26 @@ function highestPermission(perms) {
   return "?";
 }
 
+// Direct feedback, 2026-09-04: "write access" reads like a raw GitHub
+// permission string, not a real description -- everyone reaching this
+// roster at all already got here via this app's own maintainer grant
+// (always permission: "push", see auth-worker's handleApproveVehicle),
+// so "write" is the answer for virtually every real row; naming it
+// "Maintainer" says what that actually means here. admin/maintain are
+// kept distinct (a real org owner or a repo transferred outside this
+// app's own flow could still show one of those) rather than collapsed
+// into the same label -- the roster row is exactly where noticing that
+// difference would matter. triage/read/"?" are defensive fallbacks for
+// a collaborator who somehow has neither -- shouldn't happen given the
+// push-or-better filter discoverMaintainedRepos() already applies, but
+// reads sanely instead of a raw permission string if it ever does.
+function permissionLabel(permission) {
+  return {
+    admin: "Admin", maintain: "Maintainer", write: "Maintainer",
+    triage: "Limited access", read: "Read-only", "?": "Unknown access",
+  }[permission] || permission;
+}
+
 function initVehiclesTab() {
   renderVehicleTeams();
 }
@@ -196,7 +216,7 @@ async function renderRoster(rosterEl, repoUrl) {
     row.innerHTML = `
       <div>
         <div class="pr-title">@${m.handle} ${m.pending ? `<span style="font-size:0.7rem; font-weight:700; color:#8a8f98;">&#9679; invite pending</span>` : ""}</div>
-        <div class="pr-meta">${m.permission} access</div>
+        <div class="pr-meta">${permissionLabel(m.permission)}</div>
       </div>
       <button class="secondary remove-btn" data-handle="${m.handle}" data-pending="${m.pending}" data-invitation-id="${m.invitationId || ""}">Remove</button>
     `;
