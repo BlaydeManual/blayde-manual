@@ -597,6 +597,17 @@ document.getElementById("approveBtn").addEventListener("click", async () => {
     });
     log(`approved.`);
     showToast("Approved.");
+    // Best-effort, fire-and-forget -- persists the review count to
+    // maintainer-stats.json (see auth-worker's handleRecordReview,
+    // which re-verifies this review genuinely exists before counting
+    // it, not trusting this call alone). The real review itself, just
+    // submitted above, already succeeded regardless of whether this
+    // recording step does.
+    fetch(`${BlaydeAuth.AUTH_WORKER_URL}record-review`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${session.token}` },
+      body: JSON.stringify({ repo_url: currentPR.repo_url, pr_number: currentPR.number }),
+    }).catch(() => { /* best-effort, see above */ });
     await loadReviewStatus(); // refreshes the status line and both buttons' real state
     // Real, confirmed bug fixed here, 2026-09-03: loadReviewStatus only
     // ever touched the right-pane detail view -- the left list's own

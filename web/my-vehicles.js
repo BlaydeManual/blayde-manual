@@ -198,69 +198,55 @@ async function fetchRoster(repoUrl) {
 }
 
 // Direct request, 2026-09-04: My Manuals' own tab description already
-// promised "how active they've been" -- never actually built until
-// now. Real merged-contribution count, real reviews-given count, and
-// the more recent of the two as "last active," per maintainer.
+// promised "how active they've been." First cut re-scanned a vehicle's
+// entire PR history live, client-side, on every page load -- real,
+// confirmed cost problem: a vehicle with dozens of historical PRs meant
+// dozens of parallel GitHub API calls just to render one roster, and it
+// never scaled past a vehicle's own history size.
 //
-// Capped to the most recent 100 PRs (GitHub's own per-page max, one
-// page, no further pagination) -- this is a browse view, not something
-// needing complete historical accounting, and a vehicle with more than
-// 100 real PRs behind it can revisit this cap then.
+// Replaced with a persisted, incrementally-updated running total
+// (maintainer-stats.json, at the vehicle repo's own root) --
+// auth-worker's recordMaintainerActivity() increments it once, at the
+// exact moment a merge or a real review already happens server-side,
+// so reading it back here is always exactly one unauthenticated GET
+// regardless of how much history the vehicle has behind it. Fetched
+// the same way manifest.json/registry.json already are elsewhere
+// (raw.githubusercontent.com, no token needed, tried main then
+// master) -- this is public, non-sensitive data.
 //
-// Real author resolution mirrors resolveRealSubmitter's own reasoning
-// server-side (auth-worker/src/index.js), not a client-side shortcut:
-// a Public-path (direct-contribute) photo PR is always opened by the
-// GitHub App's own bot identity, never the real contributor, so
-// pr.user.login alone would attribute every one of those to the bot
-// account instead of whoever actually contributed the photo. Always
-// checks the PR's own files for the photo's `__by_<contributor>`
-// filename convention first (same as the server does, not gated behind
-// guessing which login is "the bot"), falling back to pr.user.login
-// only when there's no photo file at all -- exactly the manifest-
-// change PR case, where pr.user.login already is the real proposer
-// (manifest-change PRs are always fork-based, never bot-authored).
-async function computeMaintainerStats(repoUrl) {
+// Returns null specifically when the file doesn't exist yet (a vehicle
+// that predates this feature and hasn't been backfilled) -- distinct
+// from an empty Map (the file exists but genuinely has no entries yet),
+// so the caller can offer the one-time backfill action instead of just
+// showing "no activity."
+async function fetchMaintainerStats(repoUrl) {
   const { owner, repo } = ownerRepoFromUrl(repoUrl);
-  const token = BlaydeAuth.getSession().token;
-  const headers = ghHeaders(token);
-  const prsResp = await fetch(`https://api.github.com/repos/${owner}/${repo}/pulls?state=all&per_page=100&sort=updated&direction=desc`, { headers });
-  const prs = prsResp.ok ? await prsResp.json() : [];
-
-  const stats = new Map(); // handle -> { merged, reviews, lastActive }
-  function bump(handle, field, dateStr) {
-    if (!handle) return;
-    if (!stats.has(handle)) stats.set(handle, { merged: 0, reviews: 0, lastActive: null });
-    const s = stats.get(handle);
-    if (field) s[field]++;
-    if (dateStr && (!s.lastActive || dateStr > s.lastActive)) s.lastActive = dateStr;
-  }
-
-  await Promise.all(prs.map(async (pr) => {
-    if (pr.merged_at) {
-      let author = pr.user?.login || null;
-      try {
-        const filesResp = await fetch(`https://api.github.com/repos/${owner}/${repo}/pulls/${pr.number}/files`, { headers });
-        const files = filesResp.ok ? await filesResp.json() : [];
-        const photoFile = files.find((f) => /^[^/]+\/images\//.test(f.filename));
-        if (photoFile) {
-          const { contributor } = parsePhotoFilename(photoFile.filename.split("/").pop());
-          if (contributor) author = contributor;
-        }
-      } catch (e) { /* best-effort -- falls back to pr.user.login rather than losing the count entirely */ }
-      bump(author, "merged", pr.merged_at);
+  for (const branch of ["main", "master"]) {
+    const resp = await fetch(`https://raw.githubusercontent.com/${owner}/${repo}/${branch}/maintainer-stats.json`);
+    if (resp.ok) {
+      const raw = await resp.json();
+      return new Map(Object.entries(raw).map(([handle, s]) => [handle, { merged: s.merged || 0, reviews: s.reviews || 0, lastActive: s.last_active || null }]));
     }
-    // A real review can land on any PR regardless of its eventual
-    // outcome, so this checks every PR on the page, not just merged
-    // ones.
-    try {
-      const reviewsResp = await fetch(`https://api.github.com/repos/${owner}/${repo}/pulls/${pr.number}/reviews`, { headers });
-      const reviews = reviewsResp.ok ? await reviewsResp.json() : [];
-      reviews.forEach((r) => {
-        if (r.state === "APPROVED" || r.state === "CHANGES_REQUESTED") bump(r.user?.login, "reviews", r.submitted_at);
-      });
-    } catch (e) { /* best-effort */ }
-  }));
-  return stats;
+    if (resp.status !== 404) throw new Error(`stats fetch failed (${resp.status})`);
+  }
+  return null; // genuinely 404 on both branches -- not backfilled yet, not an error
+}
+
+// One-time historical seed, called from the "Backfill activity stats"
+// button rendered when fetchMaintainerStats() comes back null -- see
+// auth-worker's handleBackfillMaintainerStats for the real scan this
+// triggers server-side (capped to the vehicle's most recent 100 PRs,
+// same real limit the original client-side scan had).
+async function backfillMaintainerStats(repoUrl) {
+  const session = BlaydeAuth.getSession();
+  const resp = await fetch(`${BlaydeAuth.AUTH_WORKER_URL}backfill-maintainer-stats`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", Authorization: `Bearer ${session.token}` },
+    body: JSON.stringify({ repo_url: repoUrl }),
+  });
+  const result = await resp.json().catch(() => ({}));
+  if (!resp.ok || result.error) throw new Error(result.error || `Backfill failed (${resp.status}).`);
+  return result;
 }
 
 function formatLastActive(dateStr) {
@@ -293,7 +279,29 @@ async function renderRoster(rosterEl, repoUrl) {
   // Remove buttons) should ever wait on or fail alongside. Each row
   // gets its stats patched in once this resolves, whichever comes
   // first.
-  computeMaintainerStats(repoUrl).then((stats) => {
+  fetchMaintainerStats(repoUrl).then((stats) => {
+    if (stats === null) {
+      // Not backfilled yet -- a vehicle that predates this feature.
+      // One button for the whole roster, not per-row, since backfilling
+      // is a single per-vehicle action, not a per-maintainer one.
+      rosterEl.querySelectorAll("[data-stats-for]").forEach((el) => { el.textContent = ""; });
+      const prompt = document.createElement("p");
+      prompt.className = "sub";
+      prompt.style.margin = "4px 0 0";
+      prompt.innerHTML = `Activity stats aren't set up for this vehicle yet. <button class="secondary backfill-stats-btn" style="margin:0; padding:4px 10px; font-size:0.82rem;">Backfill activity stats</button>`;
+      rosterEl.appendChild(prompt);
+      prompt.querySelector(".backfill-stats-btn").addEventListener("click", async (e) => {
+        e.target.disabled = true;
+        e.target.textContent = "Backfilling…";
+        try {
+          await backfillMaintainerStats(repoUrl);
+          renderRoster(rosterEl, repoUrl);
+        } catch (err) {
+          prompt.innerHTML = `<span style="color:#ff6b6b;">Backfill failed: ${err.message}</span>`;
+        }
+      });
+      return;
+    }
     stats.forEach((s, handle) => {
       const el = rosterEl.querySelector(`[data-stats-for="${CSS.escape(handle)}"]`);
       if (!el) return; // a reviewer/contributor who isn't a current collaborator (left, or removed since) has no row to patch
