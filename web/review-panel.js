@@ -630,6 +630,17 @@ async function openPR(number) {
   submittedPhotoImg = null;
   reviewStatus = null;
   document.getElementById("prLog").textContent = "";
+  // Real, confirmed bug fixed here, 2026-09-04: pdfDoc gets reset above,
+  // but the file <input> itself keeps showing the PREVIOUS request's
+  // filename -- a browser file input's own displayed label doesn't
+  // clear just because JS state around it did. Picking a new request
+  // looked like a file was already selected for it, and nothing
+  // rendered until the exact same file was picked again (the only thing
+  // that actually fires the input's change event, which is what
+  // triggers rendering in the first place). Shared here for both the
+  // photo and manifest-change paths, which already shared #pdfPicker --
+  // previously only the manifest-change path cleared this.
+  document.getElementById("pdfPicker").value = "";
   document.getElementById("reviewPlaceholder").style.display = "none";
   document.getElementById("reviewArea").classList.add("open");
   document.getElementById("rejectBtn").disabled = false;
@@ -741,9 +752,10 @@ function openManifestChangeReview() {
   // already reset to null by openPR() before this runs; clearing the
   // picker's own value too means the file input doesn't visually
   // suggest a file is still selected for a request it was never
-  // rendered against.
+  // rendered against. (Now done once, shared with the photo path, at
+  // the top of openPR() -- kept this comment here since it explains
+  // why that shared reset exists at all.)
   document.getElementById("manifestDiffPageInner").innerHTML = "";
-  document.getElementById("pdfPicker").value = "";
   const kindLabel = { "new-slot": "Add", remove: "Remove", structure: "Reposition" }[currentPR.kind];
   document.getElementById("reviewTitle").textContent =
     `${kindLabel}: ${formatProcedureLabel(currentPR.procedure_id, currentPR.page, currentPR.section_heading)} - Request #${currentPR.number}`;
@@ -872,8 +884,18 @@ function setReviewViewMode(mode) {
     document.getElementById("annoTextFrameRow").style.display = "none";
     document.getElementById("annoTextEditRow").style.display = "none";
     annoEditingTextId = null;
-    renderAnnotations();
   }
+  // Real, confirmed bug fixed here, 2026-09-04: this only ran inside
+  // the full-page branch above, never when switching back to zoomed --
+  // the two views have different box shapes (annoBoxAspect() reads the
+  // box's own real getBoundingClientRect(), which changes between
+  // them), so a circle/ellipse rendered for one view's aspect stayed
+  // stale, and visibly non-circular, once shown inside the other view's
+  // differently-shaped box. Circle math itself was never wrong --
+  // confirmed by rendering it fresh against each view's own real box
+  // size, which always comes out perfectly circular; the bug was only
+  // ever about WHEN it got recomputed.
+  renderAnnotations();
   applyZoom();
 }
 
@@ -1544,6 +1566,12 @@ function paintBox() {
   el.style.height = (box.y1 - box.y0) + "px";
   if (submittedPhotoImg) document.getElementById("submittedPhotoImg").src = submittedPhotoImg;
   updateFitReadout();
+  // Same root cause, same fix as setReviewViewMode's own -- changing
+  // the box's width/height right above changes its real aspect ratio,
+  // which annoBoxAspect() reads fresh every render; skipping this here
+  // left circles/ellipses stale (visibly oval) after a window resize
+  // or a box drag/reset, not just a view-mode switch.
+  renderAnnotations();
   applyZoom();
 }
 
