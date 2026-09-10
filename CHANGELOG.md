@@ -1,9 +1,14 @@
 # Changelog
 
-All notable changes to this project are logged here. Format loosely
-follows [Keep a Changelog](https://keepachangelog.com/); versioning is
-milestone-based rather than strict SemVer while pre-1.0.0 (see
-ROADMAP.md for the planned path to v1.0.0).
+All notable changes to this project are logged here, newest first,
+under "Recent changes." There's no `[Unreleased]` staging area the way
+[Keep a Changelog](https://keepachangelog.com/) uses one -- this site
+deploys automatically on every merge to `main`, so there's no gap
+between "merged" and "live" to track separately. Versioned sections
+below "Recent changes" mark real milestones, not release cuts;
+versioning is milestone-based rather than strict SemVer while
+pre-1.0.0 (see ROADMAP.md for the planned path to v1.0.0). Each entry
+here is a brief summary -- check the linked PR for full detail.
 
 As of 2026-08-25, this project is public at
 `github.com/BlaydeManual/blayde-manual` -- see LEGAL.md for the pre-push
@@ -16,8 +21,30 @@ decisions originated with the project owner versus Claude's synthesis,
 and corrections in both directions -- see
 `ledgers/TheBlayde_AILedger.md`, kept alongside this file.
 
-## [Unreleased]
+## Recent changes
 
+- **Contributor Portal redesigned to "Save for Review" only** (PR #59):
+  the capture screen no longer submits directly or asks for a Public/
+  Private choice -- it only ever saves to that device's own
+  `localStorage`. The Public/Private choice and the required sign-in
+  both moved to the moment someone actually clicks Submit from My
+  Reviewables, so a contributor reviews their photo against the real
+  page before anything becomes real.
+- **ROADMAP.md cleanup pass.** Removed sections describing already-shipped
+  work (now covered by this file and SECURITY.md instead), stale Python
+  tooling that no longer exists in the repo, and moot design questions;
+  consolidated duplicate/scattered topics (mosaic.py, multi-language,
+  QR codes) into single sections. File size cut by roughly two-thirds.
+- **Per-photo "show the original" toggle**, `review-panel.js`'s
+  `toggleOriginalBtn`: lets a reviewer flip between the contributed
+  photo and the original scanned page while zoomed into a box.
+- **Review modal reconciled with the original Python review gallery**:
+  `maintainer.html`'s indexer review modal gained a page header
+  ("Page 5 of 10 -- N candidates") and a "jump to page" control, matching
+  `generate_review.py`'s gallery. Omit-vs-delete was deliberately NOT
+  ported -- the modal stays delete-only by design (a candidate is either
+  real and stays, or it's gone; no third state that ships an unfillable
+  blank procedure).
 - **Category expansion (Garage/Marina/Hangar/Farm/Home/Hobby) data
   foundation** (PRs #72-75, `registry#2`): `manual-types.json` is now
   the single source of truth for each category's manual-type list;

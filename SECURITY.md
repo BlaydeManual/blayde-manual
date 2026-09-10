@@ -475,12 +475,28 @@ controls as proven in production, not just in a mocked test.
 - **Deliberate, not an oversight**: `enforce_admins` is `false` on
   `blayde-manual`/`registry`/`vehicle-scaffold` -- the sole admin can
   bypass required review. Kept as an escape hatch while there is exactly
-  one admin; revisit once a co-maintainer team exists. `submission-log`
-  has no branch protection -- its append-only property depends on write
-  access being limited to the App's installation token and org admins,
-  not on anything GitHub enforces, since the App writes
-  directly to `main` by design and a PR requirement would need the App
-  exempted from its own rule anyway.
+  one admin; revisit once a co-maintainer team exists.
+- **Closed, 2026-09-10**: `submission-log` now has real branch
+  protection of its own shape (no PR/review model, since only the App
+  writes there directly): `enforce_admins: true` (the one deliberate
+  exception to the escape-hatch above -- this log's whole value is that
+  not even an admin can quietly edit it), force pushes and deletions
+  blocked, linear history required, and `restrictions` scoped to only
+  the App's own installation. No human, including the org admin, can
+  push to it at all.
+- **CI workflow permissions**: `validate-photo.yml`/`validate-manifest.yml`
+  (in `vehicle-scaffold`, copied into every vehicle repo) have no
+  explicit `permissions:` block, relying only on the `pull_request`
+  trigger's default read-only restriction. Worth adding an explicit
+  minimal block as these workflows grow, rather than relying on an
+  implicit default -- not yet done.
+- **Accepted residual risk, not fully closable**: a maliciously crafted
+  but *structurally valid* image exploiting a real parser bug
+  (libjpeg/libpng/Pillow have had real CVEs historically) could still
+  reach `embedJpg`/`embedPng` or `PIL.Image.open` (`checker.py`) despite
+  format validation rejecting anything non-image. Mitigation is routine
+  dependency updates, not a one-time fix -- inherent to any system
+  processing untrusted image uploads.
 - Token expiry is currently disabled at the App level for the
   user-to-server flow, to avoid needing refresh-token handling in the
   first cut -- a real, deliberate tradeoff (see ROADMAP.md), not an
