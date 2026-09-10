@@ -502,10 +502,21 @@ controls as proven in production, not just in a mocked test.
   construction), which is part of why direct-submit/direct-contribute
   moved to it; migrating the remaining classic-OAuth call sites is
   real, deferred work, not done in this pass.
-- Branch protection does not carry over automatically when a new
-  vehicle repo is generated -- each one needs it configured as its own
-  step today (a direct-submit repo additionally starts private, which
-  is its own form of protection until approval).
+- **Closed, 2026-09-09**: branch protection now applies consistently
+  across every real vehicle repo, `vehicle-scaffold`, and
+  `submission-log`, confirmed live via the GitHub API. `suzuki-sv650-1999`,
+  `blayde-manual-2026`, and `royal-lexon-s20` each require 2 approving
+  reviews plus both `checker` and `validate` as required status checks
+  (closing the manifest-validation gap below). `vehicle-scaffold`
+  carries its own, separate protection (2 reviews + code-owner review)
+  that does not propagate to repos generated from it; real vehicle
+  repos get theirs from `handleApproveVehicle` at approval time, not
+  from the template. `submission-log` has real branch protection now
+  too, but of a different shape suited to an App-only-write repo:
+  `enforce_admins: true`, force pushes and deletions blocked, linear
+  history required, and `restrictions` scoped to only the GitHub App's
+  own installation -- no human, including an org admin, can push to it
+  directly.
 - **Closed, 2026-08-27**: photo-PR file-allowlist and metadata scan
   previously only ran through this site's own Accept button, skippable
   by a native GitHub merge. Closed via `vehicle-scaffold`'s required
@@ -515,12 +526,10 @@ controls as proven in production, not just in a mocked test.
   review-count requirement immediately below; confirmed live, not
   theoretical (see that section for what happened and how it was
   caught and reverted).
-- CI validates contributed photos; it does not yet validate a
-  `manifest.json` change on its own (a moved bbox, an edited status).
-  (`validate_manifest.py`/`validate-manifest.yml` exist in
-  `vehicle-scaffold` and get copied into every vehicle repo the same
-  way `checker.py` does, but aren't yet wired into `required_status_checks`
-  the way `checker` is -- not done in this pass.)
+- **Closed, 2026-09-09**: `validate_manifest.py`/`validate-manifest.yml`'s
+  `validate` job is now a required status check on real vehicle repos,
+  alongside `checker` -- a native merge can no longer skip
+  manifest-change validation the way a `checker`-only setup allowed.
 - No CLA/DCO exists yet for outside *code* contributions to the
   tooling repo -- this is a hard gate: no such contribution is
   accepted until one does.
