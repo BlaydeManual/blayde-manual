@@ -348,6 +348,10 @@ if (hasProcedureContext) {
       titleEl.textContent = context.section_heading || procedureId;
       metaEl.textContent = `${context.vehicle_slug} · page ${context.page}` +
         (context.real ? "" : " (repo not reachable yet -- showing what's known locally)");
+      // Only a real manifest entry (not the MOCK_MANIFEST_CONTEXT fallback)
+      // has a real repo/edition behind it to actually propose a change
+      // against -- skip the removal shortcut when nothing real backs it.
+      if (context.real) document.getElementById("removeSpotCard").style.display = "block";
     } else {
       titleEl.textContent = procedureId;
       metaEl.textContent = "Couldn't load extra context for this one -- you can still propose a photo for it.";
@@ -419,6 +423,34 @@ function renderProcedureState() {
     formCard.style.display = "block";
   }
 }
+
+// Shortcut for the deep-link landing: propose removing this exact slot
+// without the standalone editor's portal-login-and-search step. Reuses
+// issue-requests.js's real submit path (already loaded on this page)
+// rather than a separate mechanism. Doesn't require the manual's own
+// PDF to be loaded first -- that's only needed for the nicer rendered
+// preview the standalone editor shows, not for a valid removal request.
+document.getElementById("removeSpotBtn").addEventListener("click", async () => {
+  const statusEl = document.getElementById("removeSpotStatus");
+  const session = window.BlaydeAuth ? BlaydeAuth.getSession() : null;
+  if (!session) {
+    statusEl.textContent = "Sign in to request this. See the sign-in option above.";
+    document.getElementById("landingSignIn").style.display = "block";
+    return;
+  }
+  if (!(await blaydeConfirm(`Remove the photo slot for "${context.section_heading || procedureId}"?`))) return;
+  const btn = document.getElementById("removeSpotBtn");
+  btn.disabled = true;
+  statusEl.textContent = "Submitting…";
+  try {
+    const issue = { kind: "remove", procedure_id: procedureId, page: context.page, section_heading: context.section_heading, bbox: context.pixel_bbox };
+    const pr = await submitManifestChange(repoUrl, resolvedEditionId, issue);
+    statusEl.innerHTML = `Requested. <a href="${pr.url}" target="_blank" rel="noopener">Pull request #${pr.number}</a>.`;
+  } catch (e) {
+    btn.disabled = false;
+    statusEl.textContent = `Couldn't submit: ${e.message}`;
+  }
+});
 
 document.getElementById("changePhotoBtn").addEventListener("click", () => {
   const upload = currentProcedureUpload();

@@ -331,9 +331,15 @@
   </div>
 
   <div id="procedureFlow">
-    <div class="card" id="contextCard">
-      <h2 id="contextTitle">Loading what's needed&hellip;</h2>
-      <p class="sub" id="contextMeta" style="margin:0;"></p>
+    <div class="card" id="contextCard" style="display:flex; gap:16px; align-items:flex-start; justify-content:space-between;">
+      <div>
+        <h2 id="contextTitle">Loading what's needed&hellip;</h2>
+        <p class="sub" id="contextMeta" style="margin:0;"></p>
+      </div>
+      <div id="removeSpotCard" style="display:none; text-align:right; flex-shrink:0;">
+        <button class="secondary" id="removeSpotBtn" style="margin:0;" title="Quick Request: Remove this photo slot">Remove this slot</button>
+        <p class="sub" id="removeSpotStatus" style="margin:6px 0 0; max-width:220px;"></p>
+      </div>
     </div>
 
     <div class="card" id="uploadFormCard">
@@ -374,7 +380,7 @@
       <div>
         <button id="saveDraftBtn" disabled>Save for Review</button>
       </div>
-      <p class="sub" style="margin:8px 0 0;"><strong>Save for Review</strong> only saves this to this device, in this browser -- no account needed, nothing sent anywhere, and no one else can see it. Nothing is ever proposed publicly from this screen. Once saved, you can review it and Submit it for real right here, or find it anytime in My Photos below.</p>
+      <p class="sub" style="margin:8px 0 0;"><strong>Save for Review</strong> saves your submission only on this device as a Draft. Once saved, you can review below and Submit Publicly or Privately when ready.</p>
       <div id="log"></div>
     </div>
 
