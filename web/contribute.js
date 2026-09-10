@@ -1092,7 +1092,7 @@ async function openPrFromFork(upload) {
     // demand to stop using the platform they're already on. A markdown
     // heading, not italic body text, so it doesn't get lost when read
     // straight from an email link.
-    `### Visit [BlaydeManual.com](https://blaydemanual.com/maintainer.html) Maintainer Portal to properly manage this request`,
+    `### Visit [BlaydeManual.com](https://blaydemanual.com) Maintainer Portal to properly manage this request`,
   ].join("\n");
   const pr = await githubApi(`/repos/${owner}/${repo}/pulls`, session.token, {
     method: "POST",
@@ -2025,7 +2025,7 @@ async function submitRecategorizationProposal(entry, newCategory, newManualType)
     `Submitted via the Contributor Portal's "Propose a recategorization" action. Only this one entry's category/manual_type changed -- nothing else in registry.json was touched.`,
     ``,
     `---`,
-    `### Visit [BlaydeManual.com](https://blaydemanual.com/maintainer.html) Maintainer Portal to properly manage this request`,
+    `### Visit [BlaydeManual.com](https://blaydemanual.com) Maintainer Portal to properly manage this request`,
   ].join("\n");
   const pr = await githubApi(`/repos/${owner}/${repo}/pulls`, session.token, {
     method: "POST",
