@@ -32,6 +32,15 @@ and corrections in both directions -- see
   all. Now returns `merged`/`state`, and both the list render and the
   single-PR detail pane drop a PR the moment any status check reveals
   it's closed, instead of waiting for a manual refresh.
+- **"Remove this picture zone" shortcut on the Contributor Portal's
+  deep-link landing**: arriving at `contribute.html` via a real
+  `procedure` link now offers a direct "Request this picture zone be
+  removed" option alongside the upload picker, skipping the standalone
+  editor's portal-login-and-search step. Reuses `issue-requests.js`'s
+  real `submitManifestChange` path -- same review gate as any other
+  manifest-fix proposal. Kept light, as scoped: a plain-text
+  confirmation, not the rendered-preview version design discussion had
+  floated.
 - **Contributor Portal redesigned to "Save for Review" only** (PR #59):
   the capture screen no longer submits directly or asks for a Public/
   Private choice -- it only ever saves to that device's own
