@@ -565,19 +565,6 @@ manual *section* a figure belongs to (already extracted from OCR'd
 headings), showing a live checklist of that section's figures with
 what's captured this session checked off.
 
-## Callout/annotation overlays: Phase 2, wiring into the actual patched PDF
-
-Phase 1 (drawing arrows/circles/numbers/text on a photo during review,
-stored as relative vector shapes on `entry.annotations`) shipped -- see
-CHANGELOG.md. **Phase 2 is still not built:** `patcher.js` never reads
-`entry.annotations` at all, so a patched manual today shows the plain
-photo with no callouts, no matter how many were drawn during review.
-Needs: teach `patcher.js` to draw them (same pdf-lib vector path already
-used for the cover page/QR overlays), and decide a real annotation color
-for the patcher output specifically (the review editor only ever shipped
-white). Blocked on having real approved photos with real annotations to
-render and check against.
-
 ## Editable section_heading labels (feature request, not built)
 
 **The gap:** `section_heading` is auto-derived from whatever OCR'd

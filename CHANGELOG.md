@@ -23,6 +23,11 @@ and corrections in both directions -- see
 
 ## Recent changes
 
+- **Annotation overlays now render in the actual patched PDF** (Phase
+  2): `patcher.js` reads `entry.annotations` and draws arrows, lines,
+  circles, numbered callouts, and text labels onto the real photo,
+  matching the review editor's own cased black-on-white styling so
+  legibility holds against any photo background.
 - **Contributor Portal redesigned to "Save for Review" only** (PR #59):
   the capture screen no longer submits directly or asks for a Public/
   Private choice -- it only ever saves to that device's own
