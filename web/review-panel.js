@@ -324,6 +324,24 @@ async function renderPRList(approvedRepos) {
     statusByNumber.set(pr.number, await fetchReviewStatus(pr));
   }));
 
+  // Real, confirmed bug: a PR merged outside this exact tab (another
+  // maintainer's own Accept, an admin overriding the review count) used
+  // to sit in this list forever showing its last-known review status --
+  // looking like a live, actionable row -- until a full page reload
+  // re-fetched the open-PRs list from scratch. Any status check that
+  // reveals a PR is no longer open drops it from currentPRs right here,
+  // the same way removeCurrentPRFromList already does after this tab's
+  // own Accept action, so the list self-heals within one render instead
+  // of needing a reload.
+  const closedNumbers = new Set(
+    currentPRs.filter((pr) => { const s = statusByNumber.get(pr.number); return s && !s.error && s.state && s.state !== "open"; })
+      .map((pr) => pr.number)
+  );
+  if (closedNumbers.size) {
+    currentPRs = currentPRs.filter((pr) => !closedNumbers.has(pr.number));
+    closedNumbers.forEach((n) => statusByNumber.delete(n));
+  }
+
   // Category is a grouping tier here, never a filter (see
   // categoryForRepo's comment) -- resolved per repo up front, in
   // parallel, same shape as the status prefetch above.
@@ -482,6 +500,18 @@ async function loadReviewStatus() {
   updateAcceptButtonState();
   const result = await fetchReviewStatus(pr);
   if (currentPR !== pr) return; // maintainer moved to a different PR while this was in flight
+  // Real, confirmed bug: someone else (another maintainer's own Accept,
+  // an admin overriding the review count) can merge or close this exact
+  // PR while it's sitting open in this detail pane -- without this
+  // check, the pane just kept showing a stale Accept/Approve state for
+  // something already resolved.
+  if (result.state && result.state !== "open") {
+    document.getElementById("reviewArea").classList.remove("open");
+    document.getElementById("reviewPlaceholder").style.display = "flex";
+    showToast(result.merged ? "Already merged elsewhere -- removed from the list." : "Already closed elsewhere -- removed from the list.");
+    removeCurrentPRFromList();
+    return;
+  }
   reviewStatus = result;
   renderReviewStatusLine();
   updateAcceptButtonState();
