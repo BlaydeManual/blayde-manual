@@ -102,25 +102,21 @@ repo; patching someone's own copy never depended on a maintainer being
 present). "Passive" means exactly one thing: some contributors might
 want to step up. Nothing more is implied, and nothing stops working.
 
-**Grouping by model name across generations, needed once the
-generations-stay-separate-repos decision landed (2026-08-25).** Since
-`suzuki-sv650-1999-2002` and `suzuki-sv650-2003-2010` are genuinely
-separate repos with separate maintainer teams, a visitor searching
-"SV650" needs to find both without the page implying they're the same
-community. Search/filter should group by model name for discovery
-(one search surfaces every generation's repo), while each row stays
-its own vehicle_slug with its own stats, its own passive indicator,
-and its own link -- grouped for *finding*, never merged into one row
-or one stat. This is the piece that makes "generations stay separate"
-cost nothing in practice: the separation is real underneath, but a
-visitor never has to already know which generation they own before
-they can find it.
+**Closed, 2026-09-10, by decision:** `registry-browse.js` ships a real, live
+substring search across `vehicle_display_name`/`vehicle_slug`, plus
+category and manual-type filters (see CHANGELOG.md). A search for
+"SV650" already surfaces every repo whose slug/display name contains
+it, satisfying the actual need above (one search finds every
+generation) without needing a separate "group by model" mechanism --
+closed as-is rather than building make/model/year fields `registry.json`
+doesn't have.
 
 **Wireframed in conversation, not yet built:** the redesigned patcher
 landing page (hero, "what goes in / how, lightly / what comes out"
 strip, reframed no-registry-match state walking through the 5 maintainer
-setup steps, always-visible contribute teaser), the two-persona flow
-above, and the registry browse page. All three are design-only.
+setup steps, always-visible contribute teaser) and the two-persona flow
+above. The registry browse page itself is built and live (see
+CHANGELOG.md).
 
 ## Vehicle-type scope, and Maintainer Guidance -- sequenced before more website work
 
@@ -3013,9 +3009,9 @@ Direct report: signed in and shown as such at the top of the page, but the index
 ## Backlog: quorum-style dual-approval on new-vehicle approval itself
 
 Dual-approval is now real for photo contributions (GitHub-enforced branch protection, see CHANGELOG.md). Extending the same quorum model to the vehicle-approval action itself is deliberately deferred until a second real org admin exists -- not decided against, just not yet relevant with only one admin today.
-## Backlog: Browse doesn't group generations by model name or filter by make/model/year
+## Closed, 2026-09-10: Browse's search/filter is sufficient, by decision
 
-`registry-browse.js` is wired to the real registry now (see CHANGELOG.md), but `registry.json` has no make/model/year_range fields -- only `vehicle_slug`/`vehicle_display_name`/`vehicle_class`/`edition_id`/`repo_url`/`source_pdf_sha256`/`status`. Grouping multiple generations of the same model under one heading, and filtering/sorting by make/model/year, both need those fields captured at submit time first; not worth faking via slug-parsing guesswork. This is the same still-open need already named in "GitHub-invisible UX" above (grouping by model name for discovery).
+`registry-browse.js`'s live substring search (`vehicle_display_name`/`vehicle_slug`) plus category/manual-type filters (see CHANGELOG.md) closes this by decision -- a real make/model/year grouping would need fields `registry.json` doesn't have, and isn't worth adding just to replicate what search already does in practice.
 
 **Note on the QR/credit-tab work (see CHANGELOG.md):** clicking the QR box's link annotation opens the contribute page in the same window as the manual, losing the reader's place. Standard PDF `/Link` annotations have no `target="_blank"` equivalent -- this is entirely up to the viewer, not something `patcher.js` can force. Not pursued further; nothing to build until/unless a real viewer-side workaround surfaces.
 
