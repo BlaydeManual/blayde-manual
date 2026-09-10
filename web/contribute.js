@@ -434,7 +434,7 @@ document.getElementById("removeSpotBtn").addEventListener("click", async () => {
   const statusEl = document.getElementById("removeSpotStatus");
   const session = window.BlaydeAuth ? BlaydeAuth.getSession() : null;
   if (!session) {
-    statusEl.textContent = "Sign in to request this -- see the sign-in option above.";
+    statusEl.textContent = "Sign in to request this. See the sign-in option above.";
     document.getElementById("landingSignIn").style.display = "block";
     return;
   }
@@ -445,7 +445,7 @@ document.getElementById("removeSpotBtn").addEventListener("click", async () => {
   try {
     const issue = { kind: "remove", procedure_id: procedureId, page: context.page, section_heading: context.section_heading, bbox: context.pixel_bbox };
     const pr = await submitManifestChange(repoUrl, resolvedEditionId, issue);
-    statusEl.innerHTML = `Requested -- <a href="${pr.url}" target="_blank" rel="noopener">pull request #${pr.number}</a>.`;
+    statusEl.innerHTML = `Requested. <a href="${pr.url}" target="_blank" rel="noopener">Pull request #${pr.number}</a>.`;
   } catch (e) {
     btn.disabled = false;
     statusEl.textContent = `Couldn't submit: ${e.message}`;
