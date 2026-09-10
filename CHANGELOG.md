@@ -1,9 +1,14 @@
 # Changelog
 
-All notable changes to this project are logged here. Format loosely
-follows [Keep a Changelog](https://keepachangelog.com/); versioning is
-milestone-based rather than strict SemVer while pre-1.0.0 (see
-ROADMAP.md for the planned path to v1.0.0).
+All notable changes to this project are logged here, newest first,
+under "Recent changes." There's no `[Unreleased]` staging area the way
+[Keep a Changelog](https://keepachangelog.com/) uses one -- this site
+deploys automatically on every merge to `main`, so there's no gap
+between "merged" and "live" to track separately. Versioned sections
+below "Recent changes" mark real milestones, not release cuts;
+versioning is milestone-based rather than strict SemVer while
+pre-1.0.0 (see ROADMAP.md for the planned path to v1.0.0). Each entry
+here is a brief summary -- check the linked PR for full detail.
 
 As of 2026-08-25, this project is public at
 `github.com/BlaydeManual/blayde-manual` -- see LEGAL.md for the pre-push
@@ -16,7 +21,7 @@ decisions originated with the project owner versus Claude's synthesis,
 and corrections in both directions -- see
 `ledgers/TheBlayde_AILedger.md`, kept alongside this file.
 
-## [Unreleased]
+## Recent changes
 
 - **ROADMAP.md cleanup pass.** Removed sections describing already-shipped
   work (now covered by this file and SECURITY.md instead), stale Python
