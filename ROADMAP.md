@@ -923,16 +923,6 @@ Raised directly, then explicitly scoped back out: "nobody is asking for that tod
 
 **Related, from the same "offline with your own repo" idea**: Contributor Portal's Save-for-Review redesign (PR #59, see CHANGELOG.md) already makes drafting 100% local/accountless -- the missing piece is exporting a saved Reviewable to a file and re-loading it later against a personal repo, entirely without a GitHub account. Not designed or built, noted so it isn't lost.
 
-## Registry repo's schema doc has real drift from what the code actually writes
-
-Re-checked 2026-09-10 against the live `BlaydeManual/registry` repo: the
-`vehicle_class` gap is now fixed (the README documents it as deprecated,
-superseded by `category`/`manual_type`). **Real drift remains**: the
-README's example still shows `source_identifier` and `submitted_by`
-fields that none of the 3 live registry entries actually have. Needs its
-own PR against `BlaydeManual/registry` directly (this repo has no write
-access to that one's docs).
-
 ## Periodic cleanup: auto-reject stale/malformed photo PRs (proposed, not built)
 
 Raised directly alongside the `/accept-photo-pr` merge-gate work (see SECURITY.md's "Real merge-time validation" section): that gate closes what happens when a maintainer clicks Accept on THIS site, but does nothing for a PR nobody ever acts on at all -- one that would fail the same checks (extra files, embedded EXIF, corrupt image) but just sits open indefinitely instead of being explicitly rejected. This is explicitly a **complementary** idea, not a substitute for the required-CI-status-check fix SECURITY.md's new gap entry calls for -- that one stops a bad merge from ever completing, native or not; this one only cleans up what's left open, after the fact.
