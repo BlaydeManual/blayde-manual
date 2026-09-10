@@ -23,6 +23,13 @@ and corrections in both directions -- see
 
 ## Recent changes
 
+- **Contributor Portal redesigned to "Save for Review" only** (PR #59):
+  the capture screen no longer submits directly or asks for a Public/
+  Private choice -- it only ever saves to that device's own
+  `localStorage`. The Public/Private choice and the required sign-in
+  both moved to the moment someone actually clicks Submit from My
+  Reviewables, so a contributor reviews their photo against the real
+  page before anything becomes real.
 - **ROADMAP.md cleanup pass.** Removed sections describing already-shipped
   work (now covered by this file and SECURITY.md instead), stale Python
   tooling that no longer exists in the repo, and moot design questions;
