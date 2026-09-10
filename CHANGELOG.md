@@ -23,6 +23,15 @@ and corrections in both directions -- see
 
 ## Recent changes
 
+- **Fixed: a merged/closed PR could sit in the Maintainer Portal's
+  review list indefinitely, showing stale review status.** Direct
+  report: a PR merged via another maintainer's own Accept (or an admin
+  bypassing the review count) kept showing its last-known "1/2, waiting
+  on others" status in the list until a full page reload. Root cause:
+  `pr-review-status` never returned whether the PR was still open at
+  all. Now returns `merged`/`state`, and both the list render and the
+  single-PR detail pane drop a PR the moment any status check reveals
+  it's closed, instead of waiting for a manual refresh.
 - **Contributor Portal redesigned to "Save for Review" only** (PR #59):
   the capture screen no longer submits directly or asks for a Public/
   Private choice -- it only ever saves to that device's own
