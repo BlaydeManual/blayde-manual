@@ -18,6 +18,21 @@ and corrections in both directions -- see
 
 ## [Unreleased]
 
+- **ROADMAP.md cleanup pass.** Removed sections describing already-shipped
+  work (now covered by this file and SECURITY.md instead), stale Python
+  tooling that no longer exists in the repo, and moot design questions;
+  consolidated duplicate/scattered topics (mosaic.py, multi-language,
+  QR codes) into single sections. File size cut by roughly two-thirds.
+- **Per-photo "show the original" toggle**, `review-panel.js`'s
+  `toggleOriginalBtn`: lets a reviewer flip between the contributed
+  photo and the original scanned page while zoomed into a box.
+- **Review modal reconciled with the original Python review gallery**:
+  `maintainer.html`'s indexer review modal gained a page header
+  ("Page 5 of 10 -- N candidates") and a "jump to page" control, matching
+  `generate_review.py`'s gallery. Omit-vs-delete was deliberately NOT
+  ported -- the modal stays delete-only by design (a candidate is either
+  real and stays, or it's gone; no third state that ships an unfillable
+  blank procedure).
 - **Category expansion (Garage/Marina/Hangar/Farm/Home/Hobby) data
   foundation** (PRs #72-75, `registry#2`): `manual-types.json` is now
   the single source of truth for each category's manual-type list;
