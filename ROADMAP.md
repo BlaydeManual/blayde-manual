@@ -951,6 +951,12 @@ Direct question, raised while a real vehicle was being indexed: "you can downloa
 
 Not fixed in this pass, logged directly per request. Two real directions, not decided yet: (1) build a real "load manifest.json" import path so the download genuinely functions as a portable savepoint (works across browsers/devices, unlike the IndexedDB-only resume); or (2) if the button was only ever meant as a raw-data escape hatch, say so in the UI rather than leaving it looking like a savepoint feature it isn't.
 
+## Backlog: persist which vehicle/edition is expanded in the review list (2026-09-10)
+
+Direct request: working through several requests on one vehicle (e.g. sv650) means re-browsing the whole category tree from scratch every time the list re-renders or the page reloads -- everything currently defaults back to fully expanded, with no memory of which vehicle a maintainer was actually focused on.
+
+**Light** -- client-side only, no schema change, no new endpoint. `renderPRList`'s `<details>` expand/collapse state isn't persisted anywhere today; save it to `localStorage` (per-maintainer UI convenience, not shared state) on every toggle, and re-apply it right after the tree rebuilds. Rough scope: one small persisted object keyed by vehicle/edition, a save on toggle, a restore after render -- no design decisions to resolve first.
+
 ## Backlog: three real gaps found reviewing the real `blayde-manual-2026` panes (2026-08-27)
 
 The review-gallery layout inconsistency (Prev/Next below a variable-height thumbnail grid) is fixed -- see CHANGELOG.md. Three findings from the same pass are not:
