@@ -51,6 +51,8 @@ export default {
       if (request.method === "POST" && pathname === "/accept-photo-pr") return await handleAcceptPhotoPr(request, env);
       if (request.method === "POST" && pathname === "/accept-recategorization") return await handleAcceptRecategorization(request, env);
       if (request.method === "POST" && pathname === "/accept-manifest-change") return await handleAcceptManifestChange(request, env);
+      if (request.method === "POST" && pathname === "/record-review") return await handleRecordReview(request, env);
+      if (request.method === "POST" && pathname === "/backfill-maintainer-stats") return await handleBackfillMaintainerStats(request, env);
     } catch (e) {
       // Any unexpected throw (a malformed GitHub response, a crypto
       // error, etc.) still needs to come back as JSON with CORS headers --
@@ -1216,6 +1218,64 @@ async function handlePrReviewStatus(request, env) {
   });
 }
 
+const MAINTAINER_STATS_FILE = "maintainer-stats.json";
+
+// Persisted, per-vehicle-repo running counters -- real design decision,
+// 2026-09-04: recomputing "who's done what" by re-scanning a vehicle's
+// entire PR history from the browser on every Maintainer Portal page
+// load doesn't scale (confirmed: a vehicle with dozens of historical
+// PRs meant dozens of parallel GitHub API calls just to render one
+// roster). This file is the fix -- incremented once, at the exact
+// moment a merge or a review already happens, so reading it back later
+// (my-vehicles.js) is always exactly one GET regardless of how much
+// history a vehicle has behind it.
+//
+// Entries here are NEVER deleted, including for someone removed as a
+// maintainer later -- real credit for real past work doesn't expire
+// just because someone's no longer on the current roster (see
+// ROADMAP.md's PDF-credits-page idea, which depends on this staying
+// true forever). handleManageCollaborator's "remove" action only ever
+// touches GitHub's own collaborator list, never this file.
+//
+// Only ever reads-then-writes with the CURRENT file's own sha, same
+// optimistic-concurrency pattern registry.json updates already use
+// elsewhere in this file -- no retry-on-conflict loop, matching that
+// same existing convention, since a genuine simultaneous write to one
+// vehicle's stats file is rare enough not to warrant one yet.
+async function recordMaintainerActivity(owner, repo, handle, kind, atISO, installationToken) {
+  if (!handle) return;
+  let sha = null, stats = {};
+  try {
+    const file = await ghApi(`/repos/${owner}/${repo}/contents/${MAINTAINER_STATS_FILE}`, installationToken);
+    sha = file.sha;
+    stats = JSON.parse(base64ToUtf8(file.content));
+  } catch (e) {
+    // A real 404 (file genuinely doesn't exist yet -- this vehicle's
+    // very first recorded activity) is the only case that should
+    // proceed to create a fresh file. Anything else (a transient
+    // error, a permission problem, a parse failure) must NOT fall
+    // through to writing a blank file over what might be real existing
+    // data -- propagates instead, caught by this function's own
+    // best-effort caller.
+    if (e.status !== 404) throw e;
+  }
+
+  if (!stats[handle]) stats[handle] = { merged: 0, reviews: 0, last_active: null };
+  stats[handle][kind]++;
+  if (!stats[handle].last_active || atISO > stats[handle].last_active) stats[handle].last_active = atISO;
+
+  const putBody = {
+    message: `Record ${kind === "merged" ? "a merge" : "a review"} by @${handle}`,
+    content: utf8ToBase64(JSON.stringify(stats, null, 2)),
+  };
+  if (sha) putBody.sha = sha;
+  await ghApi(`/repos/${owner}/${repo}/contents/${MAINTAINER_STATS_FILE}`, installationToken, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(putBody),
+  });
+}
+
 // caller's own -- same "server independently re-verifies the caller's
 // real permission, then acts with its own trusted credential" shape as
 // handleManageCollaborator above, not a proxy that just forwards the
@@ -1254,7 +1314,8 @@ async function handleAcceptPhotoPr(request, env) {
   // merge it themselves. resolveRealSubmitter checks the photo's own
   // filename convention, not pr.user.login, since a Public-path PR is
   // always opened by the App's bot identity, never the real person.
-  if (resolveRealSubmitter(pr, files) === login) {
+  const realSubmitter = resolveRealSubmitter(pr, files);
+  if (realSubmitter === login) {
     throw new Error(`@${login} submitted this request -- can't also be the one accepting it.`);
   }
 
@@ -1294,6 +1355,13 @@ async function handleAcceptPhotoPr(request, env) {
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ commit_title: commitTitle || `Merge #${prNumber}`, sha: pr.head.sha }),
   });
+  // Best-effort -- the merge itself already succeeded and is the real
+  // outcome; a stats-recording failure (a transient error, a conflicting
+  // simultaneous write) shouldn't turn a genuinely successful accept
+  // into a reported failure.
+  try {
+    await recordMaintainerActivity(owner, repo, realSubmitter, "merged", new Date().toISOString(), installationToken);
+  } catch (e) { /* best-effort, see above */ }
   return json({ merged: true });
 }
 
@@ -1479,7 +1547,8 @@ async function handleAcceptManifestChange(request, env) {
   // change proposal is always fork-based, so pr.user.login (what
   // resolveRealSubmitter falls back to when there's no photo file) is
   // already the real proposer here.
-  if (resolveRealSubmitter(pr, files) === login) {
+  const realProposer = resolveRealSubmitter(pr, files);
+  if (realProposer === login) {
     throw new Error(`@${login} proposed this manifest change -- can't also be the one accepting it.`);
   }
 
@@ -1577,7 +1646,124 @@ async function handleAcceptManifestChange(request, env) {
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ commit_title: `Manifest change: ${summary}`, sha: pr.head.sha }),
   });
+  // Best-effort, same reasoning as handleAcceptPhotoPr's own -- the
+  // merge is the real outcome, a stats-recording failure shouldn't
+  // turn it into a reported failure.
+  try {
+    await recordMaintainerActivity(owner, repo, realProposer, "merged", new Date().toISOString(), installationToken);
+  } catch (e) { /* best-effort, see above */ }
   return json({ merged: true, summary });
+}
+
+// Approve happens straight from the browser using the maintainer's own
+// token (see review-panel.js's approveBtn handler) -- it never touches
+// this Worker at all, since real GitHub review attribution requires
+// the real reviewer's own token, not the installation token. That's
+// the one activity this Worker has no natural hook for, unlike a
+// merge (which already runs server-side above). This endpoint is
+// called right after that client-side approve succeeds, purely to
+// persist the counter -- it does NOT perform the review itself, and it
+// re-verifies the review genuinely exists before counting it, rather
+// than trusting the caller's own claim that it happened (the same
+// "don't just believe what the caller says" floor every other
+// privileged action here already holds to).
+async function handleRecordReview(request, env) {
+  const login = await requireRealUser(request);
+  const body = await parseJson(request);
+  const { repo_url: repoUrl, pr_number: prNumber } = body;
+  if (!repoUrl || !prNumber) return json({ error: "missing repo_url or pr_number" }, 400);
+
+  await requireRegisteredRepo(repoUrl);
+  const [owner, repo] = new URL(repoUrl).pathname.replace(/^\//, "").split("/");
+  const installationToken = await getInstallationToken(env);
+
+  const reviews = await ghApi(`/repos/${owner}/${repo}/pulls/${prNumber}/reviews`, installationToken);
+  const realReviews = reviews.filter((r) => r.user?.login === login && (r.state === "APPROVED" || r.state === "CHANGES_REQUESTED"));
+  if (!realReviews.length) {
+    throw new Error(`No real APPROVED/CHANGES_REQUESTED review from @${login} found on #${prNumber} -- refusing to record one.`);
+  }
+  // Most recent, if the same person reviewed more than once (a
+  // CHANGES_REQUESTED followed later by an APPROVE, for instance) --
+  // one real event counted, dated to when it actually happened.
+  const latest = realReviews.reduce((a, b) => (a.submitted_at > b.submitted_at ? a : b));
+
+  await recordMaintainerActivity(owner, repo, login, "reviews", latest.submitted_at, installationToken);
+  return json({ recorded: true });
+}
+
+// One-time historical seed for a vehicle that already had real PR
+// activity before maintainer-stats.json existed at all -- everything
+// AFTER this runs gets counted incrementally instead (recordMaintainerActivity
+// above), but nothing retroactively backfills itself. Refuses outright
+// if the file already exists, rather than merging into it -- a second
+// accidental run would otherwise double-count every real historical
+// merge/review. Deliberately a one-time seed, not a repeatable resync.
+async function handleBackfillMaintainerStats(request, env) {
+  const login = await requireRealUser(request);
+  const body = await parseJson(request);
+  const { repo_url: repoUrl } = body;
+  if (!repoUrl) return json({ error: "missing repo_url" }, 400);
+
+  await requireRegisteredRepo(repoUrl);
+  const [owner, repo] = new URL(repoUrl).pathname.replace(/^\//, "").split("/");
+  const installationToken = await getInstallationToken(env);
+
+  let callerPermission;
+  try {
+    const permData = await ghApi(`/repos/${owner}/${repo}/collaborators/${login}/permission`, installationToken);
+    callerPermission = permData.permission;
+  } catch (e) {
+    throw new Error(`@${login} isn't a collaborator on ${repoUrl}.`);
+  }
+  if (!["admin", "maintain", "write"].includes(callerPermission)) {
+    throw new Error(`@${login} needs push access or better on ${repoUrl} to backfill its activity stats (has: ${callerPermission}).`);
+  }
+
+  let alreadyExists = true;
+  try {
+    await ghApi(`/repos/${owner}/${repo}/contents/${MAINTAINER_STATS_FILE}`, installationToken);
+  } catch (e) {
+    if (e.status === 404) alreadyExists = false;
+    else throw e; // a real error (permissions, rate limit) -- don't guess "doesn't exist" and proceed to overwrite something real
+  }
+  if (alreadyExists) {
+    throw new Error(`${MAINTAINER_STATS_FILE} already exists on ${repoUrl} -- refusing to backfill over real data.`);
+  }
+
+  // Capped to the most recent 100 PRs (GitHub's own per-page max, one
+  // page, no further pagination) -- same real, stated limit the
+  // original client-side scan this replaces already had. A vehicle
+  // with more than 100 historical PRs only backfills its most recent
+  // 100; everything from here forward is counted incrementally anyway,
+  // so this cap only ever affects the one-time seed, not future
+  // accuracy.
+  const prs = await ghApi(`/repos/${owner}/${repo}/pulls?state=all&per_page=100&sort=updated&direction=desc`, installationToken);
+  const stats = {};
+  function bump(handle, field, dateStr) {
+    if (!handle) return;
+    if (!stats[handle]) stats[handle] = { merged: 0, reviews: 0, last_active: null };
+    if (field) stats[handle][field]++;
+    if (dateStr && (!stats[handle].last_active || dateStr > stats[handle].last_active)) stats[handle].last_active = dateStr;
+  }
+  await Promise.all(prs.map(async (pr) => {
+    if (pr.merged_at) {
+      const files = await ghApi(`/repos/${owner}/${repo}/pulls/${pr.number}/files`, installationToken);
+      bump(resolveRealSubmitter(pr, files), "merged", pr.merged_at);
+    }
+    try {
+      const reviews = await ghApi(`/repos/${owner}/${repo}/pulls/${pr.number}/reviews`, installationToken);
+      reviews.forEach((r) => {
+        if (r.state === "APPROVED" || r.state === "CHANGES_REQUESTED") bump(r.user?.login, "reviews", r.submitted_at);
+      });
+    } catch (e) { /* best-effort -- one PR's reviews failing to fetch shouldn't abort the whole backfill */ }
+  }));
+
+  await ghApi(`/repos/${owner}/${repo}/contents/${MAINTAINER_STATS_FILE}`, installationToken, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ message: "Backfill maintainer activity stats", content: utf8ToBase64(JSON.stringify(stats, null, 2)) }),
+  });
+  return json({ backfilled: true, maintainer_count: Object.keys(stats).length });
 }
 
 function base64ToUtf8(b64) {

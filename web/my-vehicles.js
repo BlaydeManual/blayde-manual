@@ -1,28 +1,16 @@
-// Blayde Manual -- "My Vehicles": each vehicle you maintain and who
-// else has real write access to it.
+// Blayde Manual -- "My Vehicles": each vehicle you maintain, its
+// roster, and how active each maintainer's been.
 //
-// Listing the roster (fetchRoster) uses the maintainer's own classic
-// OAuth token directly -- GitHub allows any push-or-better collaborator
-// to list collaborators, so no privileged credential is needed just to
-// look. Inviting/removing is different: GitHub only allows collaborator
-// management at repo Admin (confirmed against GitHub's own repository-
-// roles docs -- Maintain, one level down, does NOT include it), and
-// Admin also carries real, unrelated blast radius (delete the repo,
-// transfer it, flip it back private, rename it and silently break
-// registry.json's repo_url pointer) that a maintainer who just needs to
-// invite a contributor has no reason to hold. Those two actions go
-// through the Worker's /manage-collaborator instead, using the
-// installation token, re-checking the caller's real permission
-// server-side rather than trusting anything this page claims -- the
-// same "zero trust, bare minimum for the app's own functions" floor as
-// the automatic grant on approval, so every real maintainer stays at
-// `push`, never Admin, on their own repos.
+// Listing the roster (fetchRoster) uses the maintainer's own OAuth
+// token -- GitHub allows any push-or-better collaborator to list
+// collaborators. Inviting/removing needs repo Admin, which a maintainer
+// here never holds (see auth-worker's handleApproveVehicle), so those
+// two go through the Worker's /manage-collaborator instead, using the
+// installation token and re-checking the caller's real permission
+// server-side.
 //
 // Repo list comes from maintainer-portal.js's discoverMaintainedRepos()
-// (maintainedRepos -- real GET /user/repos, filtered to push-or-better
-// + registry-approved), not a mock -- everything in that list already
-// qualifies to manage its own roster, since push-or-better is exactly
-// what /manage-collaborator itself requires.
+// (maintainedRepos), filtered to push-or-better + registry-approved.
 
 function ghHeaders(token) {
   return { Authorization: `Bearer ${token}`, Accept: "application/vnd.github+json" };
@@ -45,6 +33,19 @@ function highestPermission(perms) {
   return "?";
 }
 
+// Every real maintainer grant this app makes is permission: "push",
+// so "write" maps to "Maintainer" here. admin/maintain stay distinct
+// (a real org owner, or a repo transferred outside this app's flow,
+// could show one of those). triage/read/"?" are fallbacks that
+// shouldn't occur given discoverMaintainedRepos()'s own push-or-better
+// filter.
+function permissionLabel(permission) {
+  return {
+    admin: "Admin", maintain: "Maintainer", write: "Maintainer",
+    triage: "Limited access", read: "Read-only", "?": "Unknown access",
+  }[permission] || permission;
+}
+
 function initVehiclesTab() {
   renderVehicleTeams();
 }
@@ -57,9 +58,9 @@ async function renderVehicleTeams() {
     return;
   }
 
-  // Category as a grouping tier, never a filter -- same reasoning as
-  // review-panel.js's categoryForRepo: a maintainer covering a vehicle
-  // in Garage and an appliance in Home needs both in one scroll.
+  // Category is a grouping tier, never a filter -- a maintainer
+  // covering a vehicle in Garage and an appliance in Home needs both
+  // in one scroll.
   const categoryByRepo = new Map();
   await Promise.all(maintainedRepos.map(async ({ repoUrl }) => {
     categoryByRepo.set(repoUrl, await categoryForRepo(repoUrl));
@@ -71,10 +72,8 @@ async function renderVehicleTeams() {
     reposByCategory.get(key).push(entry);
   });
   const orderedCategoryKeys = [...CATEGORY_ORDER.filter((c) => reposByCategory.has(c)), ...(reposByCategory.has(null) ? [null] : [])];
-  // Always shown, even with just one category -- see review-panel.js's
-  // matching comment: the color/icon system should flow through
-  // consistently, not pop in only once a maintainer crosses a second
-  // category.
+  // Shown even with just one category, so the color/icon system stays
+  // consistent rather than appearing only once a second category shows up.
   const showCategoryHeadings = orderedCategoryKeys.length > 0;
 
   for (const categoryKey of orderedCategoryKeys) {
@@ -95,25 +94,19 @@ async function renderVehicleTeams() {
       categoryWrap = categoryGroup;
     }
     for (const { repoUrl, permissions } of reposInCategory) {
-      // This vehicle no longer implies one manual (see ROADMAP.md's
-      // multi-manual correction) -- the roster below is correctly still
-      // one per repo (maintainer authority is vehicle-wide), but it's
-      // worth naming which editions that authority actually covers.
+      // A vehicle repo can hold more than one edition -- maintainer
+      // authority is vehicle-wide, so the roster stays one per repo,
+      // but the card names which editions that covers.
       const norm = (u) => (u || "").replace(/\/$/, "").toLowerCase();
       const registryData = await loadRegistry(CANONICAL_REGISTRY_URL_FOR_REVIEW).catch(() => ({ vehicles: [] }));
       const editions = (registryData.vehicles || [])
         .filter((v) => norm(v.repo_url) === norm(repoUrl))
         .map((v) => v.edition_id);
       const vehicleSlug = await vehicleSlugForRepo(repoUrl);
-      // Anything reaching this point already passed discoverMaintainedRepos()'s
-      // own push-or-better filter, which is exactly what /manage-collaborator
-      // itself requires server-side -- no separate client-side gate needed,
-      // unlike the old admin-only design.
-      // <details>, not a plain div -- direct request: collapsible per
-      // level, same as the Review Photo Requests list, so a maintainer
-      // covering several unrelated repos can collapse the ones they're
-      // not actively managing right now instead of scrolling past them.
-      // Open by default so nothing hides on first load.
+      // <details>, not a plain div -- collapsible per vehicle, same as
+      // the Review Photo Requests list, so a maintainer covering
+      // several repos can collapse the ones they're not managing right
+      // now. Open by default.
       const card = document.createElement("details");
       card.open = true;
       card.className = "card";
@@ -150,18 +143,11 @@ async function renderVehicleTeams() {
   }
 }
 
-// Merges accepted collaborators (GET .../collaborators) with still-
-// pending invitations (GET .../invitations) -- GitHub's collaborator
-// list only ever contains people who already accepted, so a roster
-// built from that alone would make someone just invited look like the
-// invite silently did nothing.
-//
-// affiliation=direct is required, not the default -- confirmed live:
-// without it, GitHub's default (affiliation=all) also returns every
-// org member who merely has the org's default repository permission
-// (read-only for this org), not just people with a real, explicit
-// grant on THIS repo. Every BlaydeManual member would otherwise show
-// up on every vehicle's roster as a phantom "read" maintainer.
+// Merges accepted collaborators with still-pending invitations --
+// GitHub's collaborator list only contains people who already
+// accepted. affiliation=direct excludes org members who only have the
+// org's default repository permission, not an explicit grant on this
+// repo.
 async function fetchRoster(repoUrl) {
   const { owner, repo } = ownerRepoFromUrl(repoUrl);
   const token = BlaydeAuth.getSession().token;
@@ -177,6 +163,57 @@ async function fetchRoster(repoUrl) {
   ];
 }
 
+// Reads maintainer-stats.json from the vehicle repo's own root --
+// auth-worker's recordMaintainerActivity() keeps it updated server-side
+// on every merge/review, so this is one file read here instead of the
+// many API calls it'd take to derive the same numbers from PR history
+// directly. Fetched the same way as manifest.json/registry.json
+// (raw.githubusercontent.com, unauthenticated, tried main then master).
+//
+// Returns null when the file doesn't exist yet (not backfilled), which
+// is distinct from an empty Map (file exists, no entries) -- the
+// caller uses null to offer the backfill action instead of showing
+// "no activity."
+async function fetchMaintainerStats(repoUrl) {
+  const { owner, repo } = ownerRepoFromUrl(repoUrl);
+  for (const branch of ["main", "master"]) {
+    const resp = await fetch(`https://raw.githubusercontent.com/${owner}/${repo}/${branch}/maintainer-stats.json`);
+    if (resp.ok) {
+      const raw = await resp.json();
+      return new Map(Object.entries(raw).map(([handle, s]) => [handle, { merged: s.merged || 0, reviews: s.reviews || 0, lastActive: s.last_active || null }]));
+    }
+    if (resp.status !== 404) throw new Error(`stats fetch failed (${resp.status})`);
+  }
+  return null;
+}
+
+// One-time historical seed for a vehicle with no maintainer-stats.json
+// yet -- see auth-worker's handleBackfillMaintainerStats for the scan
+// this triggers server-side.
+async function backfillMaintainerStats(repoUrl) {
+  const session = BlaydeAuth.getSession();
+  const resp = await fetch(`${BlaydeAuth.AUTH_WORKER_URL}backfill-maintainer-stats`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", Authorization: `Bearer ${session.token}` },
+    body: JSON.stringify({ repo_url: repoUrl }),
+  });
+  const result = await resp.json().catch(() => ({}));
+  if (!resp.ok || result.error) throw new Error(result.error || `Backfill failed (${resp.status}).`);
+  return result;
+}
+
+function formatLastActive(dateStr) {
+  if (!dateStr) return null;
+  const days = Math.floor((Date.parse(new Date().toISOString()) - Date.parse(dateStr)) / 86400000);
+  if (days <= 0) return "today";
+  if (days === 1) return "yesterday";
+  if (days < 30) return `${days} days ago`;
+  const months = Math.floor(days / 30);
+  if (months < 12) return `${months} month${months === 1 ? "" : "s"} ago`;
+  const years = Math.floor(months / 12);
+  return `${years} year${years === 1 ? "" : "s"} ago`;
+}
+
 async function renderRoster(rosterEl, repoUrl) {
   let members;
   try {
@@ -190,13 +227,47 @@ async function renderRoster(rosterEl, repoUrl) {
     rosterEl.innerHTML = `<p class="sub" style="margin:0;">No maintainers yet -- invite someone below.</p>`;
     return;
   }
+  // Fire-and-forget -- stats patch into each row once resolved, without
+  // the roster (names, permissions, Remove buttons) waiting on it.
+  fetchMaintainerStats(repoUrl).then((stats) => {
+    if (stats === null) {
+      // One button for the whole roster -- backfilling is per-vehicle,
+      // not per-maintainer.
+      rosterEl.querySelectorAll("[data-stats-for]").forEach((el) => { el.textContent = ""; });
+      const prompt = document.createElement("p");
+      prompt.className = "sub";
+      prompt.style.margin = "4px 0 0";
+      prompt.innerHTML = `Activity stats aren't set up for this vehicle yet. <button class="secondary backfill-stats-btn" style="margin:0; padding:4px 10px; font-size:0.82rem;">Backfill activity stats</button>`;
+      rosterEl.appendChild(prompt);
+      prompt.querySelector(".backfill-stats-btn").addEventListener("click", async (e) => {
+        e.target.disabled = true;
+        e.target.textContent = "Backfilling…";
+        try {
+          await backfillMaintainerStats(repoUrl);
+          renderRoster(rosterEl, repoUrl);
+        } catch (err) {
+          prompt.innerHTML = `<span style="color:#ff6b6b;">Backfill failed: ${err.message}</span>`;
+        }
+      });
+      return;
+    }
+    stats.forEach((s, handle) => {
+      const el = rosterEl.querySelector(`[data-stats-for="${CSS.escape(handle)}"]`);
+      if (!el) return; // not a current collaborator -- no row to patch
+      const lastActive = formatLastActive(s.lastActive);
+      const parts = [`${s.merged} merged`, `${s.reviews} review${s.reviews === 1 ? "" : "s"}`];
+      if (lastActive) parts.push(`last active ${lastActive}`);
+      el.textContent = parts.join(" · ");
+    });
+  }).catch(() => { /* best-effort -- roster itself already rendered fine without this */ });
   members.forEach((m) => {
     const row = document.createElement("div");
     row.className = "pr-row";
     row.innerHTML = `
       <div>
         <div class="pr-title">@${m.handle} ${m.pending ? `<span style="font-size:0.7rem; font-weight:700; color:#8a8f98;">&#9679; invite pending</span>` : ""}</div>
-        <div class="pr-meta">${m.permission} access</div>
+        <div class="pr-meta">${permissionLabel(m.permission)}</div>
+        <div class="pr-meta" data-stats-for="${m.handle}" style="margin-top:2px;">${m.pending ? "" : "Loading activity&hellip;"}</div>
       </div>
       <button class="secondary remove-btn" data-handle="${m.handle}" data-pending="${m.pending}" data-invitation-id="${m.invitationId || ""}">Remove</button>
     `;
@@ -218,13 +289,9 @@ async function renderRoster(rosterEl, repoUrl) {
   });
 }
 
-// Finds real open "join as a maintainer" requests on this repo, the
-// same marker (unquoted, punctuation-free) syncRealSubmissions uses for
-// Public-path photo PRs, for the same reason: a quoted phrase search
-// can silently fail on GitHub's own tokenizer, a single unbroken word
-// can't. issue.user.login is the requester's real handle -- it's who
-// opened the issue with their own token, not something parsed from
-// freeform text.
+// Finds open "join as a maintainer" issues via an unquoted, single-word
+// marker -- a quoted phrase can silently fail GitHub's search
+// tokenizer.
 async function fetchJoinRequests(repoUrl) {
   const { owner, repo } = ownerRepoFromUrl(repoUrl);
   const token = BlaydeAuth.getSession().token;
@@ -297,13 +364,10 @@ async function renderJoinRequests(el, rosterEl, repoUrl) {
   });
 }
 
-// Invite/remove/cancel all go through the Worker's /manage-collaborator
-// (installation token) instead of calling GitHub directly -- GitHub
-// only allows collaborator management at repo Admin, which this app
-// deliberately never grants a maintainer just to let them invite a
-// contributor (see the file header). The Worker re-checks the caller's
-// real permission on this specific repo server-side before doing
-// anything; the caller's own OAuth token here only proves who's asking.
+// Invite/remove/cancel go through the Worker's /manage-collaborator
+// (installation token), which re-checks the caller's real permission
+// on this repo server-side -- the caller's own token here only proves
+// who's asking.
 async function callManageCollaborator(body) {
   const token = BlaydeAuth.getSession().token;
   const resp = await fetch(`${BlaydeAuth.AUTH_WORKER_URL}manage-collaborator`, {
