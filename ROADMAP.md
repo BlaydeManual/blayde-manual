@@ -1041,14 +1041,6 @@ proposing a correction to a manual's source URL specifically, likely the
 same shape (Contributor proposes, Maintainer reviews, single-field diff
 gate) -- parked to avoid scope creep, pick up on real need.
 
-## "Remove this photo spot" shortcut from a deep-linked photo page (2026-09-01, idea only, not started)
-
-**The idea:** `contribute.html`'s existing deep-link landing (arriving with a `procedure` in the URL, e.g. clicking a photo link straight out of a rendered manual page) already lands pre-formed on that one specific slot's upload flow. Add a second option right there, alongside the existing upload picker: "Request this picture zone be removed" -- skip the portal navigation and the "search for the right entry" step from the standalone editor, and go straight into the same remove-issue flow this slot would otherwise need `issue-requests.js`'s picker to even locate.
-
-**Real constraint, not a blocker but worth designing around:** the removal flow's blue-box-with-an-X preview (see the photo-location-fix diff view shipped above) only exists because the manual's own pages get rendered locally from a contributor-supplied PDF -- the repo itself never stores them. That step doesn't go away just because the entry is already known from the URL; the "faster" part is skipping the portal login-and-search, not skipping the PDF pick. Recommend NOT gating the whole shortcut on that PDF pick being done first -- let a contributor without their PDF handy on this pass still submit a real removal request with a plain-text confirmation ("Remove the photo slot for `<procedure_id>`?") instead of forcing the rendered preview, and offer the rendered preview as a nicer confirmation when they do have the PDF loaded. Keeps the actual time saved (no login, no search) honest without overselling a preview that isn't actually free.
-
-**Not designed further than this paragraph** -- reasonable options logged so the idea isn't lost: a small addition to the existing deep-link landing UI in `contribute.js`/`contribute.html`, reusing `queueRemoveIssue`/`submitManifestChange` from `issue-requests.js` rather than a separate code path. Pick up once there's a real, specific request for it.
-
 ## Credits page appended to the patched PDF (idea only, 2026-09-04)
 
 **The idea:** now that `maintainer-stats.json` persists real, permanent per-maintainer activity (merged contributions, reviews given, last active -- see the "Persisted maintainer activity stats" entry above), `patcher.js` could append a page (or a few) at the very end of the patched output crediting everyone who's ever contributed to that vehicle's manual: real merge counts, real review counts, maybe even a tally of real annotation work (arrows/circles/numbers drawn during review -- a separate, not-yet-tracked metric this idea would also need). A real, permanent "credits roll" for a document that otherwise has no natural place to put one.
