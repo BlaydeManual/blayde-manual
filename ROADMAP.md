@@ -27,80 +27,20 @@ thinking on each so a future contributor isn't starting from zero. If you
 have a better idea than what's written here, that's the point -- open an
 issue.
 
-## GitHub-invisible UX, before v1.0.0
+## Backlog: passive-maintainer indicator on registry-browse rows
 
-**The goal, stated plainly:** someone should be able to find a guide,
-patch their manual, and even contribute a photo without ever needing to
-know what GitHub is, while still having the real thing underneath for
-anyone who *does* want to see it. Right now the browser patcher is a
-functional proof of concept, not something you'd hand a stranger --
-closing that gap is real, planned work before v1.0.0, not a nice-to-have.
-
-Concrete pieces:
-- **Progressive disclosure of GitHub itself.** A visitor should be able
-  to land on a page, recognize their vehicle, and download an enhanced
-  manual without the word "repository" ever being load-bearing to their
-  experience. Power users who want to see the source, browse contributor
-  history, or open a PR by hand should still be able to, one click
-  deeper, not hidden, just not the default surface.
-- **A guide-discovery flow** -- browse/search by make, model, year range
-  (see "Multiple manuals for the same vehicle" below) rather than
-  expecting anyone to know a repo name or a registry URL.
-- **An old-school "patching..." progress readout** -- already started
-  in the browser patcher (a literal `[####......] 42%` bar with a status
-  line), the instinct being that watching visible progress, including
-  during steps like resolving the registry or fetching photos, builds
-  confidence that something real is happening, the same reason classic
-  installer progress bars work even when the underlying task is fast.
-  Worth extending this same visual language to registry-side actions
-  (proposing a new vehicle, waiting on approval) once those have a UI at
-  all, not just the CLI scripts that exist today.
-
-**Two contributor personas, settled in design review -- the actual main
-characters this UX has to serve:**
-- **Persona A, direct maintainer.** Their manual isn't in the registry.
-  Onboarding is quick and covers three things, not just repo setup: the
-  5-step process (see the wireframed no-match state below), a pointer to
-  where the quality standards live (`CONTRIBUTING.md`'s quality bar), and
-  how to bring in co-maintainers as their vehicle's community grows.
-  There's a deliberate second exit here too: "not me -- share this with
-  someone who'd be great at it" (a copy-link action), so someone who
-  finds the gap but doesn't want the responsibility isn't funneled into
-  becoming a maintainer by default.
-- **Persona B, anonymous contributor.** Patches their own manual with no
-  account, ever, up to that point. The results screen lists which
-  procedures came back with no photo, shown against pages rendered from
-  *their own already-loaded PDF* -- real page-level context, allowed
-  specifically because it's their own file in their own session (see
-  LEGAL.md's "local-context rule"). GitHub auth (the self-service token
-  path above) only gets asked for the first time they click "add a
-  photo" on one of those -- never before.
-
-**Registry browsing, for people who haven't patched anything yet:** a
-filterable list (type/make/model, plus search) of registered vehicles,
-each row showing only an aggregate stat -- "Suzuki SV650 (1999-2002) --
-12% of 972 procedures have a photo" -- and nothing more granular than
-that. This is a deliberate scope limit, not a missing feature: a bare
-`section_heading` string was confirmed in design review to not reliably
-tell a stranger what a procedure actually needs (e.g. many manuals reuse
-generic headings), so per-procedure browsing only becomes meaningful once
-someone has patched their own copy and can see real context (persona B,
-above). The registry page's job is discovery ("does my vehicle exist
-yet, how far along is it"), not need-identification.
-
-**"Passive" indicator, added to that same row -- raised directly
-alongside the maintainer-succession mechanism above, and it's the
-"Option B" from that discussion made real, not a separate feature.**
-When every maintainer on a vehicle is quiet (the same signal
-`my-vehicles.js` already computes), the registry row shows it plainly
--- something like "Suzuki SV650 (1999-2002) -- 12% of 972 procedures
-have a photo -- passive." Small, not alarming: a badge or a muted
-label, not a warning color. The point is honest visibility, not a
-red flag. **Explicitly not "broken" or "abandoned"** -- the repo stays
-exactly as usable forever regardless (it's static files in a real git
-repo; patching someone's own copy never depended on a maintainer being
-present). "Passive" means exactly one thing: some contributors might
-want to step up. Nothing more is implied, and nothing stops working.
+Checked against the real code (2026-09-10) -- everything else this
+section used to track (progressive disclosure of GitHub, guide
+discovery/search, the patching progress readout, 5-step maintainer
+onboarding, the anonymous-contributor flow) is confirmed built; the
+missing-photo "results screen" idea evolved into something different
+but equivalent -- a QR code baked directly into the patched PDF instead
+of an on-site screen. One real piece never got built: when every
+maintainer on a vehicle has gone quiet (`my-vehicles.js` already
+computes this signal), `registry-browse.js`'s row for that vehicle
+should show it plainly -- a muted "passive" badge, not a warning color,
+meaning only "some contributors might want to step up," never "broken"
+or "abandoned." Not urgent; the repo stays fully usable regardless.
 
 ## Two-lens information architecture: the website vs. the GitHub repo itself
 
@@ -123,24 +63,6 @@ Every future doc decision can be sorted by this test: does it help
 someone get a task done fast (website), or does it help someone
 understand the mechanism (repo)? A doc trying to do both usually serves
 neither well.
-
-## Security review, before v1.0.0
-
-See `SECURITY.md` for the current security model and closed findings, and
-`SECURITY-TESTING.md` for the live test coverage -- both are more current
-than restating that reasoning here would be.
-
-**Still genuinely open, not captured in either doc:**
-- Untrusted fetched images (a malicious/corrupted contributed photo)
-  reaching `embedJpg`/`embedPng` or `checker.py`'s `PIL.Image.open` --
-  format validation rejects anything structurally invalid, but a
-  maliciously crafted *valid* image exploiting a parser bug is a
-  residual risk inherent to processing untrusted uploads. Mitigation is
-  routine dependency updates (Pillow, `@cantoo/pdf-lib`), a recurring
-  check, not a one-time fix.
-- `validate-photo.yml` has no explicit minimal `permissions:` block,
-  relying only on the `pull_request` trigger's default restriction.
-  Worth adding belt-and-suspenders as the workflow grows.
 
 ## Source-content verification -- can a maintainer tell a submission is real?
 
@@ -988,16 +910,6 @@ Raised directly, then explicitly scoped back out: "nobody is asking for that tod
 
 **Related, from the same "offline with your own repo" idea**: Contributor Portal's Save-for-Review redesign (PR #59, see CHANGELOG.md) already makes drafting 100% local/accountless -- the missing piece is exporting a saved Reviewable to a file and re-loading it later against a personal repo, entirely without a GitHub account. Not designed or built, noted so it isn't lost.
 
-## Registry repo's schema doc has real drift from what the code actually writes
-
-Re-checked 2026-09-10 against the live `BlaydeManual/registry` repo: the
-`vehicle_class` gap is now fixed (the README documents it as deprecated,
-superseded by `category`/`manual_type`). **Real drift remains**: the
-README's example still shows `source_identifier` and `submitted_by`
-fields that none of the 3 live registry entries actually have. Needs its
-own PR against `BlaydeManual/registry` directly (this repo has no write
-access to that one's docs).
-
 ## Periodic cleanup: auto-reject stale/malformed photo PRs (proposed, not built)
 
 Raised directly alongside the `/accept-photo-pr` merge-gate work (see SECURITY.md's "Real merge-time validation" section): that gate closes what happens when a maintainer clicks Accept on THIS site, but does nothing for a PR nobody ever acts on at all -- one that would fail the same checks (extra files, embedded EXIF, corrupt image) but just sits open indefinitely instead of being explicitly rejected. This is explicitly a **complementary** idea, not a substitute for the required-CI-status-check fix SECURITY.md's new gap entry calls for -- that one stops a bad merge from ever completing, native or not; this one only cleans up what's left open, after the fact.
@@ -1027,14 +939,6 @@ deferred -- no real use case surfaced. **Still backlogged, not started:**
 proposing a correction to a manual's source URL specifically, likely the
 same shape (Contributor proposes, Maintainer reviews, single-field diff
 gate) -- parked to avoid scope creep, pick up on real need.
-
-## "Remove this photo spot" shortcut from a deep-linked photo page (2026-09-01, idea only, not started)
-
-**The idea:** `contribute.html`'s existing deep-link landing (arriving with a `procedure` in the URL, e.g. clicking a photo link straight out of a rendered manual page) already lands pre-formed on that one specific slot's upload flow. Add a second option right there, alongside the existing upload picker: "Request this picture zone be removed" -- skip the portal navigation and the "search for the right entry" step from the standalone editor, and go straight into the same remove-issue flow this slot would otherwise need `issue-requests.js`'s picker to even locate.
-
-**Real constraint, not a blocker but worth designing around:** the removal flow's blue-box-with-an-X preview (see the photo-location-fix diff view shipped above) only exists because the manual's own pages get rendered locally from a contributor-supplied PDF -- the repo itself never stores them. That step doesn't go away just because the entry is already known from the URL; the "faster" part is skipping the portal login-and-search, not skipping the PDF pick. Recommend NOT gating the whole shortcut on that PDF pick being done first -- let a contributor without their PDF handy on this pass still submit a real removal request with a plain-text confirmation ("Remove the photo slot for `<procedure_id>`?") instead of forcing the rendered preview, and offer the rendered preview as a nicer confirmation when they do have the PDF loaded. Keeps the actual time saved (no login, no search) honest without overselling a preview that isn't actually free.
-
-**Not designed further than this paragraph** -- reasonable options logged so the idea isn't lost: a small addition to the existing deep-link landing UI in `contribute.js`/`contribute.html`, reusing `queueRemoveIssue`/`submitManifestChange` from `issue-requests.js` rather than a separate code path. Pick up once there's a real, specific request for it.
 
 ## Credits page appended to the patched PDF (idea only, 2026-09-04)
 

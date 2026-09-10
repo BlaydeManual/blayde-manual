@@ -28,6 +28,15 @@ and corrections in both directions -- see
   circles, numbered callouts, and text labels onto the real photo,
   matching the review editor's own cased black-on-white styling so
   legibility holds against any photo background.
+- **"Remove this picture zone" shortcut on the Contributor Portal's
+  deep-link landing**: arriving at `contribute.html` via a real
+  `procedure` link now offers a direct "Request this picture zone be
+  removed" option alongside the upload picker, skipping the standalone
+  editor's portal-login-and-search step. Reuses `issue-requests.js`'s
+  real `submitManifestChange` path -- same review gate as any other
+  manifest-fix proposal. Kept light, as scoped: a plain-text
+  confirmation, not the rendered-preview version design discussion had
+  floated.
 - **Contributor Portal redesigned to "Save for Review" only** (PR #59):
   the capture screen no longer submits directly or asks for a Public/
   Private choice -- it only ever saves to that device's own
