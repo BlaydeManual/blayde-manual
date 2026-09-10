@@ -297,8 +297,17 @@ function prStatusInfo(pr, status, myLogin) {
 }
 
 async function renderPRList(approvedRepos) {
-  const wrap = document.getElementById("prList");
-  wrap.innerHTML = "";
+  const liveWrap = document.getElementById("prList");
+  // Built off-screen and swapped into the live DOM once fully ready,
+  // not cleared-then-rebuilt in place -- direct feedback, 2026-09-03:
+  // clearing #prList immediately, then rebuilding it after several
+  // awaited network calls (review status, category per repo), left a
+  // real, visible blank flash on every refresh. This keeps whatever
+  // was already on screen until the replacement is completely built,
+  // then swaps it in as one atomic step -- every reference to `wrap`
+  // below builds into this detached container, never the live one,
+  // until the final replaceChildren() call at the end.
+  const wrap = document.createElement("div");
   const myLogin = BlaydeAuth.getSession()?.username;
 
   // Fetched once per PR, in parallel, up front -- sorting (below)
@@ -423,6 +432,10 @@ async function renderPRList(approvedRepos) {
   wrap.querySelectorAll("button[data-pr]").forEach(btn => {
     btn.addEventListener("click", () => openPR(parseInt(btn.dataset.pr, 10)));
   });
+  // The atomic swap itself -- listeners already attached above survive
+  // moving these nodes into the live DOM, so this is the only point at
+  // which anything actually becomes visible.
+  liveWrap.replaceChildren(...wrap.childNodes);
 }
 
 // ---- real review/merge status: 0/2 approved, who's approved, who's
@@ -595,6 +608,14 @@ document.getElementById("approveBtn").addEventListener("click", async () => {
     // anything from currentPRs, since an approval alone never closes
     // the PR.
     renderPRList(lastApprovedRepos);
+    // Direct instruction, 2026-09-03: collapse the pane back to the
+    // placeholder here too, same as Accept/Reject -- reconsidered after
+    // seeing it in practice; the original reasoning (Approve is just
+    // one vote, not "done") lost to the real workflow, where approving
+    // reads as done-with-this-one-for-now and should push toward
+    // picking the next item from the list.
+    document.getElementById("reviewArea").classList.remove("open");
+    document.getElementById("reviewPlaceholder").style.display = "flex";
   } catch (e) {
     log(`approve failed: ${e.message}`);
     updateApproveButtonState();
