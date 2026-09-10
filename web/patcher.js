@@ -17,7 +17,7 @@
 // stylize.py) -- the cover page here is text/stats only, no mosaic
 // image. That's a real, separate, larger port, not done here.
 
-const { PDFDocument, StandardFonts, rgb, degrees, PDFName, PDFString, PDFArray } = PDFLib;
+const { PDFDocument, StandardFonts, rgb, degrees, PDFName, PDFString, PDFArray, LineCapStyle } = PDFLib;
 
 const EMBED_NAME = "blayde_manual_state.json";
 // Not exposed as a UI field -- see ROADMAP.md, this was a dev-only
@@ -28,6 +28,12 @@ const RED = rgb(0.784, 0.063, 0.114);
 const BLACK = rgb(0.047, 0.051, 0.059);
 const STEEL = rgb(0.541, 0.561, 0.596);
 const WHITE = rgb(0.91, 0.91, 0.92);
+// Pure black/white, not the brand tokens above -- annotation casing
+// needs to read against an arbitrary, uncontrolled photo background,
+// the same reason review-panel.js's editor uses literal #000/#fff
+// rather than this file's tuned-for-dark-UI palette.
+const ANNO_BLACK = rgb(0, 0, 0);
+const ANNO_WHITE = rgb(1, 1, 1);
 
 const log = document.getElementById("log");
 const pdfInput = document.getElementById("pdfInput");
@@ -442,6 +448,103 @@ function addLinkAnnotation(page, rect, url) {
   else page.node.set(PDFName.of("Annots"), ctx.obj([link]));
 }
 
+// ---- annotation overlays (Phase 2) -- renders review-panel.js's
+// Phase 1 shapes (entry.annotations: arrows/lines/circles/numbers/text,
+// all stored as 0-100 coordinates relative to the photo's own box) into
+// the actual patched PDF. Same "cased" black-then-white double-stroke
+// technique as the editor, for the same reason: it has to read against
+// whatever photo happens to be behind it, not a controlled background.
+// Coordinates map directly onto the box's real physical width/height --
+// unlike the editor's square SVG viewBox (which has to correct a
+// circle's radius for its own non-uniform CSS stretch), a real x%/y%
+// point and a real r% radius both land in the right place here without
+// any aspect correction, since nothing stretches a non-square shape
+// into this box the way CSS does in the browser. ----
+
+function annoPt(box, xPct, yPct) {
+  return { x: box.x + (xPct / 100) * box.width, y: box.y + box.height - (yPct / 100) * box.height };
+}
+
+function drawCasedLine(page, p0, p1, scale) {
+  const s = scale || 1;
+  page.drawLine({ start: p0, end: p1, thickness: 2.4 * s, color: ANNO_BLACK, lineCap: LineCapStyle.Round });
+  page.drawLine({ start: p0, end: p1, thickness: 1.1 * s, color: ANNO_WHITE, lineCap: LineCapStyle.Round });
+}
+
+function drawCasedEllipse(page, cx, cy, rx, ry, scale) {
+  const s = scale || 1;
+  page.drawEllipse({ x: cx, y: cy, xScale: rx, yScale: ry, borderColor: ANNO_BLACK, borderWidth: 2.4 * s });
+  page.drawEllipse({ x: cx, y: cy, xScale: rx, yScale: ry, borderColor: ANNO_WHITE, borderWidth: 1.1 * s });
+}
+
+function drawCasedRect(page, x, y, width, height) {
+  page.drawRectangle({ x, y, width, height, borderColor: ANNO_BLACK, borderWidth: 2.4 });
+  page.drawRectangle({ x, y, width, height, borderColor: ANNO_WHITE, borderWidth: 1.1 });
+}
+
+// pdf-lib text has no native stroke/outline the way SVG's paint-order
+// trick gives the editor -- approximated here by drawing several black
+// copies at small offsets around the center, then one white copy
+// exactly centered on top. Not pixel-identical to the editor's real
+// stroke, but the same visual intent: white text that stays legible
+// regardless of what's directly behind it.
+function drawCasedText(page, text, cx, cy, size, font) {
+  const width = font.widthOfTextAtSize(text, size);
+  const baselineDrop = size * 0.36; // approximate visual-center offset for a bold sans/mono glyph
+  const at = (x, y, color) => page.drawText(text, { x: x - width / 2, y: y - baselineDrop, size, font, color });
+  const d = size * 0.12;
+  [[-d, -d], [d, -d], [-d, d], [d, d], [0, -d * 1.3], [0, d * 1.3], [-d * 1.3, 0], [d * 1.3, 0]]
+    .forEach(([dx, dy]) => at(cx + dx, cy + dy, ANNO_BLACK));
+  at(cx, cy, ANNO_WHITE);
+}
+
+function drawAnnotations(page, box, annotations, font) {
+  if (!annotations || !annotations.length) return;
+  for (const a of annotations) {
+    try {
+      if (a.type === "arrow" || a.type === "line") {
+        const p0 = annoPt(box, a.x0, a.y0), p1 = annoPt(box, a.x1, a.y1);
+        drawCasedLine(page, p0, p1);
+        if (a.type === "arrow") {
+          // Chevron head, computed in the shape's own 0-100 percent
+          // space (matching the editor exactly) before mapping each
+          // final point into the box's real physical coordinates --
+          // the editor never corrects a line's angle for the box's
+          // aspect ratio either, only a circle's radius.
+          const angle = Math.atan2(a.y0 - a.y1, a.x0 - a.x1);
+          const hl = 3.4, spread = 0.5;
+          const h1 = annoPt(box, a.x0 - hl * Math.cos(angle - spread), a.y0 - hl * Math.sin(angle - spread));
+          const h2 = annoPt(box, a.x0 - hl * Math.cos(angle + spread), a.y0 - hl * Math.sin(angle + spread));
+          drawCasedLine(page, h1, p0);
+          drawCasedLine(page, p0, h2);
+        }
+      } else if (a.type === "circle" || a.type === "number") {
+        const c = annoPt(box, a.cx, a.cy);
+        const rx = (a.r / 100) * box.width, ry = (a.r / 100) * box.height;
+        drawCasedEllipse(page, c.x, c.y, rx, ry, a.type === "number" ? 0.5 : 1);
+        if (a.type === "number") drawCasedText(page, String(a.value), c.x, c.y, Math.max(6, Math.min(rx, ry) * 1.1), font);
+      } else if (a.type === "text" && a.frame === "circle") {
+        const c = annoPt(box, a.cx, a.cy);
+        const rx = (a.r / 100) * box.width, ry = (a.r / 100) * box.height;
+        drawCasedEllipse(page, c.x, c.y, rx, ry, 1);
+        if (a.content) drawCasedText(page, a.content, c.x, c.y, Math.max(6, Math.min(rx, ry) * 1.1), font);
+      } else if (a.type === "text") { // frame === "rect"
+        const topLeft = annoPt(box, a.x, a.y + a.h);
+        const width = (a.w / 100) * box.width, height = (a.h / 100) * box.height;
+        drawCasedRect(page, topLeft.x, topLeft.y, width, height);
+        if (a.content) {
+          const center = annoPt(box, a.x + a.w / 2, a.y + a.h / 2);
+          drawCasedText(page, a.content, center.x, center.y, Math.max(6, height * 0.6), font);
+        }
+      }
+    } catch (e) {
+      // One malformed annotation (bad/missing field on a hand-edited
+      // manifest) must not abort the rest of this photo's real,
+      // well-formed annotations, or the whole patch run.
+    }
+  }
+}
+
 async function drawContributeMarker(doc, page, pageGeometry, pixelBbox, url, font, showQr) {
   // Same pixel_bbox -> PDF-point math as drawImageAt, since this box is
   // exactly where a real photo would have been drawn.
@@ -666,6 +769,7 @@ async function patchViaRegistry(doc, priorState, priorityList, showQr) {
       const page = doc.getPage(e.page - 1);
       const box = drawImageAt(page, image, geo, e.pixel_bbox);
       await drawCreditTab(page, box, photo.contributor, creditFont);
+      drawAnnotations(page, box, e.annotations, creditFont);
       patchedFigures[e.procedure_id] = {
         photo_sha256_16: photoHash, patched_at: todayStr(),
         contributor: photo.contributor,
