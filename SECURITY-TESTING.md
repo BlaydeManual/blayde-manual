@@ -180,6 +180,11 @@ now that the new code is confirmed deployed):
 | A nonexistent repo path returns a real 404, not a 200 with fake data (control test) | PASS |
 | `blayde-manual`, `registry`, `vehicle-scaffold` are genuinely public repos today | Confirmed |
 | Auth check runs before ANY other validation (reserved-name check, shape checks) on every privileged endpoint | PASS -- an anonymous reserved-name attempt still just gets "Not signed in.," no internal rule leaks pre-auth |
+| **2026-09-10**: every privileged endpoint (`accept-photo-pr`, `accept-manifest-change`, `accept-recategorization`, `approve-vehicle`, `manage-collaborator`, `record-review`, `backfill-maintainer-stats`, `direct-submit`, `direct-contribute`) with no `Authorization` header | PASS, uniform: `500 {"error":"Not signed in."}` on all 9 |
+| Same 9 endpoints with a garbage `Bearer` token | PASS, uniform: `500 {"error":"Could not verify signed-in user."}` on all tested |
+| `POST /accept-manifest-change` against `BlaydeManual/registry` (a real, registered repo, but not a vehicle) | PASS -- `requireRegisteredRepo` rejects: `"...isn't a registered, approved vehicle repo."` |
+| `POST /accept-manifest-change` with a nonexistent `pr_number` | PASS -- clean `{"error":"Not Found"}`, no stack trace |
+| `handleManageCollaborator`'s invite path checked by source read (not exercised live -- a real invite call has a real side effect on a third party's GitHub account, not run just to test): the `permission` field on the PUT to GitHub is a hardcoded literal `"push"` ([index.js:1078-1082](auth-worker/src/index.js:1078)) -- the client's request body has no field that reaches this call at all, so there's no parameter for a caller to manipulate toward Admin/Maintain even in principle | Confirmed via code, not a live gap |
 
 ## The testing plan, by identity tier
 
@@ -227,7 +232,7 @@ Worker is redeployed and the GitHub App exists.
 | 2.4 | `GET /pending-vehicles` as this identity, right after 2.3 | **Rejected** -- not a member, even though they just submitted something | Pending -- **this is the fix from the security-audit pass, must be confirmed live, not just trusted from the synthetic test** |
 | 2.5 | `POST /direct-contribute` targeting a real, approved vehicle repo | Succeeds -- branch + PR created on the upstream repo, no fork | Pending |
 | 2.6 | `POST /direct-contribute` targeting `BlaydeManual/registry` (or any repo NOT in registry.json with `status: approved`) | **Rejected** -- `"isn't a registered, approved vehicle repo"` | Pending -- **this is the critical fix, the single most important live test in this whole plan** |
-| 2.7 | `POST /direct-contribute` with `procedure_id: "../../../.github/workflows/evil"` against a real approved repo | **Rejected** -- `400`, shape validation | Pending |
+| 2.7 | `POST /direct-contribute` with `procedure_id: "../../../.github/workflows/evil"` against a real approved repo | **Rejected** -- `400`, shape validation | **Live, confirmed 2026-09-10**: `{"error":"procedure_id has an unexpected shape -- refusing rather than risk writing outside images/."}`, rejected before any GitHub call (regex check runs pre-network) |
 | 2.8 | `POST /approve-vehicle` as this identity, any `repo_name` | **Rejected** -- not a member at all | Pending |
 | 2.9 | Directly query `GET https://api.github.com/repos/BlaydeManual/<their-own-direct-submit-repo>` with their own real OAuth token | `404` -- they don't have collaborator access to a repo the App's installation created on their behalf; the repo is genuinely locked | Pending |
 
@@ -390,7 +395,7 @@ registry (auth-worker PR, 2026-09-01).
 
 | # | Call | Expected | Status |
 |---|---|---|---|
-| 7.1 | `POST /accept-recategorization` with no `Authorization` header | `500`, `{"error":"Not signed in."}`, same as every other privileged endpoint (Tier 1 pattern) | Pending -- not yet run against live infra |
+| 7.1 | `POST /accept-recategorization` with no `Authorization` header | `500`, `{"error":"Not signed in."}`, same as every other privileged endpoint (Tier 1 pattern) | **Live, confirmed 2026-09-10** -- see cross-cutting table above, run against all 9 privileged endpoints at once |
 | 7.2 | Same call, real signed-in identity, NOT a BlaydeManual member | Rejected by `requireOrgApprover` the same way `/approve-vehicle` rejects a non-member (Tier 2.8's pattern) | Pending -- same third-account backlog blocker as Tier 2.4/2.8 |
 | 7.3 | Same call, real member, NOT an admin | Rejected -- `"isn't an active admin"`, confirming the admin bar here is the same real, separate check Tier 3.2 already confirmed for `/approve-vehicle` | Pending |
 | 7.4 | Real org admin, `dry_run: true`, against a hand-crafted PR that changes ONLY `category`/`manual_type` on one real entry to a real pair | `{"checked": true, entry, changedFields}` | Pending -- needs a real open PR against the registry repo; no real "other"-tagged entry exists yet worth recategorizing for real |
@@ -463,14 +468,14 @@ that would silently do nothing.
 
 | # | Call | Expected | Status |
 |---|---|---|---|
-| 8.1 | `POST /accept-manifest-change` with no `Authorization` header | `500`, `{"error":"Not signed in."}`, same Tier 1 pattern | Pending -- not yet run against live infra |
-| 8.2 | Same call, real signed-in identity, NOT a collaborator on the target repo | Rejected -- `"isn't a collaborator on..."`, same shape as `/accept-photo-pr`'s permission check | Pending |
+| 8.1 | `POST /accept-manifest-change` with no `Authorization` header | `500`, `{"error":"Not signed in."}`, same Tier 1 pattern | **Live, confirmed 2026-09-10** -- see cross-cutting table above |
+| 8.2 | Same call, real signed-in identity, NOT a collaborator on the target repo | Rejected -- `"isn't a collaborator on..."`, same shape as `/accept-photo-pr`'s permission check | Pending -- needs a second real identity with no access to a vehicle repo; the positive case (real push-level maintainer, IS a collaborator) is confirmed live via 8.4 |
 | 8.3 | Same call, real collaborator, but only `read`/`triage`, not `push`-or-better | Rejected -- `"needs push access or better..."` | Pending |
-| 8.4 | Real push-level maintainer, `dry_run: true`, against a real open manifest-fix PR proposing exactly one add/remove/reposition | `{"checked": true, summary}` | Pending -- have two real open PRs to test against once deployed |
+| 8.4 | Real push-level maintainer, `dry_run: true`, against a real open manifest-fix PR proposing exactly one add/remove/reposition | `{"checked": true, summary}` | **Live, confirmed 2026-09-10** against `royal-lexon-s20#15` (real PR, real submitter `Pleurotusostreatus` != the admin identity used to call this): `{"checked":true,"summary":"reposition p006_proc1_fig1"}` |
 | 8.5 | Same, but the PR also touches a second file, or something outside `entries` in the same manifest.json | Rejected -- negative allowlist / "changes something besides its entries list" | Pending |
 | 8.6 | Same, but the diff adds AND removes/modifies more than one entry's worth | Rejected -- "not exactly 1" changed-entries check | Pending |
 | 8.7 | Same, but a newly added entry is missing a required field, doesn't start `needs_contributed_photo`, or has a malformed `pixel_bbox` | Rejected -- new-entry field validation | Pending |
-| 8.8 | **The real submitter of the PR being reviewed attempts to Accept or Approve their own proposal** | Rejected server-side (`resolveRealSubmitter` match); Approve button already disabled client-side; the review-status count excludes their own review even if one somehow got submitted | Pending -- this is the fix from the finding above; verify against a real self-submitted PR, and independently for `/accept-photo-pr` and `/accept-recategorization` too, since the same fix landed in all three |
+| 8.8 | **The real submitter of the PR being reviewed attempts to Accept or Approve their own proposal** | Rejected server-side (`resolveRealSubmitter` match); Approve button already disabled client-side; the review-status count excludes their own review even if one somehow got submitted | **Live, confirmed 2026-09-10** against `suzuki-sv650-1999#26` (real PR authored by `TheBlayde`, called by `TheBlayde`): `{"error":"@TheBlayde proposed this manifest change -- can't also be the one accepting it."}`, rejected before the file-allowlist check even ran. Not yet independently re-verified for `/accept-photo-pr` and `/accept-recategorization` -- same fix, same shape, no real self-submitted PR of those two kinds currently open to test against |
 | 8.9 | A contributor forks a vehicle repo and opens a real PR via `submitManifestChange`, using their own OAuth token, NOT a maintainer of that repo | **Succeeds** -- by design, same "anyone can propose" posture as Tier 2.3/7.9; the real gate is 8.1-8.8 at merge time | Pending |
 
 **Not covered by this tier:** the Maintainer Portal's review UI
