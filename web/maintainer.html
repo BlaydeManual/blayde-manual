@@ -98,10 +98,20 @@
   /* ---- tab nav: REPO vs ORG is always visible as a badge, not just
      implied by which tab you're on -- a person can hold both roles at
      once, so the label has to travel with the action, not the person ---- */
-  #tabNav { display: flex; gap: 8px; margin-bottom: 18px; flex-wrap: wrap; }
+  /* File-folder tabs, direct request 2026-09-04: flat top-only rounding
+     and a tight gap so the row reads as a set of attached folder tabs,
+     not floating pill buttons -- picked over full-width-expanding
+     (inflates a short label like "My Manuals" to match a long one for
+     no real reason) and an underline-only bar (works, but this is the
+     one actually asked for). .tab-panel.active below carries the other
+     half: a top border matching the active tab's color plus rounded
+     bottom-only corners, so the panel reads as the tab's own body, not
+     a separate box sitting under it. */
+  #tabNav { display: flex; gap: 2px; margin-bottom: 0; flex-wrap: wrap; }
   #tabNav button {
     margin: 0; background: var(--black-2); color: var(--steel);
-    border: 1px solid var(--steel-dark); padding: 8px 14px; font-size: 0.92rem;
+    border: 1px solid var(--steel-dark); border-radius: 8px 8px 0 0;
+    padding: 10px 16px; font-size: 0.92rem;
   }
   #tabNav button.active { background: var(--red); color: #fff; border-color: var(--red); }
   #tabNav button:disabled { background: var(--black-2); color: var(--steel-dark); opacity: 1; cursor: not-allowed; }
@@ -150,7 +160,11 @@
   .category-bar::before, .vehicle-bar::before, .edition-bar::before { content: "\25B8  "; display: inline-block; width: 0.7em; }
   details[open] > .category-bar::before, details[open] > .vehicle-bar::before, details[open] > .edition-bar::before { content: "\25BE  "; }
   .tab-panel { display: none; }
-  .tab-panel.active { display: block; }
+  .tab-panel.active {
+    display: block; background: var(--black-2); border: 1px solid var(--steel-dark);
+    border-top: 2px solid var(--red); border-radius: 0 8px 8px 8px;
+    margin-top: -1px; padding: 18px 22px;
+  }
   .pinned-note {
     color: var(--steel); font-size: 0.95rem; font-style: italic;
   }
