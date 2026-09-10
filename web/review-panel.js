@@ -284,6 +284,12 @@ async function loadOpenManifestChangePRs(repoUrl) {
 // colored by whether it's actually actionable for THEM specifically
 // (the same "can't approve your own PR" logic GitHub itself applies),
 // not just "has anyone approved yet."
+// Raw GitHub check-run context names, mapped to what they actually check
+// (see checker.py/validate_manifest.py's own docstrings) -- shown wherever
+// a check name reaches the maintainer, so "checker"/"validate" (meaningful
+// only to whoever named the CI jobs) doesn't leak into the UI as-is.
+const CHECK_LABELS = { checker: "file validation", validate: "manifest validation" };
+
 function prStatusInfo(pr, status, myLogin) {
   if (!status) return { state: "loading", label: "Checking review status…" };
   if (status.error) return { state: "loading", label: "Review status unavailable" };
@@ -417,7 +423,7 @@ async function renderPRList(approvedRepos) {
                 <div class="pr-meta">@${pr.author} &middot; Request #${pr.number}</div>
               </div>
               <div class="pr-row-actions">
-                <span class="pr-status-badge status-${info.state}">${info.label}</span>
+                <span class="pr-status-badge status-${info.state}" data-pr-badge="${pr.number}">${info.label}</span>
                 <button data-pr="${pr.number}">Review</button>
               </div>
             `;
@@ -479,6 +485,21 @@ async function loadReviewStatus() {
   reviewStatus = result;
   renderReviewStatusLine();
   updateAcceptButtonState();
+  updatePrListBadge(pr, result);
+}
+
+// Patches just this PR's badge in the left list in place. Without this,
+// opening a PR (which fetches its own fresh status for the detail pane)
+// left the list showing whatever status was true at the last full
+// renderPRList() -- often stale, since checks that were still pending on
+// page load may well have finished by the time a maintainer gets around
+// to opening that PR, with nothing else prompting a re-render of the list.
+function updatePrListBadge(pr, status) {
+  const badge = document.querySelector(`.pr-status-badge[data-pr-badge="${pr.number}"]`);
+  if (!badge) return;
+  const info = prStatusInfo(pr, status, BlaydeAuth.getSession()?.username);
+  badge.className = `pr-status-badge status-${info.state}`;
+  badge.textContent = info.label;
 }
 
 function renderReviewStatusLine() {
@@ -495,7 +516,7 @@ function renderReviewStatusLine() {
   }
   if (reviewStatus.checks.length) {
     parts.push("Checks: " + reviewStatus.checks.map((c) =>
-      `${c.name} ${c.conclusion === "success" ? "✓" : c.conclusion ? "✗" : "…"}`
+      `${CHECK_LABELS[c.name] || c.name} ${c.conclusion === "success" ? "✓" : c.conclusion ? "✗" : "…"}`
     ).join(", "));
   }
   el.textContent = parts.join(" · ");
@@ -526,7 +547,7 @@ function updateAcceptButtonState() {
   if (!reviewStatus.checks_passing) {
     const blocking = reviewStatus.checks.find((c) => c.conclusion !== "success");
     btn.disabled = true;
-    btn.textContent = blocking ? `Waiting on "${blocking.name}" check` : "Waiting on required checks";
+    btn.textContent = blocking ? `Waiting on ${CHECK_LABELS[blocking.name] || `"${blocking.name}"`} check` : "Waiting on required checks";
     updateApproveButtonState();
     return;
   }
