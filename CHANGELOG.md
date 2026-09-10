@@ -18,6 +18,117 @@ and corrections in both directions -- see
 
 ## [Unreleased]
 
+- **Category expansion (Garage/Marina/Hangar/Farm/Home/Hobby) data
+  foundation** (PRs #72-75, `registry#2`): `manual-types.json` is now
+  the single source of truth for each category's manual-type list;
+  the indexer's "confirm the vehicle" step gained Category + Manual
+  Type dropdowns; `registry-browse.js` got category tabs with
+  CVD-verified accent colors; the Maintainer/Contributor Portals group
+  by category; a Worker-side merge gate (`handleAcceptRecategorization`,
+  `POST /accept-recategorization`) validates and merges a
+  `registry.json`-only recategorization PR. Both real registry entries
+  backfilled with `category`/`manual_type`. Not yet built: a UI for a
+  contributor to actually open a recategorization PR (the gate only has
+  something to approve once one exists by hand), and a per-category
+  mosaic template system -- `mosaic.py` remains a single hardcoded
+  motorcycle silhouette, untouched.
+- **Real image content validation, real dual-approval, and a
+  self-deploying Worker** (2026-08-27). `/direct-contribute` now checks
+  magic bytes and real decoded dimensions (JPEG/PNG/WEBP, no library
+  dependency) instead of trusting the data URL's declared MIME type,
+  rejecting corrupt or undersized uploads before any GitHub call.
+  `POST /approve-vehicle` now sets real branch protection
+  (`required_approving_review_count: 2`) on a newly-approved vehicle's
+  default branch, enforced by GitHub itself rather than app-level
+  logic. `.github/workflows/deploy-worker.yml` now deploys
+  `auth-worker` automatically on every push to `main` that touches it.
+- **Fixed: registry fingerprint matching compared the wrong hash.**
+  `source_pdf_sha256` was written at vehicle-approval time from the
+  manifest's own hash instead of the source PDF's, so the main page's
+  file picker could never match an already-registered vehicle. Fixed
+  in `indexer-ui.js` (threads the already-computed PDF hash into the
+  manifest) and `handleApproveVehicle` (writes it, plus
+  `vehicle_class`, into the registry entry); both live registry entries
+  corrected by hand. Also rewrote `registry-browse.js`, which had never
+  progressed past its own mock data, to fetch the real registry and
+  manifests and compute real per-edition coverage stats.
+- **Fixed: a repo-scoped maintainer with only `push` access couldn't
+  manage collaborators**, since GitHub's collaborator-management action
+  requires real repo Admin. Added `POST /manage-collaborator`, a Worker
+  endpoint using the installation token that independently re-checks
+  the caller's own permission before inviting anyone, always at `push`
+  level. `my-vehicles.js`'s client-side admin gate was removed as no
+  longer needed.
+- **Fixed the automatic maintainer grant on vehicle approval, and a
+  follow-on roster bug** (2026-08-27). A same-day fix that widened
+  `discoverMaintainedRepos()` to org-member affiliation was reverted --
+  it conflated org role with maintainership. The real fix grants the
+  actual submitter `push` access via `PUT .../collaborators/{login}`
+  at approval time. Backfilling it for the two already-approved
+  vehicles surfaced that `GET .../collaborators` defaults to
+  `affiliation=all`, showing every org member with default read access
+  as a phantom maintainer; fixed by requesting `affiliation=direct`.
+- **Fixed review-gallery layout inconsistencies** in `indexer-review.js`
+  and `org-approval.js`: Prev/Next controls moved above the thumbnail
+  grid (previously below, so they shifted as content height changed),
+  and both submit actions now hide the review pane and show a summary
+  card on success instead of a message at the bottom of a long scroll.
+- **Fixed several review-session bugs found during a real 900+ page
+  manual review** (2026-08-26): a blank thumbnail during a genuinely
+  slow render now shows a loading state instead of looking broken; an
+  all-transparent canvas after a browser stall/recovery is now detected
+  and surfaced as a real failure rather than silently rendering as
+  solid black; the full-page modal now caps its render size to fit the
+  viewport; resuming a review restores the chunk you left off on
+  instead of always returning to chunk 1; a dialog-stacking bug on
+  Space bar with a delete-confirm open is fixed by focusing the dialog
+  on open; drag-to-draw a new figure box was replaced with click-to-place
+  (fixing a fight with the browser's native image-drag), and resize
+  handles now support all four corners, not just the diagonal pair.
+- **Added a real `vehicle_class` field to the registry/manifest
+  schema.** The field was previously read by `registry-browse.js` but
+  only ever existed in that file's own mock data. The indexer's
+  "confirm the vehicle" step now captures it and it flows into the
+  manifest and the registry entry.
+- **Fixed stale JS being served for up to 4 hours after a deploy.**
+  Root cause was two-layered: Cloudflare Pages' own 4-hour default
+  asset caching, fixed via `web/_headers` (`Cache-Control: no-cache`),
+  plus a separate zone-level Cloudflare Cache Rule overriding origin
+  headers with its own 4-hour edge TTL, fixed by switching that rule to
+  "Respect existing headers" in the dashboard.
+- **Changed the `vehicle_slug` naming convention from a year range to
+  a single release year** (2026-08-26): `make-model-year-year` (e.g.
+  `suzuki-sv650-1999-2002`) is now `make-model-year` (e.g.
+  `suzuki-sv650-1999`) -- a manual's cover states when its coverage
+  begins but never definitively when it ends, so the old range asked
+  for a fact nobody could reliably supply. Updated `indexer-core.js`'s
+  slug-guessing and same-family generation-guard logic;
+  `registry.js`/`patcher.js`/`contribute.js` treat the slug as opaque
+  and needed no change.
+- **Closed a real deployment gap in the edition-subdirectory rollout**
+  (2026-08-30): shipping the edition-subdirectory code (PRs #55/#56)
+  didn't mean the live system matched it. The live
+  `BlaydeManual/vehicle-scaffold` template repo had been missed (only
+  the local `scaffold/` copy was updated) and was still flat; the two
+  real vehicle repos (`suzuki-sv650-1999`, `blayde-manual-2026`)
+  predated the model and were still flat too -- both fixed by
+  migrating to `oem/manifest.json` + `oem/images/`. `registry.json`'s
+  `edition_id` values were normalized to lowercase to match the new
+  `[a-z0-9-]` validation.
+- **QR marker and credit tab repositioned, and a real clickable link
+  added** (2026-08-27). `drawContributeMarker`'s QR code moved to the
+  bottom-right of its own placeholder box, with the contribute URL also
+  printed as plain text and the whole box wired as a real PDF `/Link`
+  annotation so tapping it in a viewer opens the contribute page
+  directly. `drawCreditTab` is now a flat, non-rotated tag in a
+  contributed photo's bottom-right corner (an earlier diagonal-ribbon
+  version risked covering the actual subject). PDF Optional Content
+  Groups (viewer-toggleable layers) were evaluated and declined --
+  essentially no viewer outside Acrobat exposes a toggle UI for them.
+  QR payload shortened from a full repo URL to `vehicle_slug`
+  (`contribute.html?v=<slug>&procedure=<id>`), resolved back to a
+  `repo_url` via the registry; a `repo=<full URL>` param still works
+  for already-printed QR codes.
 - **Moved photo-location-fix proposals to the Contributor Portal** (PR
   #92): any signed-in contributor, not just a manual's own maintainers,
   can propose a box reposition, a missed photo slot, or flag one for

@@ -85,8 +85,12 @@ web/            the real, shipped tool -- indexer, patcher, contributor
                 it, not at the repo root
 scaffold/       template forked into every new item repo (CI workflow,
                 checker.py, CONTRIBUTING.md, PR template, license)
-auth-worker/    Cloudflare Worker that trades a GitHub OAuth code for a
-                token, the one piece of this project with a real secret
+auth-worker/    Cloudflare Worker handling both auth paths: trades a
+                classic GitHub OAuth code for a token, and mints
+                installation tokens for the GitHub App used by
+                direct-submit/direct-contribute/approve-vehicle and
+                collaborator management -- the one piece of this
+                project with real secrets
 ledgers/        who-steered-what record, alongside CHANGELOG.md
 mosaic.py       cover-page photomosaic generator (still Python, see above)
 stylize.py      house line-art filter (still Python, see above)
