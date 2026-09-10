@@ -585,6 +585,16 @@ document.getElementById("approveBtn").addEventListener("click", async () => {
     log(`approved.`);
     showToast("Approved.");
     await loadReviewStatus(); // refreshes the status line and both buttons' real state
+    // Real, confirmed bug fixed here, 2026-09-03: loadReviewStatus only
+    // ever touched the right-pane detail view -- the left list's own
+    // badge for this exact PR (e.g. "0/2 - Needs your review") never
+    // refreshed after approving it, so it kept showing as needing your
+    // review even once you'd just supplied that review. Re-rendering
+    // the list is the same real, non-mocked check removeCurrentPRFromList
+    // already relies on elsewhere; this just doesn't also remove
+    // anything from currentPRs, since an approval alone never closes
+    // the PR.
+    renderPRList(lastApprovedRepos);
   } catch (e) {
     log(`approve failed: ${e.message}`);
     updateApproveButtonState();
