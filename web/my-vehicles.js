@@ -197,6 +197,84 @@ async function fetchRoster(repoUrl) {
   ];
 }
 
+// Direct request, 2026-09-04: My Manuals' own tab description already
+// promised "how active they've been" -- never actually built until
+// now. Real merged-contribution count, real reviews-given count, and
+// the more recent of the two as "last active," per maintainer.
+//
+// Capped to the most recent 100 PRs (GitHub's own per-page max, one
+// page, no further pagination) -- this is a browse view, not something
+// needing complete historical accounting, and a vehicle with more than
+// 100 real PRs behind it can revisit this cap then.
+//
+// Real author resolution mirrors resolveRealSubmitter's own reasoning
+// server-side (auth-worker/src/index.js), not a client-side shortcut:
+// a Public-path (direct-contribute) photo PR is always opened by the
+// GitHub App's own bot identity, never the real contributor, so
+// pr.user.login alone would attribute every one of those to the bot
+// account instead of whoever actually contributed the photo. Always
+// checks the PR's own files for the photo's `__by_<contributor>`
+// filename convention first (same as the server does, not gated behind
+// guessing which login is "the bot"), falling back to pr.user.login
+// only when there's no photo file at all -- exactly the manifest-
+// change PR case, where pr.user.login already is the real proposer
+// (manifest-change PRs are always fork-based, never bot-authored).
+async function computeMaintainerStats(repoUrl) {
+  const { owner, repo } = ownerRepoFromUrl(repoUrl);
+  const token = BlaydeAuth.getSession().token;
+  const headers = ghHeaders(token);
+  const prsResp = await fetch(`https://api.github.com/repos/${owner}/${repo}/pulls?state=all&per_page=100&sort=updated&direction=desc`, { headers });
+  const prs = prsResp.ok ? await prsResp.json() : [];
+
+  const stats = new Map(); // handle -> { merged, reviews, lastActive }
+  function bump(handle, field, dateStr) {
+    if (!handle) return;
+    if (!stats.has(handle)) stats.set(handle, { merged: 0, reviews: 0, lastActive: null });
+    const s = stats.get(handle);
+    if (field) s[field]++;
+    if (dateStr && (!s.lastActive || dateStr > s.lastActive)) s.lastActive = dateStr;
+  }
+
+  await Promise.all(prs.map(async (pr) => {
+    if (pr.merged_at) {
+      let author = pr.user?.login || null;
+      try {
+        const filesResp = await fetch(`https://api.github.com/repos/${owner}/${repo}/pulls/${pr.number}/files`, { headers });
+        const files = filesResp.ok ? await filesResp.json() : [];
+        const photoFile = files.find((f) => /^[^/]+\/images\//.test(f.filename));
+        if (photoFile) {
+          const { contributor } = parsePhotoFilename(photoFile.filename.split("/").pop());
+          if (contributor) author = contributor;
+        }
+      } catch (e) { /* best-effort -- falls back to pr.user.login rather than losing the count entirely */ }
+      bump(author, "merged", pr.merged_at);
+    }
+    // A real review can land on any PR regardless of its eventual
+    // outcome, so this checks every PR on the page, not just merged
+    // ones.
+    try {
+      const reviewsResp = await fetch(`https://api.github.com/repos/${owner}/${repo}/pulls/${pr.number}/reviews`, { headers });
+      const reviews = reviewsResp.ok ? await reviewsResp.json() : [];
+      reviews.forEach((r) => {
+        if (r.state === "APPROVED" || r.state === "CHANGES_REQUESTED") bump(r.user?.login, "reviews", r.submitted_at);
+      });
+    } catch (e) { /* best-effort */ }
+  }));
+  return stats;
+}
+
+function formatLastActive(dateStr) {
+  if (!dateStr) return null;
+  const days = Math.floor((Date.parse(new Date().toISOString()) - Date.parse(dateStr)) / 86400000);
+  if (days <= 0) return "today";
+  if (days === 1) return "yesterday";
+  if (days < 30) return `${days} days ago`;
+  const months = Math.floor(days / 30);
+  if (months < 12) return `${months} month${months === 1 ? "" : "s"} ago`;
+  const years = Math.floor(months / 12);
+  return `${years} year${years === 1 ? "" : "s"} ago`;
+}
+
 async function renderRoster(rosterEl, repoUrl) {
   let members;
   try {
@@ -210,6 +288,21 @@ async function renderRoster(rosterEl, repoUrl) {
     rosterEl.innerHTML = `<p class="sub" style="margin:0;">No maintainers yet -- invite someone below.</p>`;
     return;
   }
+  // Fire-and-forget from the roster's own render -- stats are a nice-
+  // to-have detail line, not something the roster (names, permissions,
+  // Remove buttons) should ever wait on or fail alongside. Each row
+  // gets its stats patched in once this resolves, whichever comes
+  // first.
+  computeMaintainerStats(repoUrl).then((stats) => {
+    stats.forEach((s, handle) => {
+      const el = rosterEl.querySelector(`[data-stats-for="${CSS.escape(handle)}"]`);
+      if (!el) return; // a reviewer/contributor who isn't a current collaborator (left, or removed since) has no row to patch
+      const lastActive = formatLastActive(s.lastActive);
+      const parts = [`${s.merged} merged`, `${s.reviews} review${s.reviews === 1 ? "" : "s"}`];
+      if (lastActive) parts.push(`last active ${lastActive}`);
+      el.textContent = parts.join(" · ");
+    });
+  }).catch(() => { /* best-effort -- roster itself already rendered fine without this */ });
   members.forEach((m) => {
     const row = document.createElement("div");
     row.className = "pr-row";
@@ -217,6 +310,7 @@ async function renderRoster(rosterEl, repoUrl) {
       <div>
         <div class="pr-title">@${m.handle} ${m.pending ? `<span style="font-size:0.7rem; font-weight:700; color:#8a8f98;">&#9679; invite pending</span>` : ""}</div>
         <div class="pr-meta">${permissionLabel(m.permission)}</div>
+        <div class="pr-meta" data-stats-for="${m.handle}" style="margin-top:2px;">${m.pending ? "" : "Loading activity&hellip;"}</div>
       </div>
       <button class="secondary remove-btn" data-handle="${m.handle}" data-pending="${m.pending}" data-invitation-id="${m.invitationId || ""}">Remove</button>
     `;
