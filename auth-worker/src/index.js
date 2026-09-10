@@ -476,7 +476,7 @@ async function handleDirectContribute(request, env) {
         `- Licensed CC-BY 4.0.`,
         ``,
         `---`,
-        `_Track this anytime from [My Reviewables](https://blaydemanual.com/contribute.html)._`,
+        `### Visit [BlaydeManual.com](https://blaydemanual.com) Maintainer Portal to properly manage this request`,
         // GitHub's search API silently returns zero matches for a quoted
         // phrase containing an apostrophe (confirmed directly against
         // the real API: the exact substring "Portal's Public path"

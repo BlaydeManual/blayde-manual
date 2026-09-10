@@ -582,6 +582,7 @@ async function submitManifestChange(repoUrl, editionId, issue) {
     `Submitted via the Contributor Portal's "Propose a photo location fix" action.`,
     ``,
     `---`,
+    `### Visit [BlaydeManual.com](https://blaydemanual.com) Maintainer Portal to properly manage this request`,
     `<!-- blaydemanifestchange -->`,
   ].join("\n");
   const pr = await githubApi(`/repos/${owner}/${repo}/pulls`, session.token, {
