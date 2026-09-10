@@ -23,6 +23,17 @@ and corrections in both directions -- see
 
 ## Recent changes
 
+- **Fixed: a reviewer's box reposition/annotation work was lost the
+  moment a second reviewer opened the same PR.** Direct report: the
+  first of two required reviewers draws annotations, clicks Approve
+  (Accept stays disabled until 2/2) -- that work was only ever held in
+  their own browser tab, never committed anywhere, so the second
+  reviewer opened the PR to a blank canvas. Two real bugs, both fixed:
+  the manifest commit that used to run only at final Accept now also
+  runs on Approve; and opening a PR now refetches the entry's real
+  current state fresh instead of trusting a snapshot cached whenever
+  the whole list last loaded, so a later reviewer actually sees what an
+  earlier one already saved.
 - **Contributor Portal redesigned to "Save for Review" only** (PR #59):
   the capture screen no longer submits directly or asks for a Public/
   Private choice -- it only ever saves to that device's own
