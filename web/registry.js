@@ -63,6 +63,22 @@ function showToast(message) {
   el.classList.add("show");
 }
 
+// Escapes text pulled from anywhere other than the current viewer's own
+// locally-typed input before it goes into an innerHTML template literal
+// -- a manifest.json field (vehicle display name, section heading,
+// category), a PR title, anything another GitHub account could have
+// set. Security-review finding (2026-09-11): several call sites across
+// the app interpolated fields like this raw, letting a submitter's or
+// maintainer's crafted string execute as HTML/script in a reviewer's,
+// approver's, or another contributor's browser -- see SECURITY.md.
+// Shared here rather than duplicated per-file, same reasoning as
+// showToast() above.
+function escapeHtml(str) {
+  const div = document.createElement("div");
+  div.textContent = str ?? "";
+  return div.innerHTML;
+}
+
 // Custom confirm/prompt -- native confirm()/alert()/prompt() have a
 // real, user-triggerable failure mode: after several appear in a short
 // time, Chromium offers a "Prevent this page from creating additional

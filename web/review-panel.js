@@ -440,9 +440,18 @@ async function renderPRList(approvedRepos) {
             const row = document.createElement("div");
             row.className = "pr-row";
             const manifestKindLabel = { "new-slot": "Add", remove: "Remove", structure: "Reposition" };
+            // section_heading traces back to a manifest.json field --
+            // for a manifest-change PR (fork-based, open to ANY signed-in
+            // GitHub account, not just this repo's own maintainer) it
+            // comes straight off the PR's own head branch, unvalidated.
+            // Escaped here specifically (not inside formatProcedureLabel
+            // itself, whose other two callers already use .textContent
+            // and would show literal "&amp;"-style entities if this
+            // function escaped internally).
+            const safeSectionHeading = escapeHtml(pr.section_heading);
             const title = pr.isManifestChange
-              ? `${manifestKindLabel[pr.kind]}: ${formatProcedureLabel(pr.procedure_id, pr.page, pr.section_heading)}`
-              : formatProcedureLabel(pr.procedure_id, pr.page, pr.section_heading);
+              ? `${manifestKindLabel[pr.kind]}: ${formatProcedureLabel(pr.procedure_id, pr.page, safeSectionHeading)}`
+              : formatProcedureLabel(pr.procedure_id, pr.page, safeSectionHeading);
             row.innerHTML = `
               <div>
                 <div class="pr-title">${title}</div>

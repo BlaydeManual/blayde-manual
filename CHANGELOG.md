@@ -23,6 +23,8 @@ and corrections in both directions -- see
 
 ## Recent changes
 
+- **Fixed several unescaped stored-XSS vulnerabilities** found in a security review prompted by an unrelated auth PR's storage-model change (`sessionStorage` -> `localStorage`, which raised the stakes of any XSS enough to warrant a real audit before merging). Manifest/registry fields controlled by someone other than the current viewer -- a vehicle's display name, a section heading, a category -- were rendered raw into `innerHTML` in several places: the public registry browse page, the org approval queue, the maintainer review panel, and both contributor-facing upload lists. Worst case, an org approver's or ordinary contributor's browser could run a crafted payload just from opening a normal page. Fixed with a shared `escapeHtml()` helper and, for one spot, real DOM construction with an `https?://` allowlist on link hrefs (closing a `javascript:`-URI angle plain escaping wouldn't have caught). Verified against the real shipped rendering functions with actual malicious payloads, confirmed inert. Full detail in SECURITY.md.
+
 - **Replaced the plain OS file input on the main patcher page with a
   styled "Scan manual" pill button.** The native file input read as an
   unstyled form field, not the one real call to action this page

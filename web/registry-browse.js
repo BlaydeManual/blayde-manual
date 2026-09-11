@@ -175,11 +175,14 @@ function render() {
 
       const header = document.createElement("div");
       header.className = "gen-header";
-      header.innerHTML = `
-        <a class="gen-title-link" href="index.html?vehicle=${encodeURIComponent(v.vehicle_slug)}">
-          ${v.vehicle_display_name}
-        </a>
-      `;
+      const titleLink = document.createElement("a");
+      titleLink.className = "gen-title-link";
+      titleLink.href = `index.html?vehicle=${encodeURIComponent(v.vehicle_slug)}`;
+      // vehicle_display_name comes from manifest.vehicle, which the
+      // Worker only checks for truthiness, not shape -- rendered as
+      // text, never HTML. See registry.js's escapeHtml / SECURITY.md.
+      titleLink.textContent = v.vehicle_display_name;
+      header.appendChild(titleLink);
       row.appendChild(header);
 
       const editionsWrap = document.createElement("div");
@@ -190,11 +193,26 @@ function render() {
         const statLabel = e.total_procedures == null
           ? `<span class="edition-pct" style="color:var(--steel);">stats unavailable</span>`
           : `<span class="edition-pct">${pct(e)}% of ${e.total_procedures}</span>`;
-        editionRow.innerHTML = `
-          <span class="edition-name">${e.id || "(edition not set)"}</span>
-          ${e.source_url ? `<a class="edition-link" href="${e.source_url}" target="_blank" rel="noopener">${e.source_url}</a>` : `<span class="edition-link"></span>`}
-          ${statLabel}
-        `;
+        // e.id (edition_id) is server-validated to a safe slug shape;
+        // e.source_url is an unvalidated manifest field (source_markers.
+        // source_identifier), rendered as text via a real <a> element
+        // rather than string-built HTML -- also guards against a
+        // javascript: URI, which plain HTML-escaping wouldn't catch.
+        editionRow.innerHTML = `<span class="edition-name">${e.id || "(edition not set)"}</span>`;
+        if (e.source_url && /^https?:\/\//i.test(e.source_url)) {
+          const link = document.createElement("a");
+          link.className = "edition-link";
+          link.href = e.source_url;
+          link.target = "_blank";
+          link.rel = "noopener";
+          link.textContent = e.source_url;
+          editionRow.appendChild(link);
+        } else {
+          const span = document.createElement("span");
+          span.className = "edition-link";
+          editionRow.appendChild(span);
+        }
+        editionRow.insertAdjacentHTML("beforeend", statLabel);
         editionsWrap.appendChild(editionRow);
       });
       row.appendChild(editionsWrap);
