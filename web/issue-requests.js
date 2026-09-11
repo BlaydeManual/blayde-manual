@@ -447,7 +447,10 @@ function renderPendingIssues() {
   pendingIssues.forEach((issue) => {
     const row = document.createElement("div");
     row.className = "issue-pending-row";
-    row.innerHTML = `<span>PG. ${issue.page}, ${labels[issue.kind]}: ${issue.section_heading}</span>`;
+    // section_heading traces back to this vehicle's manifest.json, set
+    // by that vehicle's maintainer -- escaped, same reasoning as
+    // contribute.js's upload list.
+    row.innerHTML = `<span>PG. ${issue.page}, ${labels[issue.kind]}: ${escapeHtml(issue.section_heading)}</span>`;
     list.appendChild(row);
   });
 }
@@ -665,9 +668,13 @@ function renderManifestFixRequests() {
     const row = document.createElement("div");
     row.className = "upload-row";
     row.style.padding = "6px 0";
+    // vehicleLabel traces back to registry.json's vehicle_display_name
+    // (unvalidated free text -- see SECURITY.md); sectionHeading traces
+    // back to that vehicle's manifest.json. Both maintainer-controlled,
+    // not necessarily the person viewing their own filed request here.
     row.innerHTML = `
       <div>
-        <div class="upload-title" style="font-size:0.88rem;">${vehicleLabel} <span class="sub">: ${req.sectionHeading} (${req.kind})</span></div>
+        <div class="upload-title" style="font-size:0.88rem;">${escapeHtml(vehicleLabel)} <span class="sub">: ${escapeHtml(req.sectionHeading)} (${req.kind})</span></div>
         <div class="upload-meta"><a href="${req.prUrl}" target="_blank" rel="noopener" class="pr-link">Request #${req.prNumber}</a> &middot; <span id="${statusId}">${reviewStatusText(manifestFixStatusCache.get(key))}</span></div>
       </div>
     `;

@@ -103,15 +103,21 @@ async function renderPendingList() {
     // manual-types.json before the list even renders, for a value
     // that's only really needed once you open a specific one to review.
     // Good enough for a queue-scan; the review header resolves the real
-    // label.
+    // label. Escaped: these are client-supplied manifest fields, not
+    // yet checked against manual-types.json at this point in the flow
+    // (see SECURITY.md's category-validation gap, 2026-09-11).
     const categoryBit = v.manifest.category
-      ? ` &middot; ${v.manifest.category}${v.manifest.manual_type ? ` / ${v.manifest.manual_type}` : ""}`
+      ? ` &middot; ${escapeHtml(v.manifest.category)}${v.manifest.manual_type ? ` / ${escapeHtml(v.manifest.manual_type)}` : ""}`
       : ` &middot; <span style="color:#ffcc66;">no category set</span>`;
+    // v.manifest.vehicle (the fallback below) is likewise an
+    // unvalidated, client-supplied manifest field -- escaped for the
+    // same reason. v.vehicle_slug, v.manifest.edition_id, submitted_by
+    // are all server-validated/derived, safe as-is (see SECURITY.md).
     const row = document.createElement("div");
     row.className = "pr-row";
     row.innerHTML = `
       <div>
-        <div class="pr-title">${v.vehicle_slug || v.manifest.vehicle} -- ${v.manifest.edition_id || "(edition not set)"}${v.is_new_edition ? ` <span class="sub" style="color:#ffcc66;">(new edition for existing vehicle)</span>` : ""}</div>
+        <div class="pr-title">${escapeHtml(v.vehicle_slug || v.manifest.vehicle)} -- ${v.manifest.edition_id || "(edition not set)"}${v.is_new_edition ? ` <span class="sub" style="color:#ffcc66;">(new edition for existing vehicle)</span>` : ""}</div>
         <div class="pr-meta">submitted by ${v.submitted_by ? `@${v.submitted_by}` : "(unknown -- see verification below)"}${v.submitted_at ? ` on ${v.submitted_at.slice(0, 10)}` : ""} &middot; ${total} candidates, ${touched}/${total} reviewed (${pct}%)${categoryBit}</div>
       </div>
       <button data-idx="${idx}">Review</button>
@@ -398,7 +404,9 @@ document.getElementById("orgApproveBtn").addEventListener("click", async () => {
     const dualApprovalNote = result.branchProtectionApplied
       ? `Dual-approval is active on this repo -- it needs a second real maintainer before any photo PR can merge.`
       : `<span style="color:#ffcc66;">Could not confirm dual-approval branch protection was applied -- check this repo's branch protection settings directly.</span>`;
-    document.getElementById("orgApproveSummaryText").innerHTML = `${orgCurrentEntry.manifest.vehicle} -- ${orgCurrentEntry.manifest.edition_id}. `
+    // manifest.vehicle is an unvalidated, client-supplied field --
+    // escaped for the same reason as renderPendingList() above.
+    document.getElementById("orgApproveSummaryText").innerHTML = `${escapeHtml(orgCurrentEntry.manifest.vehicle)} -- ${orgCurrentEntry.manifest.edition_id}. `
       + `<a href="${result.repoUrl}" target="_blank" rel="noopener">Repo</a> is now public. ${dualApprovalNote}`;
     summaryCard.style.display = "block";
     renderPendingList();

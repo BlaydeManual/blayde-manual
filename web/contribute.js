@@ -1541,13 +1541,19 @@ function renderUploadGroup(uploadList, container, maintainRowShown, categoryByVe
         const pageLabel = u.page != null ? `PG. ${u.page}: ` : "";
         const row = document.createElement("div");
         row.className = "upload-row";
+        // sectionHeading traces back to this vehicle's manifest.json,
+        // set by that vehicle's own maintainer -- not necessarily the
+        // person viewing this list. outcome.note (a maintainer's
+        // reject reason) is escaped for the same reason, even though
+        // it's always null today; nothing stops it from carrying real
+        // maintainer-typed text soon.
         row.innerHTML = `
           <div class="upload-left">
             <img class="upload-thumb" src="${u.photoDataUrl}" alt="">
             <div>
-              <div class="upload-title">${pageLabel}${u.sectionHeading}<span class="upload-status ${displayStatus}">${statusLabel}</span></div>
+              <div class="upload-title">${pageLabel}${escapeHtml(u.sectionHeading)}<span class="upload-status ${displayStatus}">${statusLabel}</span></div>
               <div class="upload-meta">${u.procedureId}${u.prNumber != null ? ` &middot; ${u.prUrl ? `<a href="${u.prUrl}" target="_blank" rel="noopener" class="pr-link">Request #${u.prNumber}</a>` : `Request #${u.prNumber}`}` : ""}</div>
-              ${outcome && outcome.note ? `<div class="upload-note">&ldquo;${outcome.note}&rdquo; (maintainer note)</div>` : ""}
+              ${outcome && outcome.note ? `<div class="upload-note">&ldquo;${escapeHtml(outcome.note)}&rdquo; (maintainer note)</div>` : ""}
               ${displayStatus === "submitted" && u.prNumber != null ? `<div class="sub review-status-line" id="reviewstatus-${u.id}" style="margin-top:4px;">${reviewStatusText(reviewStatusCache.get(`${u.repoUrl}#${u.prNumber}`))}</div>` : ""}
             </div>
           </div>
