@@ -183,6 +183,21 @@ submitter to fix and resubmit?) -- a genuinely destructive,
 hard-to-reverse decision this project hasn't made yet. Reject still
 just logs an intended action for now.
 
+## Client-side XSS: unescaped manifest/registry fields (fixed, 2026-09-11)
+
+Found during the security review that gated the auth-architecture consolidation described above (that PR's own storage-model change -- session tokens moving into `localStorage`, which persist far longer than the `sessionStorage` they replaced -- is what made this worth a real audit rather than deferring it further). Several places rendered fields that trace back to a client-supplied `manifest.json` or the canonical `registry.json` directly into `innerHTML` template literals, with no escaping:
+
+- **`registry-browse.js`'s public, unauthenticated vehicle list** -- `vehicle_display_name` (from `manifest.vehicle`, which the Worker only checks for truthiness, never shape) and an edition's `source_url` (from `manifest.source_markers.source_identifier`, never validated at all). Worst of the findings: no sign-in required to trigger it, and no sign-in required to be a victim.
+- **`org-approval.js`'s pending-vehicles queue and per-entry approval summary** -- `manifest.category`/`manifest.manual_type` and the same `manifest.vehicle` field, rendered in an org APPROVER's browser -- the highest-privilege realistic victim in the app.
+- **`review-panel.js`'s PR list** -- `section_heading` on a manifest-change PR, which is fork-based and reachable by *any* signed-in GitHub account, not just a repo's own maintainer.
+- **`contribute.js`'s uploads list and `issue-requests.js`'s two request lists** -- the same `section_heading` field (maintainer-controlled, not necessarily the viewer) and `vehicle_display_name` again, this time reaching an ordinary contributor's browser.
+
+Fixed by adding a shared `escapeHtml()` (`registry.js`, alongside the existing `showToast()`) and applying it at every confirmed site, plus switching `registry-browse.js`'s two vulnerable spots to build real DOM nodes (`textContent`/`.href`) instead of string-templated `innerHTML` -- which also closes a `javascript:`-URI vector plain HTML-escaping wouldn't have caught, since `source_url` is now checked against an `https?://` allowlist before ever being used as an `href`. Verified against the actual shipped functions (`renderPendingList()`, `render()`) with real malicious payloads (`<img onerror>`, `<script>`, a `javascript:` URL), not just read-through -- confirmed inert in each case.
+
+**Investigated but not a real gap**: `manifest.category`/`manifest.manual_type` written into the canonical `registry.json` at approval time are already rejected server-side if they don't match a real `manual-types.json` entry (`auth-worker/src/index.js`'s `handleApproveVehicle`, existing check from 2026-09-01) -- so the category-grouping headings elsewhere in the app (`contribute.js`, `review-panel.js`, `my-vehicles.js`) were confirmed safe on inspection: they only ever iterate a fixed, known-safe category enum, never the raw field. `vehicle_display_name` has no equivalent write-time check because it's genuinely free text (a display name can't be validated against a fixed list the way a category can) -- for that field, render-time escaping is the correct and complete fix, not a stopgap for a write-time check that should also exist.
+
+No `escapeHtml`-equivalent existed anywhere in this codebase before this pass -- worth remembering as a standing rule for new rendering code, not just this one sweep: any string that didn't originate from the current, already-signed-in viewer's own local input needs to go through it (or `textContent`/`createElement`) before reaching `innerHTML`.
+
 ## Repo-scope validation
 
 Every tool that acts on a `repo_url` -- the maintainer review panel,
@@ -515,17 +530,15 @@ controls as proven in production, not just in a mocked test.
   format validation rejecting anything non-image. Mitigation is routine
   dependency updates, not a one-time fix -- inherent to any system
   processing untrusted image uploads.
-- **Partially closed, 2026-09-11**: the Worker now handles refresh
-  tokens for the GitHub App's user-to-server flow (`/app-token/refresh`,
-  `auth-worker/src/index.js`) -- a short-lived access token can be
-  silently traded for a fresh one in the background, no popup, no user
-  action, for as long as the refresh token itself stays valid (~6
-  months of continued use). The one remaining manual step is flipping
-  "Expire user authorization tokens" on for this App in its own GitHub
-  settings -- until that's done, GitHub keeps issuing non-expiring
-  access tokens and this refresh path simply never triggers (see
-  `ensureFreshSession()`'s early return in `web/auth.js`), which is
-  harmless but means the intended posture isn't actually active yet.
+- **Closed, 2026-09-11**: the Worker now handles refresh tokens for the
+  GitHub App's user-to-server flow (`/app-token/refresh`,
+  `auth-worker/src/index.js`) -- a short-lived access token is silently
+  traded for a fresh one in the background, no popup, no user action.
+  "Expire user authorization tokens" has been turned on for this App in
+  its own GitHub settings, so this is live, not just built: access
+  tokens now expire after 8 hours, refresh tokens after ~6 months of
+  continued use, matching GitHub's own recommended posture instead of
+  the previous non-expiring default.
 - `POST /direct-submit` has no rate limiting and is reachable by any
   real signed-in GitHub account, not just trusted maintainers --
   matches this project's "anyone can propose" philosophy (nothing
