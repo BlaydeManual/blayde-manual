@@ -34,6 +34,11 @@ and corrections in both directions -- see
   current state fresh instead of trusting a snapshot cached whenever
   the whole list last loaded, so a later reviewer actually sees what an
   earlier one already saved.
+- **Annotation overlays now render in the actual patched PDF** (Phase
+  2): `patcher.js` reads `entry.annotations` and draws arrows, lines,
+  circles, numbered callouts, and text labels onto the real photo,
+  matching the review editor's own cased black-on-white styling so
+  legibility holds against any photo background.
 - **Fixed: a merged/closed PR could sit in the Maintainer Portal's
   review list indefinitely, showing stale review status.** Direct
   report: a PR merged via another maintainer's own Accept (or an admin
