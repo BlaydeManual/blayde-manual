@@ -37,6 +37,9 @@ const ANNO_WHITE = rgb(1, 1, 1);
 
 const log = document.getElementById("log");
 const pdfInput = document.getElementById("pdfInput");
+const scanManualBtn = document.getElementById("scanManualBtn");
+const pdfInputStatus = document.getElementById("pdfInputStatus");
+scanManualBtn?.addEventListener("click", () => pdfInput.click());
 const patchBtn = document.getElementById("patchBtn");
 const contributorPrefWrap = document.getElementById("contributorPrefWrap");
 const contributorList = document.getElementById("contributorList");
@@ -216,6 +219,10 @@ document.getElementById("outLink")?.addEventListener("click", async (e) => {
 pdfInput.addEventListener("change", async () => {
   const file = pdfInput.files[0];
   if (!file) return;
+  if (pdfInputStatus) {
+    pdfInputStatus.textContent = `Selected: ${file.name}`;
+    pdfInputStatus.style.display = "block";
+  }
   pdfBytes = new Uint8Array(await file.arrayBuffer());
   registryResolution = null;
   renderContributorList([]);

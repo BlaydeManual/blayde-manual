@@ -23,6 +23,16 @@ and corrections in both directions -- see
 
 ## Recent changes
 
+- **Replaced the plain OS file input on the main patcher page with a
+  styled "Scan manual" pill button.** The native file input read as an
+  unstyled form field, not the one real call to action this page
+  exists for. The input itself stays in the DOM (hidden), triggered
+  via the button's click handler; a small status line now confirms
+  which file was picked. Visual-only -- no session persistence was
+  added here, since this page's picker is a one-time primary input,
+  not a repeated comparison view like the maintainer/contributor
+  review panes.
+
 - **Fixed: a reviewer's box reposition/annotation work was lost the
   moment a second reviewer opened the same PR.** Direct report: the
   first of two required reviewers draws annotations, clicks Approve
