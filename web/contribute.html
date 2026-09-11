@@ -214,6 +214,30 @@
   .upload-left { display: flex; align-items: center; gap: 10px; }
 
   .compare-area { display: none; margin-top: 14px; border-top: 1px solid var(--steel-dark); padding-top: 14px; }
+  /* Same category-accent tray/banner pattern as the Maintainer Portal's
+     review pane (see review-panel.js's own version of this) -- ported
+     here since My Photos has the exact same repeated-re-pick problem:
+     comparing several uploads on one vehicle used to mean re-picking
+     the same PDF every time. compare-area has no side padding of its
+     own (unlike reviewArea's .card), so this is a self-contained
+     rounded box rather than an edge-bleeding strip. */
+  #comparePdfPickerRow, #comparePdfLoadedBanner {
+    border-radius: 8px; border-left: 4px solid var(--accent, var(--steel-dark));
+    background: color-mix(in srgb, var(--accent, var(--steel-dark)) 16%, var(--black-2));
+    padding: 14px 18px; margin-bottom: 12px;
+  }
+  #comparePdfPickerRow { text-align: center; }
+  #comparePdfPickerInstructions { margin: 0 0 10px; color: var(--steel); font-size: 0.9rem; }
+  #compareLoadManualPillBtn { border-radius: 999px; padding: 9px 20px; margin: 0; }
+  #comparePdfLoadedBanner {
+    display: none; align-items: center; justify-content: space-between;
+    background: color-mix(in srgb, var(--accent, var(--steel-dark)) 22%, var(--black-2));
+    font-weight: 700;
+  }
+  #comparePdfLoadedBanner button {
+    background: none; border: none; color: var(--text); font-weight: 700;
+    text-decoration: underline; padding: 0; margin: 0; font-size: 0.88rem;
+  }
   .compare-grid { display: flex; gap: 12px; margin-top: 10px; }
   .compare-col { flex: 1; }
   .compare-col h3 { font-size: 0.85rem; color: var(--steel); margin: 0 0 6px; font-weight: 700; }
@@ -430,27 +454,38 @@
     </div>
 
     <div class="compare-area" id="compareArea">
-      <h3 style="font-size: 0.95rem; margin:0 0 4px;">Viewing: <span id="compareTitle"></span></h3>
-      <p class="sub" style="margin:0 0 6px;">This repo never stores the manual's own pages -- pick your own copy to see the exact spot you're proposing a photo for.</p>
-      <p class="sub" style="margin:0 0 10px; color:var(--mint);">Don't worry about getting the framing exact -- the maintainer will have an opportunity to position and resize this upon approval.</p>
-      <input type="file" id="comparePdfPicker" accept="application/pdf">
-      <div id="compareToggleRow" style="display:none; margin-top:8px;">
-        <button class="secondary" id="viewWholePageBtn">View whole page</button>
-        <span class="sub" style="margin:0 0 0 8px;">useful if you're reviewing more than one procedure from the same page</span>
+      <div id="comparePdfLoadedBanner">
+        <span>&#10003; <span id="compareLoadedManualName"></span> manual loaded</span>
+        <button id="compareChangeManualBtn" type="button">change</button>
       </div>
-      <div class="compare-grid" id="compareGrid" style="display:none;">
-        <div class="compare-col">
-          <h3>Original scan (this procedure)</h3>
-          <img id="compareOriginal" alt="original scan crop">
-        </div>
-        <div class="compare-col">
-          <h3>Your proposed photo</h3>
-          <img id="comparePhoto" alt="proposed photo">
-        </div>
+
+      <div id="comparePdfPickerRow">
+        <p id="comparePdfPickerInstructions">Load your manual for this review session.</p>
+        <button id="compareLoadManualPillBtn" type="button">Load the <span id="compareLoadManualVehicleName"></span> manual</button>
+        <input type="file" id="comparePdfPicker" accept="application/pdf" style="display:none;">
       </div>
-      <div id="wholePageArea" style="display:none; position:relative; margin-top:10px;">
-        <img id="wholePageImg" alt="full page" style="width:100%; display:block; border-radius:6px; border:1px solid var(--steel-dark);">
-        <div id="wholePageHighlight" style="position:absolute; border:2px solid var(--red); background:rgba(200,16,46,0.12); box-sizing:border-box;"></div>
+
+      <div id="compareContent" style="display:none;">
+        <h3 style="font-size: 0.95rem; margin:0 0 4px;">Viewing: <span id="compareTitle"></span></h3>
+        <p class="sub" style="margin:0 0 10px; color:var(--mint);">Don't worry about getting the framing exact -- the maintainer will have an opportunity to position and resize this upon approval.</p>
+        <div id="compareToggleRow" style="display:none; margin-top:8px;">
+          <button class="secondary" id="viewWholePageBtn">View whole page</button>
+          <span class="sub" style="margin:0 0 0 8px;">useful if you're reviewing more than one procedure from the same page</span>
+        </div>
+        <div class="compare-grid" id="compareGrid" style="display:none;">
+          <div class="compare-col">
+            <h3>Original scan (this procedure)</h3>
+            <img id="compareOriginal" alt="original scan crop">
+          </div>
+          <div class="compare-col">
+            <h3>Your proposed photo</h3>
+            <img id="comparePhoto" alt="proposed photo">
+          </div>
+        </div>
+        <div id="wholePageArea" style="display:none; position:relative; margin-top:10px;">
+          <img id="wholePageImg" alt="full page" style="width:100%; display:block; border-radius:6px; border:1px solid var(--steel-dark);">
+          <div id="wholePageHighlight" style="position:absolute; border:2px solid var(--red); background:rgba(200,16,46,0.12); box-sizing:border-box;"></div>
+        </div>
       </div>
     </div>
   </div>
