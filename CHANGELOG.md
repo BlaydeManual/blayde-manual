@@ -24,13 +24,20 @@ and corrections in both directions -- see
 ## Recent changes
 
 - **The loaded manual PDF now stays loaded across requests on the same
-  vehicle** (issue #128): the plain file input is now a "Load the
-  &lt;vehicle&gt; manual" pill, which collapses into a category-tinted
-  "manual loaded" banner once picked -- opening the next request on the
-  same vehicle skips straight to rendering instead of re-prompting.
-  Switching to a different vehicle's request still re-prompts, and
-  "change" (guarded if there's unsaved position/annotation work) swaps
-  it manually at any time.
+  vehicle** (issue #128): the plain file input is now a category-tinted
+  tray reading "Load your manual for this review session," with a
+  single pill button -- nothing else (no title, no status line, no
+  annotation tools) shows until a manual is actually loaded. Once
+  picked, the tray collapses into a same-colored "manual loaded" banner
+  and everything else appears underneath it; opening the next request
+  on the same vehicle skips straight to rendering instead of
+  re-prompting. Switching to a different vehicle's request still
+  re-prompts, and "change" (guarded if there's unsaved position/
+  annotation work) swaps it manually at any time. Verified end-to-end
+  against a real PDF: same-vehicle reuse renders the new request's own
+  page without re-picking; a different vehicle correctly resets and
+  re-prompts. Isolated to the Review Photo Requests tab -- no other
+  script on this page references any of the elements involved.
 - **Fixed: a reviewer's box reposition/annotation work was lost the
   moment a second reviewer opened the same PR.** Direct report: the
   first of two required reviewers draws annotations, clicks Approve
