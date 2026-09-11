@@ -42,6 +42,7 @@ export default {
     try {
       if (request.method === "POST" && pathname === "/") return await handleOAuthExchange(request, env);
       if (request.method === "POST" && pathname === "/app-token") return await handleAppTokenExchange(request, env);
+      if (request.method === "POST" && pathname === "/app-token/refresh") return await handleAppTokenRefresh(request, env);
       if (request.method === "POST" && pathname === "/direct-submit") return await handleDirectSubmit(request, env);
       if (request.method === "POST" && pathname === "/direct-contribute") return await handleDirectContribute(request, env);
       if (request.method === "GET" && pathname === "/pending-vehicles") return await handlePendingVehicles(request, env);
@@ -67,17 +68,53 @@ export default {
 };
 
 // ---- classic OAuth App exchange (unchanged behavior, existing endpoint) ----
+// Still used, but only for the Contributor Portal's "Private" submit path
+// now (forking the vehicle repo into the contributor's own account) --
+// see web/auth.js. That's rare enough, and the grant it needs (broad
+// public_repo access to fork/push under someone's own account) is
+// different enough from everything else, that it isn't worth building
+// refresh-token handling for it too; "expire user access tokens" stays
+// off for this App specifically (see ROADMAP.md).
 async function handleOAuthExchange(request, env) {
   const body = await parseJson(request);
   if (!body.code) return json({ error: "missing code" }, 400);
   return exchangeCodeForToken(body.code, GITHUB_CLIENT_ID, env.GITHUB_CLIENT_SECRET);
 }
 
-// ---- GitHub App user-to-server exchange (new, same shape) ----
+// ---- GitHub App user-to-server exchange (same shape, now also returns
+// refresh_token/expires_in when GitHub sends them -- it only does that
+// once "Expire user authorization tokens" is turned on for this App in
+// its GitHub settings, which is what lets web/auth.js keep a session
+// alive indefinitely via silent refresh instead of a non-expiring
+// token, matching GitHub's own recommended posture) ----
 async function handleAppTokenExchange(request, env) {
   const body = await parseJson(request);
   if (!body.code) return json({ error: "missing code" }, 400);
   return exchangeCodeForToken(body.code, env.GITHUB_APP_CLIENT_ID, env.GITHUB_APP_CLIENT_SECRET);
+}
+
+// Exchanges a GitHub App refresh_token for a fresh access token, same
+// App credentials as the initial exchange above. GitHub's own refresh
+// tokens are themselves long-lived (~6 months) and rotate on each use --
+// the response's own refresh_token replaces the caller's stored one,
+// same as the initial exchange.
+async function handleAppTokenRefresh(request, env) {
+  const body = await parseJson(request);
+  if (!body.refresh_token) return json({ error: "missing refresh_token" }, 400);
+  const tokenResp = await fetch("https://github.com/login/oauth/access_token", {
+    method: "POST",
+    headers: { "Content-Type": "application/json", Accept: "application/json" },
+    body: JSON.stringify({
+      client_id: env.GITHUB_APP_CLIENT_ID,
+      client_secret: env.GITHUB_APP_CLIENT_SECRET,
+      grant_type: "refresh_token",
+      refresh_token: body.refresh_token,
+    }),
+  });
+  if (!tokenResp.ok) return json({ error: "GitHub token refresh failed" }, 502);
+  const tokenData = await tokenResp.json();
+  if (tokenData.error) return json({ error: tokenData.error_description || tokenData.error }, 400);
+  return json(tokenFields(tokenData));
 }
 
 async function exchangeCodeForToken(code, clientId, clientSecret) {
@@ -89,7 +126,21 @@ async function exchangeCodeForToken(code, clientId, clientSecret) {
   if (!tokenResp.ok) return json({ error: "GitHub token exchange failed" }, 502);
   const tokenData = await tokenResp.json();
   if (tokenData.error) return json({ error: tokenData.error_description || tokenData.error }, 400);
-  return json({ access_token: tokenData.access_token });
+  return json(tokenFields(tokenData));
+}
+
+// access_token is always present; the expiry/refresh fields only appear
+// when the calling App has "expire user authorization tokens" turned on
+// (see handleAppTokenExchange above) -- the classic OAuth App doesn't,
+// so those come back undefined for that path and JSON.stringify just
+// omits them, which web/auth.js treats as "this session never expires."
+function tokenFields(tokenData) {
+  return {
+    access_token: tokenData.access_token,
+    refresh_token: tokenData.refresh_token,
+    expires_in: tokenData.expires_in,
+    refresh_token_expires_in: tokenData.refresh_token_expires_in,
+  };
 }
 
 // ---- privileged actions (GitHub App installation token, never the caller's own token) ----

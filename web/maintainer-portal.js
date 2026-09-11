@@ -69,7 +69,7 @@ if (carriedOverHash) {
 // tab enablement below has to wait for it rather than judging an
 // always-populated mock array synchronously.
 async function enterPortal() {
-  document.getElementById("signInCard").style.display = "none";
+  document.getElementById("signedOutCard").style.display = "none";
   document.getElementById("portalBody").style.display = "block";
 
   maintainedRepos = await discoverMaintainedRepos();
@@ -94,8 +94,9 @@ async function enterPortal() {
   initApproveTab();
 }
 
-// A session from a previous sign-in this tab (auth.js, sessionStorage)
-// survives a page reload -- only closing the tab clears it.
+// A session from a previous sign-in (auth.js, localStorage) survives a
+// page reload, a new tab, even closing and reopening the browser --
+// only signing out clears it.
 const existingSession = window.BlaydeAuth ? BlaydeAuth.getSession() : null;
 if (existingSession) enterPortal();
 // A full reload on logout, not a piecemeal reset -- this portal has
@@ -103,16 +104,15 @@ if (existingSession) enterPortal();
 // starting clean is simpler and safer than trying to unwind all of it.
 BlaydeAuth?.renderAuthStatus(() => location.reload());
 
-document.getElementById("portalSignInBtn").addEventListener("click", async () => {
-  try {
-    await BlaydeAuth.signInWithGitHub();
-    BlaydeAuth.renderAuthStatus(() => location.reload());
-    enterPortal();
-  } catch (err) {
-    const note = document.getElementById("carriedOverNote");
-    note.textContent = `Sign-in failed: ${err.message}`;
-    note.style.display = "block";
-  }
+// The single shared top-nav button (auth.js) does the actual sign-in;
+// this just reacts once it succeeds -- same shape as every other portal
+// page listening for "blayde:signedin" rather than owning its own
+// button/click handler.
+window.addEventListener("blayde:signedin", () => enterPortal());
+window.addEventListener("blayde:signinerror", (e) => {
+  const note = document.getElementById("carriedOverNote");
+  note.textContent = `Sign-in failed: ${e.detail.message}`;
+  note.style.display = "block";
 });
 
 function activateTab(tabName) {

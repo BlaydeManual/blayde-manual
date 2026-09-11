@@ -40,24 +40,20 @@ function initApproveTab() {
   updateOrgSignInUI();
 }
 
-// Separate from the page's main sign-in (classic OAuth) -- viewing and
-// approving both read private BlaydeManual repos, which needs the
-// GitHub App session specifically, same pattern as indexer-review.js's
-// submit gate.
+// Viewing and approving both read private BlaydeManual repos, which the
+// one shared App session (see auth.js) already covers for everyone --
+// this used to gate on a second, separate sign-in specifically for this
+// tab, which was the exact "why do I have to sign in twice" bug reported
+// directly (ROADMAP.md). Now it just reflects whichever session is
+// already live, and re-renders when the shared top-nav button signs
+// someone in.
 function updateOrgSignInUI() {
-  const signedInToApp = !!BlaydeAuth.getAppSession();
-  document.getElementById("orgAppSignInPrompt").style.display = signedInToApp ? "none" : "block";
-  document.getElementById("pendingListCard").style.display = signedInToApp ? "block" : "none";
-  if (signedInToApp) renderPendingList();
+  const signedIn = !!BlaydeAuth.getSession();
+  document.getElementById("orgSignInPrompt").style.display = signedIn ? "none" : "block";
+  document.getElementById("pendingListCard").style.display = signedIn ? "block" : "none";
+  if (signedIn) renderPendingList();
 }
-document.getElementById("orgAppSignInBtn").addEventListener("click", async () => {
-  try {
-    await BlaydeAuth.signInWithGitHubApp();
-    updateOrgSignInUI();
-  } catch (e) {
-    log_org(`Sign-in failed: ${e.message}`);
-  }
-});
+window.addEventListener("blayde:signedin", updateOrgSignInUI);
 
 async function fetchPendingVehicles() {
   const session = BlaydeAuth.getAppSession();

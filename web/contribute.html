@@ -51,6 +51,12 @@
   #authStatus .auth-username { color: var(--text); font-weight: 700; }
   #authStatus a { color: var(--steel); text-decoration: underline; }
   #authStatus a:hover { color: var(--text); }
+  #authSignInBtn {
+    font-size: 0.88rem; font-weight: 700; letter-spacing: 0.1px;
+    padding: 5px 14px; border-radius: 999px; border: none;
+    background: var(--red); color: #fff;
+  }
+  #authSignInBtn:hover { filter: brightness(1.12); }
   h1 { font-size: 1.4rem; margin: 0 0 4px; }
   h1 span { color: var(--red); text-shadow: var(--red-halo); }
   .sub { color: var(--steel); font-size: 0.95rem; margin: 0 0 20px; }
@@ -77,7 +83,7 @@
      "Contributors" pill, not an in-PDF QR code) has nothing to show a
      photo picker for -- sign in first, same pattern as the Maintainer
      Portal, then land on My uploads instead of a procedure card. */
-  #landingSignIn { display: none; }
+  #signedOutNote { display: none; }
 
   /* Recategorization opens a real PR under the signed-in contributor's
      own account -- showing the form to a signed-out visitor invites
@@ -343,16 +349,13 @@
 <main>
   <div class="top-nav">
     <span id="authStatus"></span>
+    <button id="authSignInBtn">Sign in with GitHub</button>
     <a class="pill-link pill-home" href="index.html">BlaydeManual Home</a>
   </div>
   <h1>BLAYDE MANUAL <span>// CONTRIBUTE A PHOTO</span></h1>
   <p class="sub">Thank you for contributing. We hope you enjoy.</p>
 
-  <div class="card" id="landingSignIn">
-    <h2>Sign in to get started</h2>
-    <p class="sub" style="margin:0 0 10px;">Review your saved uploads, send them for approval, manage issues.</p>
-    <button id="landingSignInBtn">Sign in with GitHub</button>
-  </div>
+  <p class="sub" id="signedOutNote">Sign in above to review your saved uploads, send them for approval, and manage issues.</p>
 
   <div id="procedureFlow">
     <div class="card" id="contextCard" style="display:flex; gap:16px; align-items:flex-start; justify-content:space-between;">
@@ -449,8 +452,7 @@
     <div id="uploadsList"></div>
 
     <div id="signInPrompt">
-      <p>Signing in links this to your GitHub account, so it knows who's asking.</p>
-      <button id="promptSignInBtn">Sign in with GitHub</button>
+      <p>Sign in above to continue -- signing in links this to your GitHub account, so it knows who's asking.</p>
     </div>
 
     <div class="compare-area" id="compareArea">

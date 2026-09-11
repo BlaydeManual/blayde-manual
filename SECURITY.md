@@ -28,34 +28,52 @@ browser. Three things do all the work:
 ## Two logins, two trust models
 
 Two separate GitHub apps exist side by side, deliberately, not as a
-staged migration from one to the other:
+staged migration from one to the other -- but they are no longer equal
+in how often either is actually used. As of 2026-09-11, the GitHub App
+below is the one everyday sign-in, stored once and reused across the
+whole site; the classic OAuth App is scoped down to exactly one rare,
+contextual action.
 
-**Classic OAuth App** (`public_repo` scope). Used for "create under my
-own account first" (a maintainer indexing a vehicle who wants to keep a
-personal copy before proposing a transfer) and the contribute flow's
-Private path (a photo contribution that stays on the contributor's own
-fork until they explicitly open the PR). The access token lives in the
-browser for that session only, and is used directly against GitHub's
-API with the signed-in person's own real permissions -- if they can
-already fork and PR a repo with their own account, this lets them do
-exactly that from this site, nothing more.
-
-**GitHub App** (installation-based). Used for "submit directly" (a new
-vehicle proposal) and the contribute flow's Public path (an immediate
-photo PR with no fork). The browser NEVER holds this app's installation
+**GitHub App** (installation-based, everyday sign-in). Covers browsing,
+reviewing, approving, maintaining, and the contribute flow's Public
+path (an immediate photo PR with no fork) -- everything that only ever
+touches repos the App is already installed on (BlaydeManual, all
+repositories). The browser NEVER holds this app's installation
 credential -- it only ever holds a short-lived user-to-server token that
 proves a real, currently-signed-in GitHub identity is asking, sent to
 the Worker as a Bearer token. The Worker independently exchanges its
 OWN private key (a Wrangler secret, never in source, never sent to the
 browser) for a fresh installation access token per request, and that
-token -- scoped to exactly the repos the App is installed on
-(BlaydeManual, all repositories) -- does the actual privileged write.
+token does the actual privileged write. This session lives in
+`localStorage`, not `sessionStorage` -- it needs to survive opening a
+new tab (a GitHub notification email always links into one) and
+closing/reopening the browser, not just reloading the current tab. The
+real cost of that choice: a token in `localStorage` is reachable by any
+script running on the page for as long as it's valid, a longer blast
+radius than `sessionStorage`'s tab-lifetime one. Mitigated by keeping
+token lifetime itself short and silently refreshed (see below), rather
+than leaning on a non-expiring token to fake persistence.
 
 This split exists for a real reason, not just organizational tidiness:
 a repo the App's installation writes to on someone's behalf is a repo
 that person can never write to afterward. For a brand-new vehicle
 proposal, that's not a limitation, it's the point -- see "Locked
 direct-submit repos" below.
+
+**Classic OAuth App** (`public_repo` scope, one contextual action only).
+Used for exactly one thing: the contribute flow's Private path (a photo
+contribution that forks the vehicle repo into the CONTRIBUTOR's own
+account, and stays there until they explicitly open the PR). A GitHub
+App token can't do this cleanly -- the App isn't installed on a fork
+that doesn't exist yet -- so this path keeps its own separate,
+broader-scoped grant, prompted only at the exact moment someone picks
+Private, never upfront. The access token lives in the browser for that
+session only (also `localStorage`, so a Private push and its later
+"open the pull request" can happen in genuinely separate sessions, by
+design), and is used directly against GitHub's API with the signed-in
+person's own real permissions -- if they can already fork and PR a repo
+with their own account, this lets them do exactly that from this site,
+nothing more.
 
 ## Locked direct-submit repos, and how approval verifies them
 
@@ -512,10 +530,15 @@ controls as proven in production, not just in a mocked test.
   format validation rejecting anything non-image. Mitigation is routine
   dependency updates, not a one-time fix -- inherent to any system
   processing untrusted image uploads.
-- Token expiry is currently disabled at the App level for the
-  user-to-server flow, to avoid needing refresh-token handling in the
-  first cut -- a real, deliberate tradeoff (see ROADMAP.md), not an
-  oversight. Revisit once this flow has run clean for a while.
+- **Closed, 2026-09-11**: the Worker now handles refresh tokens for the
+  GitHub App's user-to-server flow (`/app-token/refresh`,
+  `auth-worker/src/index.js`) -- a short-lived access token is silently
+  traded for a fresh one in the background, no popup, no user action.
+  "Expire user authorization tokens" has been turned on for this App in
+  its own GitHub settings, so this is live, not just built: access
+  tokens now expire after 8 hours, refresh tokens after ~6 months of
+  continued use, matching GitHub's own recommended posture instead of
+  the previous non-expiring default.
 - `POST /direct-submit` has no rate limiting and is reachable by any
   real signed-in GitHub account, not just trusted maintainers --
   matches this project's "anyone can propose" philosophy (nothing
@@ -524,15 +547,18 @@ controls as proven in production, not just in a mocked test.
   consume quota or clutter the approval queue. Not a data-integrity
   risk given the approval gate holds, but a known, accepted annoyance
   risk.
-- The classic OAuth App's `public_repo` scope grants write access to
-  every public repo the signed-in person can already touch, not just
-  BlaydeManual's -- what actually keeps this site from acting outside
-  BlaydeManual on that token is the repo-scope validation above
-  ("our code chooses not to," not "the token literally can't"). The
-  GitHub App path doesn't have this gap (installation-scoped by
-  construction), which is part of why direct-submit/direct-contribute
-  moved to it; migrating the remaining classic-OAuth call sites is
-  real, deferred work, not done in this pass.
+- **Closed, 2026-09-11**: every classic-OAuth call site except the
+  contribute flow's Private path (fork into the contributor's own
+  account, which genuinely needs `public_repo`'s broader reach) now
+  runs on the GitHub App session instead -- see "Two logins, two trust
+  models" above. The residual exposure this bullet used to describe
+  (that scope grants write access to every public repo the signed-in
+  person can already touch, not just BlaydeManual's) still applies to
+  that one remaining path, same reasoning as before: what keeps this
+  site from acting outside BlaydeManual on that token is the repo-scope
+  validation in the code, not something the token itself can't do --
+  but the surface it applies to is now one deliberate, contextual
+  action instead of most of the site's everyday sign-in traffic.
 - **Closed, 2026-09-09**: branch protection now applies consistently
   across every real vehicle repo, `vehicle-scaffold`, and
   `submission-log`, confirmed live via the GitHub API. `suzuki-sv650-1999`,
