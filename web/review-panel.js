@@ -79,6 +79,14 @@ let currentPRs = []; // last loaded batch, across all maintained repos
 // supposed to skip.
 let lastApprovedRepos = [];
 let pdfDoc = null;
+// Which repo pdfDoc actually belongs to -- lets openPR() tell "same
+// vehicle, next request" (keep it loaded) from "different vehicle"
+// (reset and ask again), instead of wiping pdfDoc on every single PR
+// regardless of whether it's genuinely a different manual. Direct
+// request, confirmed design: stay loaded across requests on ONE
+// vehicle; switching vehicles always re-prompts, never holds more
+// than one manual's PDF in memory at once.
+let pdfLoadedForRepoUrl = null;
 let renderScale = 2.0; // CSS px per PDF point -- fixed, keeps the compare view a manageable size
 let box = null; // {x0,y0,x1,y1} in canvas-pixel space, live during drag
 let dragState = null;
@@ -773,38 +781,128 @@ async function refreshEntrySnapshot(pr) {
 }
 
 // ---- opening a PR: fetch the real submitted photo, not a mock one ----
+// Toggles between the "load a manual" pill and the collapsed loaded
+// banner, and (when loaded) tints the banner with the vehicle's own
+// category accent -- same visual language .category-bar already uses,
+// so "loaded" reads as tied to this specific vehicle, not a generic
+// system-wide success color.
+// Everything that only makes sense once a manual is actually available
+// to render against -- the request's own title/status line, and the
+// annotation toolbar/action buttons -- stays hidden together as one
+// unit until that's true, whether reused or freshly loaded. Only
+// applies to the photo-review path; manifest-change reviews manage
+// their own visibility independently (openManifestChangeReview).
+function setReviewContentVisible(visible) {
+  document.getElementById("reviewHeader").style.display = visible ? "block" : "none";
+  document.getElementById("reviewControls").style.display = visible ? "block" : "none";
+}
+
+async function showManualLoadState(loaded) {
+  const banner = document.getElementById("pdfLoadedBanner");
+  const pickerRow = document.getElementById("pdfPickerRow");
+  const [vehicleSlug, category] = await Promise.all([
+    vehicleSlugForRepo(currentPR.repo_url),
+    categoryForRepo(currentPR.repo_url),
+  ]);
+  // Both the tray and the banner it collapses into share the same
+  // accent, set here regardless of loaded state -- the vehicle's color
+  // identity shows up the moment a request opens, not just once a
+  // manual's actually loaded, so the collapse reads as one continuous
+  // piece of UI rather than an untinted tray suddenly becoming colored.
+  [pickerRow, banner].forEach((el) => {
+    if (category) el.style.setProperty("--accent", CATEGORY_STYLE[category].accent);
+    else el.style.removeProperty("--accent");
+  });
+  pickerRow.style.display = loaded ? "none" : "block";
+  if (!loaded) {
+    banner.style.display = "none";
+    document.getElementById("loadManualVehicleName").textContent = vehicleSlug;
+    return;
+  }
+  document.getElementById("loadedManualName").textContent = vehicleSlug;
+  banner.style.display = "flex";
+}
+
+document.getElementById("loadManualPillBtn").addEventListener("click", () => {
+  document.getElementById("pdfPicker").click();
+});
+
+// "change" discards whatever's currently loaded and goes back to the
+// pill -- guarded the same way any other discard-in-progress-work
+// action on this page is (blaydeConfirm), since a maintainer mid-way
+// through repositioning a box or drawing an annotation would otherwise
+// lose that work with no warning.
+document.getElementById("changeManualBtn").addEventListener("click", async () => {
+  if (!currentPR.isManifestChange && box) {
+    const bboxChanged = JSON.stringify(canvasToBbox(box)) !== JSON.stringify(currentPR.original_bbox);
+    const annotationsChanged = JSON.stringify(annotations) !== JSON.stringify(currentPR.original_annotations || []);
+    if ((bboxChanged || annotationsChanged) && !(await blaydeConfirm("Discard unsaved position/annotation changes and load a different manual?"))) return;
+  }
+  pdfDoc = null;
+  pdfLoadedForRepoUrl = null;
+  document.getElementById("pdfPicker").value = "";
+  if (currentPR.isManifestChange) document.getElementById("reviewHeader").style.display = "none";
+  else setReviewContentVisible(false);
+  await showManualLoadState(false);
+});
+
 async function openPR(number) {
   currentPR = currentPRs.find(p => p.number === number);
   box = null;
-  pdfDoc = null;
   submittedPhotoImg = null;
   reviewStatus = null;
   document.getElementById("prLog").textContent = "";
-  // Real, confirmed bug fixed here, 2026-09-04: pdfDoc gets reset above,
-  // but the file <input> itself keeps showing the PREVIOUS request's
-  // filename -- a browser file input's own displayed label doesn't
-  // clear just because JS state around it did. Picking a new request
-  // looked like a file was already selected for it, and nothing
-  // rendered until the exact same file was picked again (the only thing
-  // that actually fires the input's change event, which is what
-  // triggers rendering in the first place). Shared here for both the
-  // photo and manifest-change paths, which already shared #pdfPicker --
-  // previously only the manifest-change path cleared this.
-  document.getElementById("pdfPicker").value = "";
+  // Real, confirmed bug: this used to wipe pdfDoc unconditionally on
+  // every single PR, forcing a fresh file pick even for the very next
+  // request on the exact same vehicle. Now only resets when the new PR
+  // is actually on a different repo than whatever's already loaded --
+  // same manual stays loaded across requests, matching the pill/banner
+  // UI below.
+  const sameManualLoaded = pdfDoc && pdfLoadedForRepoUrl === currentPR.repo_url;
+  if (!sameManualLoaded) {
+    pdfDoc = null;
+    pdfLoadedForRepoUrl = null;
+    // Real, confirmed bug fixed here, 2026-09-04: pdfDoc gets reset above,
+    // but the file <input> itself keeps showing the PREVIOUS request's
+    // filename -- a browser file input's own displayed label doesn't
+    // clear just because JS state around it did. Picking a new request
+    // looked like a file was already selected for it, and nothing
+    // rendered until the exact same file was picked again (the only thing
+    // that actually fires the input's change event, which is what
+    // triggers rendering in the first place). Shared here for both the
+    // photo and manifest-change paths, which already shared #pdfPicker --
+    // previously only the manifest-change path cleared this.
+    document.getElementById("pdfPicker").value = "";
+  }
+  await showManualLoadState(sameManualLoaded);
   document.getElementById("reviewPlaceholder").style.display = "none";
   document.getElementById("reviewArea").classList.add("open");
   document.getElementById("rejectBtn").disabled = false;
 
   if (currentPR.isManifestChange) {
     openManifestChangeReview();
+    // reviewHeader (title/status line) is shared with the photo path --
+    // reviewControls itself doesn't apply here (annotation tools/photo
+    // actions), but the title/status line still waits on the manual the
+    // same way.
+    document.getElementById("reviewHeader").style.display = sameManualLoaded ? "block" : "none";
+    // Normally renderManifestDiffPage() only fires from the file
+    // picker's own change event -- reusing an already-loaded pdfDoc for
+    // this new request needs that same render triggered directly, since
+    // no new file gets picked.
+    if (sameManualLoaded) await renderManifestDiffPage();
     return;
   }
-  // Coming back from a manifest-change review needs these restored to
-  // their normal defaults -- openManifestChangeReview hides them, and
-  // nothing else in the photo path ever re-shows them since they're
-  // visible by default.
   document.getElementById("manifestDiffArea").style.display = "none";
-  document.getElementById("annoToolbar").style.display = "";
+  // Real, confirmed feedback: the request's title/status line, the
+  // annotation toolbar, and Approve/Accept/Reject used to show
+  // immediately on opening a PR, before the manual was even loaded --
+  // cluttering the one real decision at that moment ("load the manual")
+  // with content that can't do anything yet. setReviewContentVisible
+  // hides all of that together; only revealed once a manual is actually
+  // available to render against (either reused or freshly picked), same
+  // gating the pill/banner toggle above already follows.
+  setReviewContentVisible(sameManualLoaded);
   document.getElementById("resetBoxBtn").style.display = "";
   // A leftover "showing original" state from whatever PR was open
   // before would otherwise start this one with its own real photo
@@ -872,7 +970,12 @@ async function openPR(number) {
       img.src = submittedPhotoImg;
     });
     submittedPhotoAspect = dims.w / dims.h;
-    log(`photo loaded (${dims.w}x${dims.h}) -- pick your own copy of the manual to render real page context`);
+    if (sameManualLoaded) {
+      log(`photo loaded (${dims.w}x${dims.h}) -- rendering against the already-loaded manual...`);
+      await renderPage();
+    } else {
+      log(`photo loaded (${dims.w}x${dims.h}) -- pick your own copy of the manual to render real page context`);
+    }
   } catch (e) {
     log(`couldn't load the submitted photo: ${e.message}`);
   }
@@ -886,8 +989,15 @@ document.getElementById("pdfPicker").addEventListener("change", async (e) => {
   log(`loading ${file.name}...`);
   const buf = await file.arrayBuffer();
   pdfDoc = await pdfjsLib.getDocument({ data: buf }).promise;
-  if (currentPR.isManifestChange) await renderManifestDiffPage();
-  else await renderPage();
+  pdfLoadedForRepoUrl = currentPR.repo_url;
+  await showManualLoadState(true);
+  if (currentPR.isManifestChange) {
+    document.getElementById("reviewHeader").style.display = "block";
+    await renderManifestDiffPage();
+  } else {
+    setReviewContentVisible(true);
+    await renderPage();
+  }
 });
 
 // ---- manifest-change review: full page, color-coded, read-only --

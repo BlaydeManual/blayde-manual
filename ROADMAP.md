@@ -405,36 +405,57 @@ Below is the original design note this was built against, kept for context on th
 
 Not yet designed further than this paragraph -- the mechanism above is the theorized shape, not an implementation plan. Flagging the distinction now so whoever builds the edition-subdirectory work above doesn't accidentally fold this into it: a second fingerprint should never trigger a new subdirectory.
 
-## Mosaic cover page (mosaic.py / stylize.py) -- consolidated
+## Mosaic cover page: redesigned, real recipe (2026-09-11)
 
-**Status: `mosaic.py`/`stylize.py` remain fully unported and motorcycle-only.**
-`patcher.js`'s cover page is text/stats only today -- no photomosaic image.
-Both the progress-indicator idea and the per-vehicle-class template problem
-below are one piece of unbuilt work, not two.
+**Status: `mosaic.py`/`stylize.py` remain fully unported.** `patcher.js`'s
+cover page is text/stats only today -- no photomosaic image. This entry
+replaces the old per-vehicle-class zone-template design entirely --
+that design's hard problem (matching a tile to *where on the vehicle*
+a procedure physically lives, needing a hand-authored zone template per
+category) is gone. The new design doesn't care where anything goes.
 
-**The idea:** the cover page's completion stat becomes a literal
-photomosaic -- a target image divided into tiles, one per `procedure_id`,
-each showing a color-matched crop of that procedure's contributed photo
-once accepted, positioned to roughly match the procedure's physical
-location on the vehicle. Must target an *original* Blayde Manual image
-(a stylized silhouette, or a filtered community-contributed "hero" photo),
-never an OEM press photo -- photomosaics of copyrighted images have real
-litigation history, and small transformed tiles don't save you if the
-assembled whole is still recognizable as the original.
+**The recipe:**
+1. **Hero image** -- exactly one manifest entry per manual gets flagged
+   as Hero during indexing (a toggle on one box, same as any other
+   entry). Submitting/reviewing/accepting a Hero photo reuses the
+   existing photo pipeline unchanged -- no new upload flow, no new
+   review gate. Keeps the same legal constraint the old design already
+   named: must be an original, rights-cleared image (an accepted
+   CC-BY contributor photo), never an OEM press photo.
+2. **Stencil extraction** -- run an edge/outline detector on the
+   accepted Hero photo to produce a line-art silhouette. `stylize.py`'s
+   edge/body extraction is already vehicle-agnostic in principle; the
+   real open item is testing it against a genuinely messy real
+   contributor photo (not a clean studio shot) and, if it holds up,
+   porting it to browser JS to stay client-side like the rest of this
+   pipeline. This is the one piece with no working prototype yet.
+3. **Bottom-up fill, not a photomosaic grid.** `contributed /
+   total procedures` becomes a fill height rising from the bottom of
+   the stencil's bounding box, clipped to the silhouette path. Deliberately
+   NOT area-accurate (a true cumulative-area calculation costs more and
+   isn't worth it) -- flat height-based fill against the bounding box,
+   clipped after. Confirmed: "close is good as long as it looks good."
+4. **Fill texture = crops of contributed photos**, not a flat color --
+   grabbed from whichever photos are already accepted, no positional
+   matching needed. Whoever's patching their own copy can prefer a
+   specific contributor's photos for this the same way `patcher.js`'s
+   existing drag-reorderable contributor-priority list already works
+   for picking which photo fills a given procedure slot -- same UI,
+   reused, not a new interaction model.
+5. **Recomputed fresh at patch time**, never stored -- same pattern as
+   `drawCreditTab`/the QR overlay, both already drawn fresh on every
+   patch rather than cached.
 
-**Why it's motorcycle-only today:** `mosaic.py`'s `ZONES`/`ZONE_KEYWORDS`
-are hardcoded to a motorcycle's two-wheel side profile and service
-vocabulary, even though `stylize.py`'s edge/body extraction is genuinely
-vehicle-agnostic. Pointed at a car or any other vehicle class, the
-zone-fill logic scatters tiles onto nonsensical regions.
+**Prototyped (2026-09-11):** the bottom-up-fill-clipped-to-silhouette
+mechanic, tested against two different hand-drawn vehicle shapes at
+several fill percentages -- reads clearly, no per-shape tuning needed.
+Confirms steps 3-4 are sound. Does NOT test step 2 (real stencil
+extraction from a real photo) -- no real photo was available to test
+edge detection against; that remains the one genuinely unproven piece.
 
-**The fix, scoped:** a small per-`vehicle_class` (now `category`/
-`manual_type`) template library (`templates/motorcycle.json`,
-`templates/car.json`, etc.), each with its own zone rectangles + keyword
-vocabulary -- O(number of classes), not O(number of vehicles). Until it
-exists, treat the mosaic as motorcycle-only and gate it off (or fall back
-to a flat, class-agnostic outline with no zone-fill) for every other
-category.
+**Not designed further than this** -- pick up by testing `stylize.py`
+against a real, messy contributor photo first, since that result
+decides whether step 2 is even viable as scoped.
 
 ## Multi-part manuals (one edition split across several physical files)
 
@@ -859,22 +880,6 @@ The GitHub App migration (locked direct-submit repos, real org-approval checks, 
 Direct question, raised while a real vehicle was being indexed: "you can download the index, but you can't re-upload it later as a savepoint... so why download the index?" Checked the actual code rather than assuming an answer -- `indexer-ui.js`'s `downloadBtn` exports the in-memory manifest as a plain file download once indexing finishes, with no explanatory comment anywhere for what it's for. There is a real, separate resume system already (`indexer-core.js`'s job-based resume, checkpointed to IndexedDB), but it only resumes the SAME browser tab/profile's own stored job -- it has no import path that accepts a manifest.json file at all. So today: downloading the manifest produces a file that cannot be fed back into the indexer, the reviewer, or anything else in this codebase. Its only real use right now is as a raw artifact for manual inspection or an external backup copy, not a savepoint in any functional sense -- and nothing in the UI says that's all it's for, which is exactly what prompted the question.
 
 Not fixed in this pass, logged directly per request. Two real directions, not decided yet: (1) build a real "load manifest.json" import path so the download genuinely functions as a portable savepoint (works across browsers/devices, unlike the IndexedDB-only resume); or (2) if the button was only ever meant as a raw-data escape hatch, say so in the UI rather than leaving it looking like a savepoint feature it isn't.
-
-## Backlog: keep the loaded manual PDF across same-vehicle reviews (2026-09-10)
-
-Tracked as [issue #128](https://github.com/BlaydeManual/blayde-manual/issues/128).
-
-Direct request, confirmed scope: since the manual's own scanned pages are never stored server-side (only fetched client-side, same local-context rule as everywhere else in this project), reviewing a photo PR means picking a local copy of the vehicle's PDF to render the original page for comparison. Working through several requests on one vehicle (e.g. sv650) means re-picking that same file on every single PR today -- `openPR()` unconditionally wipes `pdfDoc` to `null` and re-shows the picker regardless of whether the new PR is on the same vehicle as the last one.
-
-**Confirmed design:** stay loaded across PRs on the SAME vehicle repo; only re-prompt for a file when actually switching to a different vehicle's PR.
-
-**Moderate, not light** -- a real (if contained) change to `openPR()`'s core reset logic, not a config toggle:
-- Track which repo the currently-loaded `pdfDoc` belongs to, alongside `pdfDoc` itself.
-- `openPR()`'s reset becomes conditional: wipe `pdfDoc`/re-show the picker only when the new PR's `repo_url` differs from what's already loaded.
-- The page-render logic is currently only triggered by the file `<input>`'s own change event -- needs extracting into a callable function so it can run directly (skipping the picker) when reusing an already-loaded PDF for a new PR's page.
-- UI needs to say what's happening ("Using the already-loaded manual for sv650 -- change") rather than silently hiding the picker with no explanation.
-
-No open design questions -- the one real ambiguity (does switching vehicles and back reuse a remembered second PDF, or always re-prompt) is settled: always re-prompt, never hold more than one vehicle's PDF in memory at once.
 
 ## Backlog: three real gaps found reviewing the real `blayde-manual-2026` panes (2026-08-27)
 
