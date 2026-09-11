@@ -297,9 +297,9 @@ async function loadContext() {
   return null;
 }
 
-// A session set by a previous sign-in this tab (auth.js, sessionStorage)
-// survives a page reload without forcing sign-in again -- only closing
-// the tab clears it.
+// A session from a previous sign-in (auth.js, localStorage) survives a
+// page reload, a new tab, even closing and reopening the browser --
+// only signing out clears it.
 const existingSession = window.BlaydeAuth ? BlaydeAuth.getSession() : null;
 if (existingSession) {
   signedIn = true;
@@ -313,11 +313,30 @@ if (existingSession) {
 BlaydeAuth?.renderAuthStatus(handleLoggedOut);
 updateRecatVisibility();
 
+// The single shared top-nav button (auth.js) does the actual sign-in;
+// this just reacts once it succeeds -- covers both what the old
+// landing-page button and the maintain-request prompt's own button used
+// to do, since there's only ever one sign-in control now.
+window.addEventListener("blayde:signedin", (e) => {
+  signedIn = true;
+  currentUsername = e.detail.username;
+  document.getElementById("signedOutNote").style.display = "none";
+  document.getElementById("signInPrompt").style.display = "none";
+  updateRecatVisibility();
+  log(`Signed in with GitHub as @${currentUsername}.`);
+  syncRealSubmissions();
+  renderUploads();
+  if (pendingMaintainRequest) {
+    performMaintainRequest(pendingMaintainRequest.vehicleKey, pendingMaintainRequest.repoUrl);
+    pendingMaintainRequest = null;
+  }
+});
+
 function handleLoggedOut() {
   signedIn = false;
   currentUsername = null;
   remoteUploads = []; // scoped to whoever was signed in -- stale otherwise if a different account signs in next
-  if (!hasProcedureContext) document.getElementById("landingSignIn").style.display = "block";
+  if (!hasProcedureContext) document.getElementById("signedOutNote").style.display = "block";
   updateRecatVisibility();
   renderUploads();
 }
@@ -359,7 +378,7 @@ if (hasProcedureContext) {
   })();
 } else {
   document.getElementById("procedureFlow").style.display = "none";
-  document.getElementById("landingSignIn").style.display = signedIn ? "none" : "block";
+  document.getElementById("signedOutNote").style.display = signedIn ? "none" : "block";
 }
 
 // The most recent upload this device already has for THIS exact
@@ -434,8 +453,7 @@ document.getElementById("removeSpotBtn").addEventListener("click", async () => {
   const statusEl = document.getElementById("removeSpotStatus");
   const session = window.BlaydeAuth ? BlaydeAuth.getSession() : null;
   if (!session) {
-    statusEl.textContent = "Sign in to request this. See the sign-in option above.";
-    document.getElementById("landingSignIn").style.display = "block";
+    statusEl.textContent = "Sign in above to request this.";
     return;
   }
   if (!(await blaydeConfirm(`Remove the photo slot for "${context.section_heading || procedureId}"?`))) return;
@@ -473,11 +491,15 @@ document.getElementById("proposeAnotherBtn").addEventListener("click", () => {
   document.getElementById("uploadFormCard").style.display = "block";
 });
 
-// Shared by both sign-in buttons -- one real GitHub OAuth flow, not two
-// separate implementations that could drift.
+// Awaitable sign-in gate for flows that need a session as a
+// prerequisite mid-action (e.g. openSubmitDialog below) and have to
+// block on the result before continuing in the same function -- the
+// shared top-nav button (auth.js) covers everyone just clicking in to
+// sign in on their own, but a few actions need to prompt for it
+// inline, at the exact moment they're attempted while signed out.
 async function performSignIn() {
   try {
-    const session = await BlaydeAuth.signInWithGitHub();
+    const session = await BlaydeAuth.signInWithGitHubApp();
     signedIn = true;
     currentUsername = session.username;
     BlaydeAuth.renderAuthStatus(handleLoggedOut);
@@ -489,14 +511,6 @@ async function performSignIn() {
     return false;
   }
 }
-
-document.getElementById("landingSignInBtn").addEventListener("click", async () => {
-  if (await performSignIn()) {
-    document.getElementById("landingSignIn").style.display = "none";
-    updateRecatVisibility();
-    renderUploads();
-  }
-});
 
 renderUploads();
 
@@ -883,18 +897,6 @@ document.getElementById("consentLicense").addEventListener("change", updateSubmi
 // the one place this flow ever needs an account.
 document.getElementById("saveDraftBtn").addEventListener("click", () => performAction("draft"));
 
-// The only remaining use of the page-level sign-in prompt: "help
-// maintain" is a separate, occasional action, not something worth
-// building its own inline sign-in flow for the way markSubmitted does
-// (see markSubmitted's own comment on why that one just signs in
-// inline instead).
-document.getElementById("promptSignInBtn").addEventListener("click", async () => {
-  if (!(await performSignIn())) return;
-  document.getElementById("signInPrompt").style.display = "none";
-  updateRecatVisibility();
-  if (pendingMaintainRequest) { performMaintainRequest(pendingMaintainRequest.vehicleKey, pendingMaintainRequest.repoUrl); pendingMaintainRequest = null; }
-});
-
 function requestToMaintain(vehicleKey, repoUrl) {
   if (!signedIn) {
     pendingMaintainRequest = { vehicleKey, repoUrl };
@@ -1041,7 +1043,7 @@ async function waitForForkRef(forkOwner, repo, branch, token) {
 // account, and nothing is proposed to anyone until they separately choose
 // to open the PR (openPrFromFork, below), whenever they want, or never.
 async function submitPhotoPrivate(upload) {
-  const session = BlaydeAuth.getSession();
+  const session = BlaydeAuth.getPrivateSession();
   if (!session) throw new Error("Not signed in.");
   const [owner, repo] = ownerRepo(upload.repoUrl);
   const ext = (upload.photoFilename.match(/\.(jpe?g|png|webp)$/i)?.[0] || ".jpg").toLowerCase();
@@ -1104,7 +1106,7 @@ async function submitPhotoPrivate(upload) {
 // contributor actually decides to. Same PR body/title either path ends
 // up with, so review-panel.js sees no difference once a PR exists.
 async function openPrFromFork(upload) {
-  const session = BlaydeAuth.getSession();
+  const session = BlaydeAuth.getPrivateSession();
   if (!session) throw new Error("Not signed in.");
   const [owner, repo] = ownerRepo(upload.repoUrl);
   const prBody = [
@@ -1237,6 +1239,20 @@ async function markSubmitted(uploadId) {
         log(`Submit failed: ${err.message}`);
       }
     } else {
+      // Private forks into the contributor's OWN account -- a bigger,
+      // separate grant from everything else on this site (see auth.js's
+      // file-top comment), so it gets its own contextual sign-in right
+      // here, only at the moment someone actually picks Private, never
+      // upfront.
+      if (!BlaydeAuth.getPrivateSession()) {
+        log(`Signing in for Private submit...`);
+        try {
+          await BlaydeAuth.signInWithGitHubPrivate();
+        } catch (err) {
+          log(`Sign-in failed: ${err.message}`);
+          return;
+        }
+      }
       log(`Pushing privately to your own copy of ${upload.repoUrl}...`);
       try {
         const forked = await submitPhotoPrivate(upload);
@@ -1265,6 +1281,19 @@ async function markSubmitted(uploadId) {
 async function openPrForUpload(uploadId) {
   const upload = uploads.find((u) => u.id === uploadId);
   if (!upload || upload.status !== "forked") return;
+  // This deferred half of a Private submission can genuinely happen in
+  // a much later session (that's the whole point) -- the Private
+  // session from the original push may no longer be around, so prompt
+  // for it right here rather than letting openPrFromFork just throw.
+  if (!BlaydeAuth.getPrivateSession()) {
+    log(`Signing in to open the pull request...`);
+    try {
+      await BlaydeAuth.signInWithGitHubPrivate();
+    } catch (err) {
+      log(`Sign-in failed: ${err.message}`);
+      return;
+    }
+  }
   log(`Opening a pull request on ${upload.repoUrl}...`);
   try {
     const pr = await openPrFromFork(upload);

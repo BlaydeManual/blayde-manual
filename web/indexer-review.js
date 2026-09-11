@@ -55,20 +55,6 @@ function saveReviewStateNow() {
   });
 }
 
-// Separate from the page's main sign-in (classic OAuth, used for
-// browsing/reviewing) -- submitting always goes through the GitHub App
-// specifically, so it needs its OWN sign-in, kept in its own session
-// slot (BlaydeAuth.getAppSession()) rather than replacing the session
-// everything else on this page depends on. Declared at top level, not
-// inside the pageModal drag-handling block below, so it's reliably
-// visible from startReview() without depending on legacy function-in-
-// block hoisting.
-function updateSubmitSignInUI() {
-  const signedInToApp = !!BlaydeAuth.getAppSession();
-  document.getElementById("submitSignInBtn").style.display = signedInToApp ? "none" : "inline-block";
-  document.getElementById("submitSignInNote").style.display = signedInToApp ? "none" : "block";
-  document.getElementById("submitBtn").style.display = signedInToApp ? "inline-block" : "none";
-}
 
 function startReview(manifest, savedChunkIdx) {
   reviewManifest = manifest;
@@ -108,7 +94,6 @@ function startReview(manifest, savedChunkIdx) {
   document.getElementById("submitBtn").disabled = false;
   document.getElementById("submitBtn").textContent = "Looks good, submit it";
   document.getElementById("submitSummaryCard").style.display = "none";
-  updateSubmitSignInUI();
   renderReviewGallery();
   saveReviewStateNow(); // persist immediately -- don't wait for a first edit
 }
@@ -691,16 +676,6 @@ function renderModalOverlays() {
   });
   document.getElementById("pageModalClose").addEventListener("click", () => {
     document.getElementById("pageModal").classList.remove("open");
-  });
-  document.getElementById("submitSignInBtn").addEventListener("click", async () => {
-    try {
-      await BlaydeAuth.signInWithGitHubApp();
-      updateSubmitSignInUI();
-    } catch (e) {
-      const errorEl = document.getElementById("submitError");
-      errorEl.textContent = `Sign-in failed: ${e.message}`;
-      errorEl.style.display = "block";
-    }
   });
   document.getElementById("submitBtn").addEventListener("click", async () => {
     const category = document.getElementById("categoryConfirm").value;

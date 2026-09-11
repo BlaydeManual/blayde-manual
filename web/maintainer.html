@@ -72,6 +72,13 @@
   #authStatus .auth-username { color: var(--text); font-weight: 700; }
   #authStatus a { color: var(--steel); text-decoration: underline; }
   #authStatus a:hover { color: var(--text); }
+  #authSignInBtn {
+    font-size: 0.88rem; font-weight: 700; letter-spacing: 0.1px;
+    padding: 5px 14px; border-radius: 999px; border: none;
+    background: var(--red); color: #fff;
+  }
+  #authSignInBtn:hover { filter: brightness(1.12); }
+  #signedOutCard { margin-bottom: 20px; }
   h1 { font-size: 1.4rem; margin: 0 0 4px; }
   h1 span { color: var(--red); text-shadow: var(--red-halo); }
   .sub { color: var(--steel); font-size: 0.95rem; margin: 0 0 20px; }
@@ -510,15 +517,15 @@
 <main>
   <div class="top-nav">
     <span id="authStatus"></span>
+    <button id="authSignInBtn">Sign in with GitHub</button>
     <a class="pill-link pill-home" href="index.html">BlaydeManual Home</a>
   </div>
   <h1>BLAYDE MANUAL <span>// MAINTAINER PORTAL</span></h1>
   <p class="sub">Thank you for maintaining. Everything is in one place here.</p>
 
-  <div class="card" id="signInCard">
-    <p class="sub" style="margin:0 0 6px;">Sign in to review photo submissions, manage your vehicle's team, approve new manuals, and index one of your own.</p>
-    <p class="sub" id="carriedOverNote" style="display:none; margin:0 0 10px;"></p>
-    <button id="portalSignInBtn">Sign in with GitHub</button>
+  <div id="signedOutCard">
+    <p class="sub" style="margin:0 0 6px;">Sign in above to review photo submissions, manage your vehicle's team, approve new manuals, and index one of your own.</p>
+    <p class="sub" id="carriedOverNote" style="display:none; margin:0;"></p>
   </div>
 
   <div id="portalBody" style="display:none;">
@@ -638,10 +645,7 @@
     <!-- ============ Approve New Manuals (ORG -- org-approval.js) ============ -->
     <div class="tab-panel" id="tab-approve">
       <p class="sub" style="margin:0 0 6px;">Visible to every maintainer -- useful to check before you start indexing a manual that's already in the queue. Approve/reject only work if you're a real org admin (checked server-side, not just in this page).</p>
-      <div id="orgAppSignInPrompt" style="display:none; background:#000; border:1px solid var(--steel-dark); border-radius:6px; padding:14px; margin-bottom:14px;">
-        <p style="margin:0 0 10px; font-size: 0.92rem; color:var(--steel);">Viewing and approving pending manuals reads private repos under BlaydeManual, so this needs the GitHub App sign-in -- a separate one from the page's regular sign-in.</p>
-        <button id="orgAppSignInBtn">Sign in to view pending manuals</button>
-      </div>
+      <p class="sub" id="orgSignInPrompt" style="display:none;">Sign in above to view the pending manuals queue.</p>
       <div class="card" id="pendingListCard" style="display:none;">
         <h2 style="font-size: 1.05rem; margin:0 0 4px;">Pending new manuals</h2>
         <div id="pendingList"></div>
@@ -781,9 +785,7 @@
             <button id="reviewNextBtn" style="margin-top:0;">Next &rarr;</button>
           </div>
           <div id="reviewGallery"></div>
-          <p class="sub" id="submitSignInNote" style="margin:0 0 6px;">Submitting always goes straight into BlaydeManual as a private repo, pending org review -- this needs a separate sign-in from the one you're already using, since it's a different app with different permissions.</p>
-          <button id="submitSignInBtn" class="secondary">Sign in to submit</button>
-          <button id="submitBtn" style="display:none;">Looks good, submit it</button>
+          <button id="submitBtn">Looks good, submit it</button>
           <p class="sub" id="submitError" style="display:none; color:#ff6b6b; margin:8px 0 0;"></p>
         </div>
       </div>

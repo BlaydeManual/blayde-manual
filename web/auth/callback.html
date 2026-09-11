@@ -107,7 +107,17 @@
       headers: { Authorization: `Bearer ${exchangeData.access_token}` },
     });
     const userData = await userResp.json();
-    done({ token: exchangeData.access_token, username: userData.login, authType });
+    done({
+      token: exchangeData.access_token,
+      username: userData.login,
+      authType,
+      // Only present when the App has "expire user authorization
+      // tokens" turned on -- auth.js's tokenExpiryFields() already
+      // treats missing values here as "this session never expires."
+      refresh_token: exchangeData.refresh_token,
+      expires_in: exchangeData.expires_in,
+      refresh_token_expires_in: exchangeData.refresh_token_expires_in,
+    });
   } catch (err) {
     done({ error: "Network error during sign-in." });
   }
