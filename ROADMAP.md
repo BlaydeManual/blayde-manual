@@ -405,36 +405,57 @@ Below is the original design note this was built against, kept for context on th
 
 Not yet designed further than this paragraph -- the mechanism above is the theorized shape, not an implementation plan. Flagging the distinction now so whoever builds the edition-subdirectory work above doesn't accidentally fold this into it: a second fingerprint should never trigger a new subdirectory.
 
-## Mosaic cover page (mosaic.py / stylize.py) -- consolidated
+## Mosaic cover page: redesigned, real recipe (2026-09-11)
 
-**Status: `mosaic.py`/`stylize.py` remain fully unported and motorcycle-only.**
-`patcher.js`'s cover page is text/stats only today -- no photomosaic image.
-Both the progress-indicator idea and the per-vehicle-class template problem
-below are one piece of unbuilt work, not two.
+**Status: `mosaic.py`/`stylize.py` remain fully unported.** `patcher.js`'s
+cover page is text/stats only today -- no photomosaic image. This entry
+replaces the old per-vehicle-class zone-template design entirely --
+that design's hard problem (matching a tile to *where on the vehicle*
+a procedure physically lives, needing a hand-authored zone template per
+category) is gone. The new design doesn't care where anything goes.
 
-**The idea:** the cover page's completion stat becomes a literal
-photomosaic -- a target image divided into tiles, one per `procedure_id`,
-each showing a color-matched crop of that procedure's contributed photo
-once accepted, positioned to roughly match the procedure's physical
-location on the vehicle. Must target an *original* Blayde Manual image
-(a stylized silhouette, or a filtered community-contributed "hero" photo),
-never an OEM press photo -- photomosaics of copyrighted images have real
-litigation history, and small transformed tiles don't save you if the
-assembled whole is still recognizable as the original.
+**The recipe:**
+1. **Hero image** -- exactly one manifest entry per manual gets flagged
+   as Hero during indexing (a toggle on one box, same as any other
+   entry). Submitting/reviewing/accepting a Hero photo reuses the
+   existing photo pipeline unchanged -- no new upload flow, no new
+   review gate. Keeps the same legal constraint the old design already
+   named: must be an original, rights-cleared image (an accepted
+   CC-BY contributor photo), never an OEM press photo.
+2. **Stencil extraction** -- run an edge/outline detector on the
+   accepted Hero photo to produce a line-art silhouette. `stylize.py`'s
+   edge/body extraction is already vehicle-agnostic in principle; the
+   real open item is testing it against a genuinely messy real
+   contributor photo (not a clean studio shot) and, if it holds up,
+   porting it to browser JS to stay client-side like the rest of this
+   pipeline. This is the one piece with no working prototype yet.
+3. **Bottom-up fill, not a photomosaic grid.** `contributed /
+   total procedures` becomes a fill height rising from the bottom of
+   the stencil's bounding box, clipped to the silhouette path. Deliberately
+   NOT area-accurate (a true cumulative-area calculation costs more and
+   isn't worth it) -- flat height-based fill against the bounding box,
+   clipped after. Confirmed: "close is good as long as it looks good."
+4. **Fill texture = crops of contributed photos**, not a flat color --
+   grabbed from whichever photos are already accepted, no positional
+   matching needed. Whoever's patching their own copy can prefer a
+   specific contributor's photos for this the same way `patcher.js`'s
+   existing drag-reorderable contributor-priority list already works
+   for picking which photo fills a given procedure slot -- same UI,
+   reused, not a new interaction model.
+5. **Recomputed fresh at patch time**, never stored -- same pattern as
+   `drawCreditTab`/the QR overlay, both already drawn fresh on every
+   patch rather than cached.
 
-**Why it's motorcycle-only today:** `mosaic.py`'s `ZONES`/`ZONE_KEYWORDS`
-are hardcoded to a motorcycle's two-wheel side profile and service
-vocabulary, even though `stylize.py`'s edge/body extraction is genuinely
-vehicle-agnostic. Pointed at a car or any other vehicle class, the
-zone-fill logic scatters tiles onto nonsensical regions.
+**Prototyped (2026-09-11):** the bottom-up-fill-clipped-to-silhouette
+mechanic, tested against two different hand-drawn vehicle shapes at
+several fill percentages -- reads clearly, no per-shape tuning needed.
+Confirms steps 3-4 are sound. Does NOT test step 2 (real stencil
+extraction from a real photo) -- no real photo was available to test
+edge detection against; that remains the one genuinely unproven piece.
 
-**The fix, scoped:** a small per-`vehicle_class` (now `category`/
-`manual_type`) template library (`templates/motorcycle.json`,
-`templates/car.json`, etc.), each with its own zone rectangles + keyword
-vocabulary -- O(number of classes), not O(number of vehicles). Until it
-exists, treat the mosaic as motorcycle-only and gate it off (or fall back
-to a flat, class-agnostic outline with no zone-fill) for every other
-category.
+**Not designed further than this** -- pick up by testing `stylize.py`
+against a real, messy contributor photo first, since that result
+decides whether step 2 is even viable as scoped.
 
 ## Multi-part manuals (one edition split across several physical files)
 
