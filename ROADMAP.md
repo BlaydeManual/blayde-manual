@@ -948,6 +948,10 @@ gate) -- parked to avoid scope creep, pick up on real need.
 
 **Not designed further than this paragraph** -- real open questions before this is buildable: what "annotation contribution" would even mean as a tracked metric (arrows/circles drawn during review aren't currently counted anywhere, unlike merges/reviews which now are), how many maintainers before a credits page needs its own pagination, and whether this belongs as a fixed template page in `patcher.js` or something more dynamic. Pick up once there's a real, specific request for it -- not blocking anything shipped now.
 
+## Backlogged: Contributor Portal doesn't show annotations on a contributor's own submission (2026-09-10)
+
+Direct report: viewing a submission in My Photos shows the raw photo as submitted, with no rendering of any annotations a maintainer drew on it during review. Real gap, not urgent -- pinned to pick up later. `contribute.js`'s own preview would need the same drawing logic `patcher.js`'s Phase 2 overlay work just added, adapted to whatever this page renders with (a plain `<img>`, not a PDF page).
+
 ## Backlogged: move `maintainer-stats.json` into `submission-log` (2026-09-10)
 
 **The gap:** `maintainer-stats.json` lives in each vehicle's own repo, updated server-side by `recordMaintainerActivity()` via the installation token -- but the file itself isn't protected from a human write. Any maintainer with push access on that repo can open a normal PR against it and get it merged by another real collaborator (2 approvals, same as any other change there), padding their own merge/review counts.
