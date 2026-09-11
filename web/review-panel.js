@@ -304,6 +304,23 @@ function prStatusInfo(pr, status, myLogin) {
   const count = `${status.approved_count}/${status.required_approvals}`;
   if (status.ready_to_merge) return { state: "ready", label: `${count} ✓ Ready to merge` };
   if (status.changes_requested_by.length) return { state: "changes", label: `${count} · Changes requested` };
+  // Real, confirmed bug: approvals can be fully met (count >= required,
+  // no changes requested) while a required status check is still
+  // failing -- checker.py rejecting a too-low-resolution photo is the
+  // common real case. Before this, that state fell all the way through
+  // to "Waiting on others"/"Needs your review," both wrong and actively
+  // misleading: there's no one left to review, and approving again does
+  // nothing, since the actual blocker is the submitted photo itself.
+  // The detail pane's updateAcceptButtonState() already surfaces this
+  // correctly once a PR is opened -- this brings the list-view badge in
+  // line with it, same CHECK_LABELS convention.
+  if (status.checks?.length && !status.checks_passing) {
+    const failing = status.checks.filter((c) => c.conclusion && c.conclusion !== "success");
+    const label = failing.length
+      ? failing.map((c) => CHECK_LABELS[c.name] || c.name).join(", ")
+      : "required checks";
+    return { state: "checksFailed", label: `${count} ✓ approved · ${label} failing` };
+  }
   const isContributor = myLogin && pr.author === myLogin;
   const alreadyApproved = myLogin && status.approved_by.includes(myLogin);
   if (isContributor || alreadyApproved) return { state: "waiting", label: `${count} · Waiting on others` };
