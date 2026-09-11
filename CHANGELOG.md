@@ -23,6 +23,19 @@ and corrections in both directions -- see
 
 ## Recent changes
 
+- **Contributor Portal's "My Photos" compare view keeps its loaded
+  manual PDF across uploads on the same vehicle**, same pattern as the
+  Maintainer Portal's review pane: a category-tinted tray ("Load your
+  manual for this review session") collapses into a same-tinted banner
+  once loaded, and comparing a different upload on the same vehicle
+  skips straight to rendering instead of re-picking. A different
+  vehicle's upload still re-prompts. State-machine logic (same-vehicle
+  reuse, different-vehicle reset, tray/banner toggling) verified live
+  against real upload data; the underlying pdf.js page-render call
+  itself (pre-existing, unchanged) wasn't re-verified in this pass due
+  to an unrelated environment issue in the test session, not a code
+  change -- worth one real click-through to confirm.
+
 - **The loaded manual PDF now stays loaded across requests on the same
   vehicle** (issue #128): the plain file input is now a category-tinted
   tray reading "Load your manual for this review session," with a
