@@ -581,38 +581,40 @@
           </div>
         </div>
 
-        <div id="viewModeRow">
-          <button type="button" class="secondary" id="toggleOriginalBtn" style="display:none;" title="See the original manual page through the box, to place annotations against what was really there">Show original page</button>
-          <button type="button" class="secondary" id="viewFullPageBtn">View in full page (adjust position)</button>
-          <button type="button" class="secondary" id="viewZoomedBtn" style="display:none;">Back to annotate</button>
-        </div>
-        <div class="fit-readout" id="fitReadout"></div>
+        <div id="reviewControls" style="display:none;">
+          <div id="viewModeRow">
+            <button type="button" class="secondary" id="toggleOriginalBtn" style="display:none;" title="See the original manual page through the box, to place annotations against what was really there">Show original page</button>
+            <button type="button" class="secondary" id="viewFullPageBtn">View in full page (adjust position)</button>
+            <button type="button" class="secondary" id="viewZoomedBtn" style="display:none;">Back to annotate</button>
+          </div>
+          <div class="fit-readout" id="fitReadout"></div>
 
-        <div id="annoToolbar">
-          <button type="button" data-anno-tool="arrow">&#8599; Arrow</button>
-          <button type="button" data-anno-tool="line">&#8213; Line</button>
-          <button type="button" data-anno-tool="circle">&#9675; Circle</button>
-          <button type="button" data-anno-tool="number">&#9312; Number</button>
-          <button type="button" data-anno-tool="text">&#9998; Text</button>
-          <span id="annoNextNumberRow">Next number: <input type="number" id="annoNextNumberInput" min="1" value="1"></span>
-          <span id="annoTextFrameRow">Label shape:
-            <button type="button" data-anno-frame="circle" class="active">&#9675; Circle</button>
-            <button type="button" data-anno-frame="rect">&#9645; Rectangle</button>
-          </span>
-        </div>
-        <div id="annoAttribution" style="display:none; color:var(--mint); margin:4px 0;"></div>
-        <div id="annoHelp"></div>
-        <div id="annoTextEditRow">
-          <span class="sub" style="margin:0;">Label (3 characters max):</span>
-          <input type="text" id="annoTextInput" maxlength="3">
-          <button type="button" class="secondary" id="annoTextDoneBtn">Save</button>
-        </div>
+          <div id="annoToolbar">
+            <button type="button" data-anno-tool="arrow">&#8599; Arrow</button>
+            <button type="button" data-anno-tool="line">&#8213; Line</button>
+            <button type="button" data-anno-tool="circle">&#9675; Circle</button>
+            <button type="button" data-anno-tool="number">&#9312; Number</button>
+            <button type="button" data-anno-tool="text">&#9998; Text</button>
+            <span id="annoNextNumberRow">Next number: <input type="number" id="annoNextNumberInput" min="1" value="1"></span>
+            <span id="annoTextFrameRow">Label shape:
+              <button type="button" data-anno-frame="circle" class="active">&#9675; Circle</button>
+              <button type="button" data-anno-frame="rect">&#9645; Rectangle</button>
+            </span>
+          </div>
+          <div id="annoAttribution" style="display:none; color:var(--mint); margin:4px 0;"></div>
+          <div id="annoHelp"></div>
+          <div id="annoTextEditRow">
+            <span class="sub" style="margin:0;">Label (3 characters max):</span>
+            <input type="text" id="annoTextInput" maxlength="3">
+            <button type="button" class="secondary" id="annoTextDoneBtn">Save</button>
+          </div>
 
-        <div class="actions">
-          <button class="secondary" id="approveBtn" disabled>Approve</button>
-          <button id="acceptBtn" disabled>Accept &amp; merge</button>
-          <button class="secondary" id="rejectBtn" disabled>Reject</button>
-          <button class="secondary" id="resetBoxBtn" disabled>Reset box to original</button>
+          <div class="actions">
+            <button class="secondary" id="approveBtn" disabled>Approve</button>
+            <button id="acceptBtn" disabled>Accept &amp; merge</button>
+            <button class="secondary" id="rejectBtn" disabled>Reject</button>
+            <button class="secondary" id="resetBoxBtn" disabled>Reset box to original</button>
+          </div>
         </div>
 
         <div id="prLog"></div>

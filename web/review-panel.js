@@ -822,6 +822,7 @@ document.getElementById("changeManualBtn").addEventListener("click", async () =>
   pdfDoc = null;
   pdfLoadedForRepoUrl = null;
   document.getElementById("pdfPicker").value = "";
+  if (!currentPR.isManifestChange) document.getElementById("reviewControls").style.display = "none";
   await showManualLoadState(false);
 });
 
@@ -867,12 +868,15 @@ async function openPR(number) {
     if (sameManualLoaded) await renderManifestDiffPage();
     return;
   }
-  // Coming back from a manifest-change review needs these restored to
-  // their normal defaults -- openManifestChangeReview hides them, and
-  // nothing else in the photo path ever re-shows them since they're
-  // visible by default.
   document.getElementById("manifestDiffArea").style.display = "none";
-  document.getElementById("annoToolbar").style.display = "";
+  // Real, confirmed feedback: the annotation toolbar and Approve/Accept/
+  // Reject actions used to show immediately on opening a PR, before the
+  // manual was even loaded -- cluttering the one real decision at that
+  // moment ("load the manual") with controls that can't do anything yet.
+  // #reviewControls wraps all of that; only revealed once a manual is
+  // actually available to render against (either reused or freshly
+  // picked), same gating the pill/banner toggle above already follows.
+  document.getElementById("reviewControls").style.display = sameManualLoaded ? "block" : "none";
   document.getElementById("resetBoxBtn").style.display = "";
   // A leftover "showing original" state from whatever PR was open
   // before would otherwise start this one with its own real photo
@@ -961,8 +965,12 @@ document.getElementById("pdfPicker").addEventListener("change", async (e) => {
   pdfDoc = await pdfjsLib.getDocument({ data: buf }).promise;
   pdfLoadedForRepoUrl = currentPR.repo_url;
   await showManualLoadState(true);
-  if (currentPR.isManifestChange) await renderManifestDiffPage();
-  else await renderPage();
+  if (currentPR.isManifestChange) {
+    await renderManifestDiffPage();
+  } else {
+    document.getElementById("reviewControls").style.display = "block";
+    await renderPage();
+  }
 });
 
 // ---- manifest-change review: full page, color-coded, read-only --
