@@ -860,22 +860,6 @@ Direct question, raised while a real vehicle was being indexed: "you can downloa
 
 Not fixed in this pass, logged directly per request. Two real directions, not decided yet: (1) build a real "load manifest.json" import path so the download genuinely functions as a portable savepoint (works across browsers/devices, unlike the IndexedDB-only resume); or (2) if the button was only ever meant as a raw-data escape hatch, say so in the UI rather than leaving it looking like a savepoint feature it isn't.
 
-## Backlog: keep the loaded manual PDF across same-vehicle reviews (2026-09-10)
-
-Tracked as [issue #128](https://github.com/BlaydeManual/blayde-manual/issues/128).
-
-Direct request, confirmed scope: since the manual's own scanned pages are never stored server-side (only fetched client-side, same local-context rule as everywhere else in this project), reviewing a photo PR means picking a local copy of the vehicle's PDF to render the original page for comparison. Working through several requests on one vehicle (e.g. sv650) means re-picking that same file on every single PR today -- `openPR()` unconditionally wipes `pdfDoc` to `null` and re-shows the picker regardless of whether the new PR is on the same vehicle as the last one.
-
-**Confirmed design:** stay loaded across PRs on the SAME vehicle repo; only re-prompt for a file when actually switching to a different vehicle's PR.
-
-**Moderate, not light** -- a real (if contained) change to `openPR()`'s core reset logic, not a config toggle:
-- Track which repo the currently-loaded `pdfDoc` belongs to, alongside `pdfDoc` itself.
-- `openPR()`'s reset becomes conditional: wipe `pdfDoc`/re-show the picker only when the new PR's `repo_url` differs from what's already loaded.
-- The page-render logic is currently only triggered by the file `<input>`'s own change event -- needs extracting into a callable function so it can run directly (skipping the picker) when reusing an already-loaded PDF for a new PR's page.
-- UI needs to say what's happening ("Using the already-loaded manual for sv650 -- change") rather than silently hiding the picker with no explanation.
-
-No open design questions -- the one real ambiguity (does switching vehicles and back reuse a remembered second PDF, or always re-prompt) is settled: always re-prompt, never hold more than one vehicle's PDF in memory at once.
-
 ## Backlog: three real gaps found reviewing the real `blayde-manual-2026` panes (2026-08-27)
 
 The review-gallery layout inconsistency (Prev/Next below a variable-height thumbnail grid) is fixed -- see CHANGELOG.md. Three findings from the same pass are not:
