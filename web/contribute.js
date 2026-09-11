@@ -1747,6 +1747,49 @@ function loadReviewStatusLines(allUploads) {
 // second PDF re-render. ----
 let compareUpload = null;
 let lastRenderedPageCanvas = null; // cache -- avoids re-rendering when toggling crop <-> whole page
+// Same repeated-re-pick problem the Maintainer Portal's review pane had
+// (review-panel.js), ported here: comparing several uploads on the same
+// vehicle used to mean re-picking that vehicle's PDF every single time.
+// Tracks which repo the currently-loaded comparePdfDoc belongs to, so
+// openCompare() can tell "same vehicle, different upload" (keep it
+// loaded) from "different vehicle" (reset and ask again).
+let comparePdfDoc = null;
+let comparePdfLoadedForRepoUrl = null;
+
+// No registry-lookup helper already existed in this file the way
+// review-panel.js's categoryForRepo does -- small and local rather than
+// exporting a new shared one for a single call site.
+async function categoryForRepoUrl(repoUrl) {
+  try {
+    const registryData = await loadRegistry(CANONICAL_REGISTRY_URL);
+    const norm = (u) => (u || "").replace(/\/$/, "").toLowerCase();
+    return registryData.vehicles?.find((v) => norm(v.repo_url) === norm(repoUrl))?.category || null;
+  } catch (e) {
+    return null;
+  }
+}
+
+// Same tray-to-banner pattern as review-panel.js's showManualLoadState,
+// tinted with the vehicle's own category accent both before and after
+// loading so the collapse reads as one continuous piece of UI.
+async function showCompareManualLoadState(loaded) {
+  const banner = document.getElementById("comparePdfLoadedBanner");
+  const pickerRow = document.getElementById("comparePdfPickerRow");
+  const vehicleLabel = compareUpload.vehicleSlug || compareUpload.repoUrl || "";
+  const category = compareUpload.repoUrl ? await categoryForRepoUrl(compareUpload.repoUrl) : null;
+  [pickerRow, banner].forEach((el) => {
+    if (category) el.style.setProperty("--accent", CATEGORY_STYLE[category].accent);
+    else el.style.removeProperty("--accent");
+  });
+  pickerRow.style.display = loaded ? "none" : "block";
+  if (!loaded) {
+    banner.style.display = "none";
+    document.getElementById("compareLoadManualVehicleName").textContent = vehicleLabel;
+    return;
+  }
+  document.getElementById("compareLoadedManualName").textContent = vehicleLabel;
+  banner.style.display = "flex";
+}
 
 function openCompare(uploadId, triggerBtn) {
   compareUpload = uploads.find((u) => u.id === uploadId);
@@ -1763,29 +1806,53 @@ function openCompare(uploadId, triggerBtn) {
   const row = triggerBtn ? triggerBtn.closest(".upload-row") : null;
   if (row) row.insertAdjacentElement("afterend", compareArea);
   compareArea.style.display = "block";
+
+  const sameManualLoaded = comparePdfDoc && compareUpload.repoUrl && comparePdfLoadedForRepoUrl === compareUpload.repoUrl;
+  if (!sameManualLoaded) {
+    comparePdfDoc = null;
+    comparePdfLoadedForRepoUrl = null;
+    document.getElementById("comparePdfPicker").value = "";
+  }
+  showCompareManualLoadState(sameManualLoaded);
+  document.getElementById("compareContent").style.display = sameManualLoaded ? "block" : "none";
+
   document.getElementById("compareTitle").textContent = compareUpload.sectionHeading;
   document.getElementById("compareGrid").style.display = "none";
   document.getElementById("compareToggleRow").style.display = "none";
   document.getElementById("wholePageArea").style.display = "none";
   document.getElementById("comparePhoto").src = compareUpload.photoDataUrl;
   compareArea.scrollIntoView({ behavior: "smooth", block: "nearest" });
+
+  if (sameManualLoaded) renderCompareCrop();
 }
 
-document.getElementById("comparePdfPicker").addEventListener("change", async (e) => {
-  const file = e.target.files[0];
-  if (!file || !compareUpload || !compareUpload.pixelBbox) {
+document.getElementById("compareLoadManualPillBtn").addEventListener("click", () => {
+  document.getElementById("comparePdfPicker").click();
+});
+
+document.getElementById("compareChangeManualBtn").addEventListener("click", async () => {
+  comparePdfDoc = null;
+  comparePdfLoadedForRepoUrl = null;
+  document.getElementById("comparePdfPicker").value = "";
+  document.getElementById("compareContent").style.display = "none";
+  await showCompareManualLoadState(false);
+});
+
+// Renders the current compareUpload's crop from whatever's already in
+// comparePdfDoc -- shared by the file picker's own change event and by
+// openCompare() reusing an already-loaded PDF for a new upload.
+async function renderCompareCrop() {
+  if (!comparePdfDoc || !compareUpload.pixelBbox) {
     log(!compareUpload?.pixelBbox ? "No page geometry known for this upload -- can't render a crop to compare against." : "");
     return;
   }
-  const buf = await file.arrayBuffer();
-  const pdfDoc = await pdfjsLib.getDocument({ data: buf }).promise;
   // Shared with every other viewer that does this same local-context
   // render -- see registry.js's resolvePageForLocalPdf for why.
-  const { targetPage, isPatchedOutput } = await resolvePageForLocalPdf(pdfDoc, compareUpload.page);
+  const { targetPage, isPatchedOutput } = await resolvePageForLocalPdf(comparePdfDoc, compareUpload.page);
   if (isPatchedOutput) {
     log("This looks like an already-patched Blayde Manual, not the original scan -- adjusting for its extra cover page.");
   }
-  const page = await pdfDoc.getPage(targetPage);
+  const page = await comparePdfDoc.getPage(targetPage);
   const scale = 2.5;
   const viewport = page.getViewport({ scale });
   const canvas = document.createElement("canvas");
@@ -1805,6 +1872,17 @@ document.getElementById("comparePdfPicker").addEventListener("change", async (e)
   document.getElementById("compareOriginal").src = out.toDataURL("image/jpeg", 0.9);
   document.getElementById("compareGrid").style.display = "flex";
   document.getElementById("compareToggleRow").style.display = "block";
+}
+
+document.getElementById("comparePdfPicker").addEventListener("change", async (e) => {
+  const file = e.target.files[0];
+  if (!file || !compareUpload) return;
+  const buf = await file.arrayBuffer();
+  comparePdfDoc = await pdfjsLib.getDocument({ data: buf }).promise;
+  comparePdfLoadedForRepoUrl = compareUpload.repoUrl;
+  await showCompareManualLoadState(true);
+  document.getElementById("compareContent").style.display = "block";
+  await renderCompareCrop();
 });
 
 document.getElementById("viewWholePageBtn").addEventListener("click", () => {
