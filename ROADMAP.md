@@ -1,5 +1,9 @@
 # Roadmap / open design problems
 
+## Backlog: mobile compatibility, deliberately deprioritized (2026-09-11)
+
+Direct call: "backlog mobile compatibility. annotation is rough. let's focus on core desktop for now." The canvas-based crop/annotation tooling (contribute.js's crop editor, review-panel.js's annotation toolbar, indexer-review.js's review gallery) is built and tested against desktop mouse/keyboard interaction -- dragging a crop box or drawing an annotation with a fingertip on a touchscreen is a genuinely different interaction model, not just a layout/breakpoint issue a media query would fix. Not scoped or estimated; revisit once the core desktop flows are solid.
+
 ## Repo-size math behind the photo downscale cap (reference, not open)
 
 **Closed 2026-08-28**, logged here as the reasoning behind a real number
