@@ -786,20 +786,39 @@ async function refreshEntrySnapshot(pr) {
 // category accent -- same visual language .category-bar already uses,
 // so "loaded" reads as tied to this specific vehicle, not a generic
 // system-wide success color.
+// Everything that only makes sense once a manual is actually available
+// to render against -- the request's own title/status line, and the
+// annotation toolbar/action buttons -- stays hidden together as one
+// unit until that's true, whether reused or freshly loaded. Only
+// applies to the photo-review path; manifest-change reviews manage
+// their own visibility independently (openManifestChangeReview).
+function setReviewContentVisible(visible) {
+  document.getElementById("reviewHeader").style.display = visible ? "block" : "none";
+  document.getElementById("reviewControls").style.display = visible ? "block" : "none";
+}
+
 async function showManualLoadState(loaded) {
   const banner = document.getElementById("pdfLoadedBanner");
-  document.getElementById("pdfPickerRow").style.display = loaded ? "none" : "block";
-  if (!loaded) {
-    banner.style.display = "none";
-    document.getElementById("loadManualVehicleName").textContent = await vehicleSlugForRepo(currentPR.repo_url);
-    return;
-  }
+  const pickerRow = document.getElementById("pdfPickerRow");
   const [vehicleSlug, category] = await Promise.all([
     vehicleSlugForRepo(currentPR.repo_url),
     categoryForRepo(currentPR.repo_url),
   ]);
-  if (category) banner.style.setProperty("--accent", CATEGORY_STYLE[category].accent);
-  else banner.style.removeProperty("--accent");
+  // Both the tray and the banner it collapses into share the same
+  // accent, set here regardless of loaded state -- the vehicle's color
+  // identity shows up the moment a request opens, not just once a
+  // manual's actually loaded, so the collapse reads as one continuous
+  // piece of UI rather than an untinted tray suddenly becoming colored.
+  [pickerRow, banner].forEach((el) => {
+    if (category) el.style.setProperty("--accent", CATEGORY_STYLE[category].accent);
+    else el.style.removeProperty("--accent");
+  });
+  pickerRow.style.display = loaded ? "none" : "block";
+  if (!loaded) {
+    banner.style.display = "none";
+    document.getElementById("loadManualVehicleName").textContent = vehicleSlug;
+    return;
+  }
   document.getElementById("loadedManualName").textContent = vehicleSlug;
   banner.style.display = "flex";
 }
@@ -822,7 +841,8 @@ document.getElementById("changeManualBtn").addEventListener("click", async () =>
   pdfDoc = null;
   pdfLoadedForRepoUrl = null;
   document.getElementById("pdfPicker").value = "";
-  if (!currentPR.isManifestChange) document.getElementById("reviewControls").style.display = "none";
+  if (currentPR.isManifestChange) document.getElementById("reviewHeader").style.display = "none";
+  else setReviewContentVisible(false);
   await showManualLoadState(false);
 });
 
@@ -861,6 +881,11 @@ async function openPR(number) {
 
   if (currentPR.isManifestChange) {
     openManifestChangeReview();
+    // reviewHeader (title/status line) is shared with the photo path --
+    // reviewControls itself doesn't apply here (annotation tools/photo
+    // actions), but the title/status line still waits on the manual the
+    // same way.
+    document.getElementById("reviewHeader").style.display = sameManualLoaded ? "block" : "none";
     // Normally renderManifestDiffPage() only fires from the file
     // picker's own change event -- reusing an already-loaded pdfDoc for
     // this new request needs that same render triggered directly, since
@@ -869,14 +894,15 @@ async function openPR(number) {
     return;
   }
   document.getElementById("manifestDiffArea").style.display = "none";
-  // Real, confirmed feedback: the annotation toolbar and Approve/Accept/
-  // Reject actions used to show immediately on opening a PR, before the
-  // manual was even loaded -- cluttering the one real decision at that
-  // moment ("load the manual") with controls that can't do anything yet.
-  // #reviewControls wraps all of that; only revealed once a manual is
-  // actually available to render against (either reused or freshly
-  // picked), same gating the pill/banner toggle above already follows.
-  document.getElementById("reviewControls").style.display = sameManualLoaded ? "block" : "none";
+  // Real, confirmed feedback: the request's title/status line, the
+  // annotation toolbar, and Approve/Accept/Reject used to show
+  // immediately on opening a PR, before the manual was even loaded --
+  // cluttering the one real decision at that moment ("load the manual")
+  // with content that can't do anything yet. setReviewContentVisible
+  // hides all of that together; only revealed once a manual is actually
+  // available to render against (either reused or freshly picked), same
+  // gating the pill/banner toggle above already follows.
+  setReviewContentVisible(sameManualLoaded);
   document.getElementById("resetBoxBtn").style.display = "";
   // A leftover "showing original" state from whatever PR was open
   // before would otherwise start this one with its own real photo
@@ -966,9 +992,10 @@ document.getElementById("pdfPicker").addEventListener("change", async (e) => {
   pdfLoadedForRepoUrl = currentPR.repo_url;
   await showManualLoadState(true);
   if (currentPR.isManifestChange) {
+    document.getElementById("reviewHeader").style.display = "block";
     await renderManifestDiffPage();
   } else {
-    document.getElementById("reviewControls").style.display = "block";
+    setReviewContentVisible(true);
     await renderPage();
   }
 });

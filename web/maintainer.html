@@ -95,17 +95,24 @@
   button.secondary { background: var(--steel-dark); }
   button:disabled { background: var(--steel-dark); opacity: 0.6; cursor: default; }
 
+  /* Both the pre-load tray and the post-load banner share the same
+     category-accent tint (see .category-bar's own comment for the
+     reasoning) -- the vehicle's own color identity shows up the moment
+     a request is opened, not just after loading, so the tray-to-banner
+     collapse reads as one continuous piece of UI, not two unrelated
+     ones. Falls back to steel for an uncategorized vehicle. */
+  #pdfPickerRow {
+    background: color-mix(in srgb, var(--accent, var(--steel-dark)) 16%, var(--black-2));
+    border-left: 4px solid var(--accent, var(--steel-dark));
+    margin: 0 -22px 14px; padding: 18px 22px; text-align: center;
+  }
+  #pdfPickerInstructions { margin: 0 0 12px; color: var(--steel); font-size: 0.95rem; }
   /* A big, inviting call to action for the one real thing standing
      between opening a request and reviewing it -- replaces a plain
      file input, which read as a chore, not an action. */
   #loadManualPillBtn {
-    border-radius: 999px; padding: 10px 22px; margin: 4px 0 8px;
+    border-radius: 999px; padding: 10px 22px; margin: 0;
   }
-  /* Same category-accent visual language as .category-bar (see that
-     rule's own comment) -- the banner reuses the vehicle's own tint
-     rather than a fixed color, so "loaded" reads as tied to THIS
-     vehicle, not a generic system-wide success green. Falls back to
-     steel for an uncategorized vehicle, same as .category-bar. */
   #pdfLoadedBanner {
     display: none; align-items: center; justify-content: space-between;
     background: color-mix(in srgb, var(--accent, var(--steel-dark)) 22%, var(--black-2));
@@ -534,21 +541,21 @@
       <div class="card" id="reviewPlaceholder">Choose a request from the list to review it.</div>
 
       <div class="card" id="reviewArea">
-        <h2 style="font-size: 1.05rem; margin:0 0 4px;" id="reviewTitle"></h2>
-        <p class="sub" id="reviewMeta"></p>
-        <p class="sub" id="reviewStatusLine">Checking review/merge status...</p>
-
         <div id="pdfLoadedBanner">
           <span>&#10003; <span id="loadedManualName"></span> manual loaded</span>
           <button id="changeManualBtn" type="button">change</button>
         </div>
 
         <div id="pdfPickerRow">
-          <label style="display:block; font-size: 0.9rem; color:var(--steel); margin-bottom:6px;">
-            This repo never stores the manual's own pages -- pick your own copy to render real before/after context.
-          </label>
+          <p id="pdfPickerInstructions">Load your manual for this review session.</p>
           <button id="loadManualPillBtn" type="button">Load the <span id="loadManualVehicleName"></span> manual</button>
           <input type="file" id="pdfPicker" accept="application/pdf" style="display:none;">
+        </div>
+
+        <div id="reviewHeader" style="display:none;">
+          <h2 style="font-size: 1.05rem; margin:0 0 4px;" id="reviewTitle"></h2>
+          <p class="sub" id="reviewMeta"></p>
+          <p class="sub" id="reviewStatusLine">Checking review/merge status...</p>
         </div>
 
         <div id="zoomViewport" class="mode-zoomed" style="display:none;">
