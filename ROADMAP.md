@@ -862,6 +862,8 @@ Not fixed in this pass, logged directly per request. Two real directions, not de
 
 ## Backlog: keep the loaded manual PDF across same-vehicle reviews (2026-09-10)
 
+Tracked as [issue #128](https://github.com/BlaydeManual/blayde-manual/issues/128).
+
 Direct request, confirmed scope: since the manual's own scanned pages are never stored server-side (only fetched client-side, same local-context rule as everywhere else in this project), reviewing a photo PR means picking a local copy of the vehicle's PDF to render the original page for comparison. Working through several requests on one vehicle (e.g. sv650) means re-picking that same file on every single PR today -- `openPR()` unconditionally wipes `pdfDoc` to `null` and re-shows the picker regardless of whether the new PR is on the same vehicle as the last one.
 
 **Confirmed design:** stay loaded across PRs on the SAME vehicle repo; only re-prompt for a file when actually switching to a different vehicle's PR.
