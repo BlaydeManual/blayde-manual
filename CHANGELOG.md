@@ -23,6 +23,14 @@ and corrections in both directions -- see
 
 ## Recent changes
 
+- **The loaded manual PDF now stays loaded across requests on the same
+  vehicle** (issue #128): the plain file input is now a "Load the
+  &lt;vehicle&gt; manual" pill, which collapses into a category-tinted
+  "manual loaded" banner once picked -- opening the next request on the
+  same vehicle skips straight to rendering instead of re-prompting.
+  Switching to a different vehicle's request still re-prompts, and
+  "change" (guarded if there's unsaved position/annotation work) swaps
+  it manually at any time.
 - **Fixed: a reviewer's box reposition/annotation work was lost the
   moment a second reviewer opened the same PR.** Direct report: the
   first of two required reviewers draws annotations, clicks Approve

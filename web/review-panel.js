@@ -79,6 +79,14 @@ let currentPRs = []; // last loaded batch, across all maintained repos
 // supposed to skip.
 let lastApprovedRepos = [];
 let pdfDoc = null;
+// Which repo pdfDoc actually belongs to -- lets openPR() tell "same
+// vehicle, next request" (keep it loaded) from "different vehicle"
+// (reset and ask again), instead of wiping pdfDoc on every single PR
+// regardless of whether it's genuinely a different manual. Direct
+// request, confirmed design: stay loaded across requests on ONE
+// vehicle; switching vehicles always re-prompts, never holds more
+// than one manual's PDF in memory at once.
+let pdfLoadedForRepoUrl = null;
 let renderScale = 2.0; // CSS px per PDF point -- fixed, keeps the compare view a manageable size
 let box = null; // {x0,y0,x1,y1} in canvas-pixel space, live during drag
 let dragState = null;
@@ -773,30 +781,90 @@ async function refreshEntrySnapshot(pr) {
 }
 
 // ---- opening a PR: fetch the real submitted photo, not a mock one ----
+// Toggles between the "load a manual" pill and the collapsed loaded
+// banner, and (when loaded) tints the banner with the vehicle's own
+// category accent -- same visual language .category-bar already uses,
+// so "loaded" reads as tied to this specific vehicle, not a generic
+// system-wide success color.
+async function showManualLoadState(loaded) {
+  const banner = document.getElementById("pdfLoadedBanner");
+  document.getElementById("pdfPickerRow").style.display = loaded ? "none" : "block";
+  if (!loaded) {
+    banner.style.display = "none";
+    document.getElementById("loadManualVehicleName").textContent = await vehicleSlugForRepo(currentPR.repo_url);
+    return;
+  }
+  const [vehicleSlug, category] = await Promise.all([
+    vehicleSlugForRepo(currentPR.repo_url),
+    categoryForRepo(currentPR.repo_url),
+  ]);
+  if (category) banner.style.setProperty("--accent", CATEGORY_STYLE[category].accent);
+  else banner.style.removeProperty("--accent");
+  document.getElementById("loadedManualName").textContent = vehicleSlug;
+  banner.style.display = "flex";
+}
+
+document.getElementById("loadManualPillBtn").addEventListener("click", () => {
+  document.getElementById("pdfPicker").click();
+});
+
+// "change" discards whatever's currently loaded and goes back to the
+// pill -- guarded the same way any other discard-in-progress-work
+// action on this page is (blaydeConfirm), since a maintainer mid-way
+// through repositioning a box or drawing an annotation would otherwise
+// lose that work with no warning.
+document.getElementById("changeManualBtn").addEventListener("click", async () => {
+  if (!currentPR.isManifestChange && box) {
+    const bboxChanged = JSON.stringify(canvasToBbox(box)) !== JSON.stringify(currentPR.original_bbox);
+    const annotationsChanged = JSON.stringify(annotations) !== JSON.stringify(currentPR.original_annotations || []);
+    if ((bboxChanged || annotationsChanged) && !(await blaydeConfirm("Discard unsaved position/annotation changes and load a different manual?"))) return;
+  }
+  pdfDoc = null;
+  pdfLoadedForRepoUrl = null;
+  document.getElementById("pdfPicker").value = "";
+  await showManualLoadState(false);
+});
+
 async function openPR(number) {
   currentPR = currentPRs.find(p => p.number === number);
   box = null;
-  pdfDoc = null;
   submittedPhotoImg = null;
   reviewStatus = null;
   document.getElementById("prLog").textContent = "";
-  // Real, confirmed bug fixed here, 2026-09-04: pdfDoc gets reset above,
-  // but the file <input> itself keeps showing the PREVIOUS request's
-  // filename -- a browser file input's own displayed label doesn't
-  // clear just because JS state around it did. Picking a new request
-  // looked like a file was already selected for it, and nothing
-  // rendered until the exact same file was picked again (the only thing
-  // that actually fires the input's change event, which is what
-  // triggers rendering in the first place). Shared here for both the
-  // photo and manifest-change paths, which already shared #pdfPicker --
-  // previously only the manifest-change path cleared this.
-  document.getElementById("pdfPicker").value = "";
+  // Real, confirmed bug: this used to wipe pdfDoc unconditionally on
+  // every single PR, forcing a fresh file pick even for the very next
+  // request on the exact same vehicle. Now only resets when the new PR
+  // is actually on a different repo than whatever's already loaded --
+  // same manual stays loaded across requests, matching the pill/banner
+  // UI below.
+  const sameManualLoaded = pdfDoc && pdfLoadedForRepoUrl === currentPR.repo_url;
+  if (!sameManualLoaded) {
+    pdfDoc = null;
+    pdfLoadedForRepoUrl = null;
+    // Real, confirmed bug fixed here, 2026-09-04: pdfDoc gets reset above,
+    // but the file <input> itself keeps showing the PREVIOUS request's
+    // filename -- a browser file input's own displayed label doesn't
+    // clear just because JS state around it did. Picking a new request
+    // looked like a file was already selected for it, and nothing
+    // rendered until the exact same file was picked again (the only thing
+    // that actually fires the input's change event, which is what
+    // triggers rendering in the first place). Shared here for both the
+    // photo and manifest-change paths, which already shared #pdfPicker --
+    // previously only the manifest-change path cleared this.
+    document.getElementById("pdfPicker").value = "";
+  }
+  await showManualLoadState(sameManualLoaded);
   document.getElementById("reviewPlaceholder").style.display = "none";
   document.getElementById("reviewArea").classList.add("open");
   document.getElementById("rejectBtn").disabled = false;
 
   if (currentPR.isManifestChange) {
     openManifestChangeReview();
+    // Normally renderManifestDiffPage() only fires from the file
+    // picker's own change event -- reusing an already-loaded pdfDoc for
+    // this new request needs that same render triggered directly, since
+    // no new file gets picked.
+    if (sameManualLoaded) await renderManifestDiffPage();
     return;
   }
   // Coming back from a manifest-change review needs these restored to
@@ -872,7 +940,12 @@ async function openPR(number) {
       img.src = submittedPhotoImg;
     });
     submittedPhotoAspect = dims.w / dims.h;
-    log(`photo loaded (${dims.w}x${dims.h}) -- pick your own copy of the manual to render real page context`);
+    if (sameManualLoaded) {
+      log(`photo loaded (${dims.w}x${dims.h}) -- rendering against the already-loaded manual...`);
+      await renderPage();
+    } else {
+      log(`photo loaded (${dims.w}x${dims.h}) -- pick your own copy of the manual to render real page context`);
+    }
   } catch (e) {
     log(`couldn't load the submitted photo: ${e.message}`);
   }
@@ -886,6 +959,8 @@ document.getElementById("pdfPicker").addEventListener("change", async (e) => {
   log(`loading ${file.name}...`);
   const buf = await file.arrayBuffer();
   pdfDoc = await pdfjsLib.getDocument({ data: buf }).promise;
+  pdfLoadedForRepoUrl = currentPR.repo_url;
+  await showManualLoadState(true);
   if (currentPR.isManifestChange) await renderManifestDiffPage();
   else await renderPage();
 });
