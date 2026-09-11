@@ -23,6 +23,40 @@ and corrections in both directions -- see
 
 ## Recent changes
 
+- **Fixed: a reviewer's box reposition/annotation work was lost the
+  moment a second reviewer opened the same PR.** Direct report: the
+  first of two required reviewers draws annotations, clicks Approve
+  (Accept stays disabled until 2/2) -- that work was only ever held in
+  their own browser tab, never committed anywhere, so the second
+  reviewer opened the PR to a blank canvas. Two real bugs, both fixed:
+  the manifest commit that used to run only at final Accept now also
+  runs on Approve; and opening a PR now refetches the entry's real
+  current state fresh instead of trusting a snapshot cached whenever
+  the whole list last loaded, so a later reviewer actually sees what an
+  earlier one already saved.
+- **Annotation overlays now render in the actual patched PDF** (Phase
+  2): `patcher.js` reads `entry.annotations` and draws arrows, lines,
+  circles, numbered callouts, and text labels onto the real photo,
+  matching the review editor's own cased black-on-white styling so
+  legibility holds against any photo background.
+- **Fixed: a merged/closed PR could sit in the Maintainer Portal's
+  review list indefinitely, showing stale review status.** Direct
+  report: a PR merged via another maintainer's own Accept (or an admin
+  bypassing the review count) kept showing its last-known "1/2, waiting
+  on others" status in the list until a full page reload. Root cause:
+  `pr-review-status` never returned whether the PR was still open at
+  all. Now returns `merged`/`state`, and both the list render and the
+  single-PR detail pane drop a PR the moment any status check reveals
+  it's closed, instead of waiting for a manual refresh.
+- **"Remove this picture zone" shortcut on the Contributor Portal's
+  deep-link landing**: arriving at `contribute.html` via a real
+  `procedure` link now offers a direct "Request this picture zone be
+  removed" option alongside the upload picker, skipping the standalone
+  editor's portal-login-and-search step. Reuses `issue-requests.js`'s
+  real `submitManifestChange` path -- same review gate as any other
+  manifest-fix proposal. Kept light, as scoped: a plain-text
+  confirmation, not the rendered-preview version design discussion had
+  floated.
 - **Contributor Portal redesigned to "Save for Review" only** (PR #59):
   the capture screen no longer submits directly or asks for a Public/
   Private choice -- it only ever saves to that device's own

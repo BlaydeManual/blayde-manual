@@ -1215,6 +1215,17 @@ async function handlePrReviewStatus(request, env) {
     checks,
     checks_passing: checksPassing,
     ready_to_merge: approvedBy.length >= requiredApprovals && changesRequestedBy.length === 0 && checksPassing,
+    // Real, confirmed bug: this endpoint never used to say whether the PR
+    // was still open at all. A PR merged outside this exact browser tab
+    // (another maintainer's own Accept, an admin bypassing the review
+    // count) kept showing its last-known review counts forever -- looking
+    // like a live, actionable "1/2, waiting on others" row -- until a full
+    // page reload re-fetched the open-PRs list and silently dropped it.
+    // Surfacing this lets the client remove a closed PR from its own
+    // cached list the moment ANY status check reveals it, not just when
+    // this tab's own action closed it.
+    merged: pr.merged,
+    state: pr.state,
   });
 }
 

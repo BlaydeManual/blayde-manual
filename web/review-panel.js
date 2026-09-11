@@ -324,6 +324,24 @@ async function renderPRList(approvedRepos) {
     statusByNumber.set(pr.number, await fetchReviewStatus(pr));
   }));
 
+  // Real, confirmed bug: a PR merged outside this exact tab (another
+  // maintainer's own Accept, an admin overriding the review count) used
+  // to sit in this list forever showing its last-known review status --
+  // looking like a live, actionable row -- until a full page reload
+  // re-fetched the open-PRs list from scratch. Any status check that
+  // reveals a PR is no longer open drops it from currentPRs right here,
+  // the same way removeCurrentPRFromList already does after this tab's
+  // own Accept action, so the list self-heals within one render instead
+  // of needing a reload.
+  const closedNumbers = new Set(
+    currentPRs.filter((pr) => { const s = statusByNumber.get(pr.number); return s && !s.error && s.state && s.state !== "open"; })
+      .map((pr) => pr.number)
+  );
+  if (closedNumbers.size) {
+    currentPRs = currentPRs.filter((pr) => !closedNumbers.has(pr.number));
+    closedNumbers.forEach((n) => statusByNumber.delete(n));
+  }
+
   // Category is a grouping tier here, never a filter (see
   // categoryForRepo's comment) -- resolved per repo up front, in
   // parallel, same shape as the status prefetch above.
@@ -482,6 +500,18 @@ async function loadReviewStatus() {
   updateAcceptButtonState();
   const result = await fetchReviewStatus(pr);
   if (currentPR !== pr) return; // maintainer moved to a different PR while this was in flight
+  // Real, confirmed bug: someone else (another maintainer's own Accept,
+  // an admin overriding the review count) can merge or close this exact
+  // PR while it's sitting open in this detail pane -- without this
+  // check, the pane just kept showing a stale Accept/Approve state for
+  // something already resolved.
+  if (result.state && result.state !== "open") {
+    document.getElementById("reviewArea").classList.remove("open");
+    document.getElementById("reviewPlaceholder").style.display = "flex";
+    showToast(result.merged ? "Already merged elsewhere -- removed from the list." : "Already closed elsewhere -- removed from the list.");
+    removeCurrentPRFromList();
+    return;
+  }
   reviewStatus = result;
   renderReviewStatusLine();
   updateAcceptButtonState();
@@ -618,6 +648,14 @@ document.getElementById("approveBtn").addEventListener("click", async () => {
     });
     log(`approved.`);
     showToast("Approved.");
+    // Real fix, see persistReviewAdjustments's own comment -- Accept
+    // stays disabled until 2/2 reviews, so a reviewer's box/annotation
+    // work has to commit here too, not only at final merge, or it's
+    // lost the moment a maintainer other than this one finishes the
+    // review. Manifest-change reviews use a completely different
+    // diff-based UI (no box/annotations state at all), so this only
+    // applies to a real photo-PR review.
+    if (!currentPR.isManifestChange) await persistReviewAdjustments(session, owner, repo);
     // Best-effort, fire-and-forget -- persists the review count to
     // maintainer-stats.json (see auth-worker's handleRecordReview,
     // which re-verifies this review genuinely exists before counting
@@ -653,6 +691,86 @@ document.getElementById("approveBtn").addEventListener("click", async () => {
     updateApproveButtonState();
   }
 });
+
+// Commits any box reposition/annotation work done during review onto
+// the entry's real manifest.json, on the PR's own base branch (the
+// maintainer/org's own write access, not the contributor's fork's).
+// Originally only ran from the Accept handler, right after a successful
+// merge -- but with two required reviewers, a photo PR sits open with
+// Accept disabled until 2/2, so a reviewer who draws annotations then
+// clicks Approve (not Accept) had that work committed nowhere at all.
+// Real, confirmed bug: the SECOND reviewer, opening the same PR fresh,
+// saw a blank canvas -- the first reviewer's annotations were never
+// saved anywhere, only ever held in that first reviewer's own browser
+// tab. Called from both Approve and Accept now, so review work commits
+// the moment ANY reviewer finishes with it, not just whoever happens to
+// be the one who ultimately merges.
+async function persistReviewAdjustments(session, owner, repo) {
+  const finalBbox = canvasToBbox(box);
+  const bboxChanged = JSON.stringify(finalBbox) !== JSON.stringify(currentPR.original_bbox);
+  const annotationsChanged = JSON.stringify(annotations) !== JSON.stringify(currentPR.original_annotations || []);
+  if (!bboxChanged && !annotationsChanged) return;
+  const parts = [bboxChanged && "position", annotationsChanged && "annotations"].filter(Boolean).join(" and ");
+  log(`updating ${currentPR.procedure_id}'s ${parts} in manifest.json (adjusted during review)...`);
+  const manifestFile = await githubApi(`/repos/${owner}/${repo}/contents/${currentPR.edition_id}/manifest.json?ref=${currentPR.base_branch}`, session.token);
+  const manifestData = JSON.parse(base64ToUtf8(manifestFile.content.replace(/\n/g, "")));
+  const entry = manifestData.entries.find((e) => e.procedure_id === currentPR.procedure_id);
+  if (!entry) {
+    log(`WARNING: ${currentPR.procedure_id} not found in manifest.json anymore -- skipped the position/annotation update.`);
+    return;
+  }
+  if (bboxChanged) entry.pixel_bbox = finalBbox;
+  // Vector shapes only, in relative (0-100) coordinates -- never baked
+  // into the photo's own pixels, so a later re-crop or a viewer's color
+  // preference (see ROADMAP.md) can still apply cleanly. Rendering
+  // these into the actual patched PDF is patcher.js's own job; this
+  // only commits the editor's own data.
+  if (annotationsChanged) entry.annotations = annotations;
+  // Real attribution in the commit history itself, not just on the
+  // shapes in manifest.json -- same "who did this" question a
+  // contributor's own photo credit already answers, applied to whoever
+  // drew the arrows/circles/labels on top of it.
+  const annotatedByNote = annotationsChanged ? ` (annotated by @${session.username})` : "";
+  await githubApi(`/repos/${owner}/${repo}/contents/${currentPR.edition_id}/manifest.json`, session.token, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      message: `Adjust ${currentPR.procedure_id}'s ${parts} (reviewed in #${currentPR.number})${annotatedByNote}`,
+      content: utf8ToBase64(JSON.stringify(manifestData, null, 2)),
+      sha: manifestFile.sha,
+      branch: currentPR.base_branch,
+    }),
+  });
+  log(`manifest.json updated.`);
+  // The just-committed state becomes the new baseline immediately --
+  // without this, a reviewer who approves, then keeps looking at the
+  // same PR and approves again (or the same tab later hits Accept)
+  // would see annotationsChanged/bboxChanged as still true against the
+  // ORIGINAL pre-review snapshot and needlessly recommit identical data.
+  currentPR.original_bbox = finalBbox;
+  currentPR.original_annotations = JSON.parse(JSON.stringify(annotations));
+}
+
+// Best-effort refresh of a photo PR's real, current pixel_bbox/
+// annotations straight from the live manifest.json, run every time a
+// PR is opened rather than trusting whatever loadOpenPhotoPRs captured
+// once when the whole list was last built. Mutates pr in place; leaves
+// its existing (possibly stale) values untouched on any failure --
+// a maintainer should still be able to review with slightly-stale data
+// rather than being blocked from opening the PR at all.
+async function refreshEntrySnapshot(pr) {
+  try {
+    const [owner, repo] = ownerRepo(pr.repo_url);
+    const session = BlaydeAuth.getSession();
+    const manifestFile = await githubApi(`/repos/${owner}/${repo}/contents/${pr.edition_id}/manifest.json?ref=${pr.base_branch}`, session.token);
+    const manifestData = JSON.parse(base64ToUtf8(manifestFile.content.replace(/\n/g, "")));
+    const entry = (manifestData.entries || []).find((e) => e.procedure_id === pr.procedure_id);
+    if (entry) {
+      pr.original_bbox = entry.pixel_bbox;
+      pr.original_annotations = entry.annotations || [];
+    }
+  } catch (e) { /* best-effort, see above */ }
+}
 
 // ---- opening a PR: fetch the real submitted photo, not a mock one ----
 async function openPR(number) {
@@ -697,6 +815,18 @@ async function openPR(number) {
   document.getElementById("toggleOriginalBtn").style.display = "none";
   document.getElementById("toggleOriginalBtn").textContent = "Show original page";
   document.getElementById("toggleOriginalBtn").classList.remove("active");
+  // Real, confirmed bug: original_bbox/original_annotations were only
+  // ever set once, when loadOpenPhotoPRs built the whole list -- reopening
+  // a PR reused that same stale snapshot forever. With two required
+  // reviewers, one drawing annotations and clicking Approve (not Accept,
+  // which stays disabled until 2/2) had that work silently discarded the
+  // moment the SECOND reviewer opened the same PR from an already-loaded
+  // list: their own annotations initialized from the stale, pre-Approve
+  // snapshot below, not the first reviewer's real, already-committed
+  // work. Refetching the entry fresh here, right as the PR opens, closes
+  // that gap -- best-effort: if this fails, fall back to the list's own
+  // snapshot rather than blocking the review entirely.
+  await refreshEntrySnapshot(currentPR);
   // Deep-cloned, not a reference into currentPR/currentPRs -- dragging
   // shapes around during review must never mutate the cached list that
   // renderPRList/loadOpenPhotoPRs already built, the same reasoning
@@ -1728,44 +1858,7 @@ document.getElementById("acceptBtn").addEventListener("click", async () => {
     if (!acceptResp.ok || acceptResult.error) throw new Error(acceptResult.error || `Accept failed (${acceptResp.status}).`);
     log(`merged.`);
 
-    const finalBbox = canvasToBbox(box);
-    const bboxChanged = JSON.stringify(finalBbox) !== JSON.stringify(currentPR.original_bbox);
-    const annotationsChanged = JSON.stringify(annotations) !== JSON.stringify(currentPR.original_annotations || []);
-    if (bboxChanged || annotationsChanged) {
-      const parts = [bboxChanged && "position", annotationsChanged && "annotations"].filter(Boolean).join(" and ");
-      log(`updating ${currentPR.procedure_id}'s ${parts} in manifest.json (adjusted during review)...`);
-      const manifestFile = await githubApi(`/repos/${owner}/${repo}/contents/${currentPR.edition_id}/manifest.json?ref=${currentPR.base_branch}`, session.token);
-      const manifestData = JSON.parse(base64ToUtf8(manifestFile.content.replace(/\n/g, "")));
-      const entry = manifestData.entries.find((e) => e.procedure_id === currentPR.procedure_id);
-      if (entry) {
-        if (bboxChanged) entry.pixel_bbox = finalBbox;
-        // Vector shapes only, in relative (0-100) coordinates -- never
-        // baked into the photo's own pixels, so a later re-crop or a
-        // viewer's color preference (see ROADMAP.md) can still apply
-        // cleanly. Rendering these into the actual patched PDF is a
-        // separate, not-yet-built step (patcher.js); this only commits
-        // the editor's own data.
-        if (annotationsChanged) entry.annotations = annotations;
-        // Real attribution in the commit history itself, not just on
-        // the shapes in manifest.json -- same "who did this" question
-        // a contributor's own photo credit already answers, applied to
-        // whoever drew the arrows/circles/labels on top of it.
-        const annotatedByNote = annotationsChanged ? ` (annotated by @${session.username})` : "";
-        await githubApi(`/repos/${owner}/${repo}/contents/${currentPR.edition_id}/manifest.json`, session.token, {
-          method: "PUT",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            message: `Adjust ${currentPR.procedure_id}'s ${parts} (reviewed in #${currentPR.number})${annotatedByNote}`,
-            content: utf8ToBase64(JSON.stringify(manifestData, null, 2)),
-            sha: manifestFile.sha,
-            branch: currentPR.base_branch,
-          }),
-        });
-        log(`manifest.json updated.`);
-      } else {
-        log(`WARNING: ${currentPR.procedure_id} not found in manifest.json anymore -- skipped the position/annotation update.`);
-      }
-    }
+    await persistReviewAdjustments(session, owner, repo);
 
     if (note) {
       await githubApi(`/repos/${owner}/${repo}/issues/${currentPR.number}/comments`, session.token, {
