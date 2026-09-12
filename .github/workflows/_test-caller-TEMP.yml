@@ -1,0 +1,8 @@
+name: TEMP caller for testing the shared-checker ref resolution
+
+on:
+  pull_request: {}
+
+jobs:
+  test:
+    uses: BlaydeManual/blayde-manual/.github/workflows/_test-reusable-TEMP.yml@claude/shared-checker-workflow
