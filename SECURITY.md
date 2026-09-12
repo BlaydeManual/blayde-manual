@@ -509,6 +509,21 @@ controls as proven in production, not just in a mocked test.
   `blayde-manual`/`registry`/`vehicle-scaffold` -- the sole admin can
   bypass required review. Kept as an escape hatch while there is exactly
   one admin; revisit once a co-maintainer team exists.
+- **Closed, 2026-09-12**: `enforce_admins: false` above is exactly what
+  hid a real bug in `persistReviewAdjustments` (the box/annotation
+  commit that rides along with clicking Approve) until a second real
+  maintainer hit it. That function used to write directly to the PR's
+  base branch with the reviewer's OWN token -- works for the org's sole
+  admin (exempt from required-review protection by the setting above),
+  silently rejected by GitHub for any other real maintainer (confirmed
+  live: two `write`-permission reviewers, two real GitHub APPROVED
+  reviews, zero resulting manifest commits, on `suzuki-sv650-1999`
+  #17/#19). Fixed the same way every other privileged write in this
+  project already works: a new Worker endpoint
+  (`POST /persist-review-adjustments`) verifies the caller is a real,
+  `write`-or-better collaborator (and not the PR's own submitter, same
+  guard `accept-photo-pr` uses) and does the actual write with the
+  App's installation token, which branch protection exempts by design.
 - **Closed, 2026-09-10**: `submission-log` now has real branch
   protection of its own shape (no PR/review model, since only the App
   writes there directly): `enforce_admins: true` (the one deliberate
