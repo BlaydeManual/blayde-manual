@@ -1,0 +1,8 @@
+name: TEMP test caller for reusable checker workflow
+
+on:
+  pull_request: {}
+
+jobs:
+  checker:
+    uses: ./.github/workflows/validate-photo-reusable.yml
