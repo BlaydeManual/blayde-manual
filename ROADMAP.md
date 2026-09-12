@@ -1,5 +1,15 @@
 # Roadmap / open design problems
 
+## Backlog: cut every vehicle repo over to the shared checker workflow (2026-09-12)
+
+Direct prompt: fixing checker.py's resolution floor (see CHANGELOG.md) meant hand-pushing the same one-file change to `vehicle-scaffold` plus all three approved vehicle repos separately -- "that was painful for 4 repos, what if it's thousands." The reusable workflow (`.github/workflows/validate-photo-reusable.yml`, this repo) closes that for good: a future fix lands here once, and every repo referencing the same pinned tag picks it up on its next PR, no per-repo change ever again. Built and verified live (see CHANGELOG.md), but not yet the default anywhere -- three things still need doing, deliberately gated rather than automatic:
+
+1. **Tag `v1`** once this lands on `main`, pointing at that merge commit -- the first real version repos will pin to.
+2. **Convert `vehicle-scaffold`'s own `validate-photo.yml`+`checker.py`** to the thin-wrapper form (`uses: BlaydeManual/blayde-manual/.github/workflows/validate-photo-reusable.yml@v1`, `checker.py` deleted), so every future vehicle repo gets it from day one.
+3. **Convert the three existing approved vehicle repos** (`suzuki-sv650-1999`, `blayde-manual-2026`, `royal-lexon-s20`) the same way, each its own repo, each its own `checker.py` deleted.
+
+Moving the `v1` tag itself later (to roll out a real fix) stays a deliberate, single action -- optionally canary-tested first by pointing one repo's workflow at a specific commit/rc tag before moving the shared tag everyone else already references.
+
 ## Backlog: mobile compatibility, deliberately deprioritized (2026-09-11)
 
 Direct call: "backlog mobile compatibility. annotation is rough. let's focus on core desktop for now." The canvas-based crop/annotation tooling (contribute.js's crop editor, review-panel.js's annotation toolbar, indexer-review.js's review gallery) is built and tested against desktop mouse/keyboard interaction -- dragging a crop box or drawing an annotation with a fingertip on a touchscreen is a genuinely different interaction model, not just a layout/breakpoint issue a media query would fix. Not scoped or estimated; revisit once the core desktop flows are solid.
