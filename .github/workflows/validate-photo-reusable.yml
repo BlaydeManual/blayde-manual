@@ -130,16 +130,29 @@ jobs:
 
       # Resolves which ref of THIS repo to pull the shared checker.py
       # from -- always the exact ref the caller's own `uses:` line
-      # pinned (a tag like v1, a specific commit, whatever), handling
-      # all three real ref shapes GITHUB_WORKFLOW_REF can carry
-      # (refs/heads/x, refs/tags/x, or a bare commit SHA with neither
-      # prefix -- the # substitutions below are no-ops when a prefix
-      # doesn't match, so a SHA passes through untouched).
+      # pinned (a tag like v1, a specific commit, whatever). Real
+      # near-miss caught in testing: `github.workflow_ref` (and its
+      # GITHUB_WORKFLOW_REF env var) is the CALLER's own ref, not this
+      # reusable workflow's -- confirmed against GitHub's own context
+      # docs after a first draft used that one and would have tried to
+      # fetch checker.py from every calling vehicle repo's own ref
+      # instead, breaking on the very first real call. `job.workflow_ref`
+      # is the one that's actually scoped to "the ref of the workflow
+      # file that defines the CURRENT job," which for a job defined
+      # inside a reusable workflow means this file's own ref -- exactly
+      # what's needed here, but it's a job-context property, not an
+      # auto-exposed env var, so it's threaded through explicitly below
+      # rather than interpolated directly into the script. Handles all
+      # three real ref shapes (refs/heads/x, refs/tags/x, or a bare
+      # commit SHA with neither prefix -- the # substitutions are no-ops
+      # when a prefix doesn't match, so a SHA passes through untouched).
       - name: Resolve shared-checker ref
         if: steps.relevant.outputs.relevant == 'true'
         id: shared-ref
+        env:
+          JOB_WORKFLOW_REF: ${{ job.workflow_ref }}
         run: |
-          REF="${GITHUB_WORKFLOW_REF#*@}"
+          REF="${JOB_WORKFLOW_REF#*@}"
           REF="${REF#refs/heads/}"
           REF="${REF#refs/tags/}"
           echo "ref=$REF" >> "$GITHUB_OUTPUT"

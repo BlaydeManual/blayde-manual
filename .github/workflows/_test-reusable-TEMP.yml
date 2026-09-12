@@ -1,0 +1,35 @@
+name: TEMP minimal reusable workflow for testing job.workflow_ref
+
+on:
+  workflow_call: {}
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Resolve shared-checker ref
+        id: shared-ref
+        env:
+          JOB_WORKFLOW_REF: ${{ job.workflow_ref }}
+        run: |
+          echo "raw job.workflow_ref: $JOB_WORKFLOW_REF"
+          REF="${JOB_WORKFLOW_REF#*@}"
+          REF="${REF#refs/heads/}"
+          REF="${REF#refs/tags/}"
+          echo "resolved ref: $REF"
+          echo "ref=$REF" >> "$GITHUB_OUTPUT"
+
+      - name: Check out shared checker.py
+        uses: actions/checkout@v4
+        with:
+          repository: BlaydeManual/blayde-manual
+          ref: ${{ steps.shared-ref.outputs.ref }}
+          path: _shared-checker
+          sparse-checkout: |
+            scaffold/checker.py
+          sparse-checkout-cone-mode: false
+
+      - name: Prove it fetched the real file from the CORRECT ref
+        run: |
+          test -f _shared-checker/scaffold/checker.py
+          grep -q "BBOX_TARGET_DPI" _shared-checker/scaffold/checker.py && echo "PASS -- fetched checker.py from the reusable workflow's own ref, not the caller's"
