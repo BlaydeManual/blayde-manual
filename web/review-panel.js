@@ -689,7 +689,7 @@ document.getElementById("approveBtn").addEventListener("click", async () => {
     // review. Manifest-change reviews use a completely different
     // diff-based UI (no box/annotations state at all), so this only
     // applies to a real photo-PR review.
-    if (!currentPR.isManifestChange) await persistReviewAdjustments(session, owner, repo);
+    if (!currentPR.isManifestChange) await persistReviewAdjustments(session);
     // Best-effort, fire-and-forget -- persists the review count to
     // maintainer-stats.json (see auth-worker's handleRecordReview,
     // which re-verifies this review genuinely exists before counting
@@ -727,8 +727,20 @@ document.getElementById("approveBtn").addEventListener("click", async () => {
 });
 
 // Commits any box reposition/annotation work done during review onto
-// the entry's real manifest.json, on the PR's own base branch (the
-// maintainer/org's own write access, not the contributor's fork's).
+// the entry's real manifest.json, on the PR's own base branch. Routed
+// through the Worker's /persist-review-adjustments endpoint (the App's
+// installation token does the actual write), NOT a direct write with
+// the reviewer's own token as this used to be. Real, confirmed bug that
+// replaced (2026-09-11/12): a direct content write to a branch-protected
+// base branch is silently rejected by GitHub for anyone without
+// admin/bypass rights -- confirmed live against two real reviewer
+// accounts, both plain `write` permission, both real GitHub APPROVED
+// reviews, zero resulting manifest commits. The org's sole admin never
+// hit this (enforce_admins: false exempts them), which is why it went
+// unnoticed until a second real maintainer tried it. See
+// auth-worker/src/index.js's handlePersistReviewAdjustments for the
+// server-side half.
+//
 // Originally only ran from the Accept handler, right after a successful
 // merge -- but with two required reviewers, a photo PR sits open with
 // Accept disabled until 2/2, so a reviewer who draws annotations then
@@ -739,42 +751,31 @@ document.getElementById("approveBtn").addEventListener("click", async () => {
 // tab. Called from both Approve and Accept now, so review work commits
 // the moment ANY reviewer finishes with it, not just whoever happens to
 // be the one who ultimately merges.
-async function persistReviewAdjustments(session, owner, repo) {
+async function persistReviewAdjustments(session) {
   const finalBbox = canvasToBbox(box);
   const bboxChanged = JSON.stringify(finalBbox) !== JSON.stringify(currentPR.original_bbox);
   const annotationsChanged = JSON.stringify(annotations) !== JSON.stringify(currentPR.original_annotations || []);
   if (!bboxChanged && !annotationsChanged) return;
   const parts = [bboxChanged && "position", annotationsChanged && "annotations"].filter(Boolean).join(" and ");
   log(`updating ${currentPR.procedure_id}'s ${parts} in manifest.json (adjusted during review)...`);
-  const manifestFile = await githubApi(`/repos/${owner}/${repo}/contents/${currentPR.edition_id}/manifest.json?ref=${currentPR.base_branch}`, session.token);
-  const manifestData = JSON.parse(base64ToUtf8(manifestFile.content.replace(/\n/g, "")));
-  const entry = manifestData.entries.find((e) => e.procedure_id === currentPR.procedure_id);
-  if (!entry) {
-    log(`WARNING: ${currentPR.procedure_id} not found in manifest.json anymore -- skipped the position/annotation update.`);
-    return;
-  }
-  if (bboxChanged) entry.pixel_bbox = finalBbox;
-  // Vector shapes only, in relative (0-100) coordinates -- never baked
-  // into the photo's own pixels, so a later re-crop or a viewer's color
-  // preference (see ROADMAP.md) can still apply cleanly. Rendering
-  // these into the actual patched PDF is patcher.js's own job; this
-  // only commits the editor's own data.
-  if (annotationsChanged) entry.annotations = annotations;
-  // Real attribution in the commit history itself, not just on the
-  // shapes in manifest.json -- same "who did this" question a
-  // contributor's own photo credit already answers, applied to whoever
-  // drew the arrows/circles/labels on top of it.
-  const annotatedByNote = annotationsChanged ? ` (annotated by @${session.username})` : "";
-  await githubApi(`/repos/${owner}/${repo}/contents/${currentPR.edition_id}/manifest.json`, session.token, {
-    method: "PUT",
-    headers: { "Content-Type": "application/json" },
+  const resp = await fetch(`${BlaydeAuth.AUTH_WORKER_URL}persist-review-adjustments`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", Authorization: `Bearer ${session.token}` },
     body: JSON.stringify({
-      message: `Adjust ${currentPR.procedure_id}'s ${parts} (reviewed in #${currentPR.number})${annotatedByNote}`,
-      content: utf8ToBase64(JSON.stringify(manifestData, null, 2)),
-      sha: manifestFile.sha,
-      branch: currentPR.base_branch,
+      repo_url: currentPR.repo_url,
+      edition_id: currentPR.edition_id,
+      procedure_id: currentPR.procedure_id,
+      base_branch: currentPR.base_branch,
+      pr_number: currentPR.number,
+      pixel_bbox: bboxChanged ? finalBbox : undefined,
+      annotations: annotationsChanged ? annotations : undefined,
     }),
   });
+  const result = await resp.json().catch(() => ({}));
+  if (!resp.ok || result.error) {
+    log(`WARNING: couldn't save the position/annotation update -- ${result.error || `request failed (${resp.status})`}`);
+    return;
+  }
   log(`manifest.json updated.`);
   // The just-committed state becomes the new baseline immediately --
   // without this, a reviewer who approves, then keeps looking at the
@@ -1994,7 +1995,7 @@ document.getElementById("acceptBtn").addEventListener("click", async () => {
     if (!acceptResp.ok || acceptResult.error) throw new Error(acceptResult.error || `Accept failed (${acceptResp.status}).`);
     log(`merged.`);
 
-    await persistReviewAdjustments(session, owner, repo);
+    await persistReviewAdjustments(session);
 
     if (note) {
       await githubApi(`/repos/${owner}/${repo}/issues/${currentPR.number}/comments`, session.token, {

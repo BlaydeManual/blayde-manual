@@ -53,6 +53,7 @@ export default {
       if (request.method === "POST" && pathname === "/accept-recategorization") return await handleAcceptRecategorization(request, env);
       if (request.method === "POST" && pathname === "/accept-manifest-change") return await handleAcceptManifestChange(request, env);
       if (request.method === "POST" && pathname === "/record-review") return await handleRecordReview(request, env);
+      if (request.method === "POST" && pathname === "/persist-review-adjustments") return await handlePersistReviewAdjustments(request, env);
       if (request.method === "POST" && pathname === "/backfill-maintainer-stats") return await handleBackfillMaintainerStats(request, env);
     } catch (e) {
       // Any unexpected throw (a malformed GitHub response, a crypto
@@ -1717,18 +1718,22 @@ async function handleAcceptManifestChange(request, env) {
   return json({ merged: true, summary });
 }
 
-// Approve happens straight from the browser using the maintainer's own
-// token (see review-panel.js's approveBtn handler) -- it never touches
-// this Worker at all, since real GitHub review attribution requires
-// the real reviewer's own token, not the installation token. That's
-// the one activity this Worker has no natural hook for, unlike a
-// merge (which already runs server-side above). This endpoint is
-// called right after that client-side approve succeeds, purely to
-// persist the counter -- it does NOT perform the review itself, and it
-// re-verifies the review genuinely exists before counting it, rather
-// than trusting the caller's own claim that it happened (the same
-// "don't just believe what the caller says" floor every other
-// privileged action here already holds to).
+// The real APPROVE review itself still happens straight from the
+// browser using the maintainer's own token (see review-panel.js's
+// approveBtn handler) -- real GitHub review attribution requires the
+// real reviewer's own token, not the installation token, so that part
+// has no reason to touch this Worker. Two things that ride along with
+// that same click DO need it, though (this endpoint and the one right
+// after): persisting the review count, and persisting any box/
+// annotation adjustments made during review -- both are ordinary
+// content writes to the repo, which is exactly what a plain `write`-
+// level maintainer's own token CANNOT do once branch protection
+// requires review (see handlePersistReviewAdjustments below for the
+// real, confirmed bug this used to be). This endpoint re-verifies the
+// review genuinely exists before counting it, rather than trusting the
+// caller's own claim that it happened (the same "don't just believe
+// what the caller says" floor every other privileged action here
+// already holds to).
 async function handleRecordReview(request, env) {
   const login = await requireRealUser(request);
   const body = await parseJson(request);
@@ -1751,6 +1756,86 @@ async function handleRecordReview(request, env) {
 
   await recordMaintainerActivity(owner, repo, login, "reviews", latest.submitted_at, installationToken);
   return json({ recorded: true });
+}
+
+// Commits a reviewer's box reposition/annotation work onto the entry's
+// real manifest.json, on the PR's own base branch. Real, confirmed bug
+// this replaces (2026-09-11/12): review-panel.js used to make this
+// exact write directly from the reviewer's own token, which works fine
+// for the org's sole admin (enforce_admins: false exempts them from
+// branch protection) but is silently rejected by GitHub for every
+// other real maintainer -- required-review branch protection blocks a
+// direct content write to the protected branch for anyone without
+// admin/bypass rights, confirmed live against two real reviewers'
+// accounts (both `write` permission, both real APPROVED reviews on
+// GitHub, zero resulting manifest commits). Same fix shape as every
+// other privileged write here: verify the caller for real, then let
+// the App's installation token -- which branch protection exempts by
+// design, same as accept-photo-pr's merge -- do the actual write.
+async function handlePersistReviewAdjustments(request, env) {
+  const login = await requireRealUser(request);
+  const body = await parseJson(request);
+  const { repo_url: repoUrl, edition_id: editionId, procedure_id: procedureId, base_branch: baseBranch, pr_number: prNumber, pixel_bbox: pixelBbox, annotations } = body;
+  if (!repoUrl || !editionId || !procedureId || !baseBranch || !prNumber) {
+    return json({ error: "missing repo_url, edition_id, procedure_id, base_branch, or pr_number" }, 400);
+  }
+
+  await requireRegisteredRepo(repoUrl);
+  const [owner, repo] = new URL(repoUrl).pathname.replace(/^\//, "").split("/");
+  const installationToken = await getInstallationToken(env);
+
+  let callerPermission;
+  try {
+    const permData = await ghApi(`/repos/${owner}/${repo}/collaborators/${login}/permission`, installationToken);
+    callerPermission = permData.permission;
+  } catch (e) {
+    throw new Error(`@${login} isn't a collaborator on ${repoUrl}.`);
+  }
+  if (!["admin", "maintain", "write"].includes(callerPermission)) {
+    throw new Error(`@${login} needs push access or better on ${repoUrl} to adjust this review (has: ${callerPermission}).`);
+  }
+
+  // Same self-review guard as accept-photo-pr -- a contributor
+  // shouldn't be able to "adjust" their own submission's box/
+  // annotations under cover of a review action.
+  const pr = await ghApi(`/repos/${owner}/${repo}/pulls/${prNumber}`, installationToken);
+  const files = await ghApi(`/repos/${owner}/${repo}/pulls/${prNumber}/files`, installationToken);
+  const realSubmitter = resolveRealSubmitter(pr, files);
+  if (realSubmitter === login) {
+    throw new Error(`@${login} submitted this request -- can't also be the one adjusting its review.`);
+  }
+
+  const manifestFile = await ghApi(`/repos/${owner}/${repo}/contents/${editionId}/manifest.json?ref=${baseBranch}`, installationToken);
+  const manifestData = JSON.parse(base64ToUtf8(manifestFile.content));
+  const entry = manifestData.entries.find((e) => e.procedure_id === procedureId);
+  if (!entry) {
+    return json({ error: `${procedureId} not found in manifest.json anymore -- skipped the position/annotation update.` }, 404);
+  }
+
+  // Recomputed here, not trusted from the client's own diff -- avoids
+  // a no-op commit if the client's snapshot was stale for any reason,
+  // and keeps the commit message honest about what actually changed.
+  const bboxChanged = pixelBbox !== undefined && JSON.stringify(pixelBbox) !== JSON.stringify(entry.pixel_bbox);
+  const annotationsChanged = annotations !== undefined && JSON.stringify(annotations) !== JSON.stringify(entry.annotations || []);
+  if (!bboxChanged && !annotationsChanged) {
+    return json({ changed: false });
+  }
+  if (bboxChanged) entry.pixel_bbox = pixelBbox;
+  if (annotationsChanged) entry.annotations = annotations;
+
+  const parts = [bboxChanged && "position", annotationsChanged && "annotations"].filter(Boolean).join(" and ");
+  const annotatedByNote = annotationsChanged ? ` (annotated by @${login})` : "";
+  await ghApi(`/repos/${owner}/${repo}/contents/${editionId}/manifest.json`, installationToken, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      message: `Adjust ${procedureId}'s ${parts} (reviewed in #${prNumber})${annotatedByNote}`,
+      content: utf8ToBase64(JSON.stringify(manifestData, null, 2)),
+      sha: manifestFile.sha,
+      branch: baseBranch,
+    }),
+  });
+  return json({ changed: true, bboxChanged, annotationsChanged });
 }
 
 // One-time historical seed for a vehicle that already had real PR
