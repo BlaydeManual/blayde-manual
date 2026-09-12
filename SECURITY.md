@@ -524,6 +524,14 @@ controls as proven in production, not just in a mocked test.
   `write`-or-better collaborator (and not the PR's own submitter, same
   guard `accept-photo-pr` uses) and does the actual write with the
   App's installation token, which branch protection exempts by design.
+  Worth stating plainly: the underlying protection did exactly what it
+  was built to do here -- it blocked an unreviewed direct write to a
+  protected branch, from anyone lacking the rights to make one. The bug
+  was a feature (this one) built on top of that model without accounting
+  for it, not a hole in the model itself. Real evidence the required-
+  review protection genuinely holds under real, non-admin accounts, not
+  just something asserted from the config -- exactly the kind of live
+  confirmation this document otherwise has to reason about indirectly.
 - **Closed, 2026-09-10**: `submission-log` now has real branch
   protection of its own shape (no PR/review model, since only the App
   writes there directly): `enforce_admins: true` (the one deliberate
