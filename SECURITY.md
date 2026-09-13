@@ -495,6 +495,36 @@ authenticated non-member, member, admin). Required reading before
 treating any of the direct-submit/direct-contribute/approve-vehicle
 controls as proven in production, not just in a mocked test.
 
+- **Closed, 2026-09-12**: `handleApproveVehicle`'s automatic maintainer
+  grant (the submitter's own push access to their newly-public repo --
+  the ONLY way anyone becomes a maintainer here) used to be a single
+  best-effort attempt, silently swallowed on failure. Real, confirmed
+  instance: `royal-lexon-s20`'s actual submitter never received it,
+  discovered only via a manual collaborator-list audit weeks later --
+  the vehicle had exactly one real collaborator (the org admin, whose
+  access is structural, not an intentional per-repo grant) and its
+  actual requester had none at all. Root cause narrowed down to a
+  transient GitHub API failure (secondary rate limiting or a dropped
+  connection are the documented candidates for this endpoint; nothing
+  was ever logged to say which). Fixed at the source, not by adding
+  detection around an unreliable call: the grant now retries with
+  backoff (`ghApiWithRetry`) on exactly the transient failure classes
+  that can cause this, and a failure that survives all retries is
+  reported back in the approval response instead of discarded, so the
+  approving admin sees it happen instead of it staying invisible.
+  Applied to all three places this project makes this same call
+  (new-vehicle grant, new-edition grant, and the manual "request to
+  maintain" invite in `handleManageCollaborator`).
+- **Closed, 2026-09-12**: added a member-visible "All Manuals" directory
+  (Maintainer Portal, Approve New Manuals tab) listing every approved
+  vehicle's real maintainer count, computed server-side with the
+  installation token (a maintainer's own browser token generally can't
+  list collaborators on a repo they aren't already on). Grouped by
+  category, sorted within each group by real maintainer count ascending
+  -- a vehicle with zero real maintainers surfaces first as a natural
+  byproduct of that sort, not a separate audit/alert mechanism. This is
+  what would have caught the `royal-lexon-s20` gap above immediately,
+  without anyone needing to go looking by hand.
 - **Closed, 2026-08-27**: GitHub App registered, installed (all
   repositories), credentials provisioned as Wrangler secrets. Three bugs
   found via live testing, fixed and confirmed live: missing

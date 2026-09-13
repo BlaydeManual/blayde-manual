@@ -46,6 +46,7 @@ export default {
       if (request.method === "POST" && pathname === "/direct-submit") return await handleDirectSubmit(request, env);
       if (request.method === "POST" && pathname === "/direct-contribute") return await handleDirectContribute(request, env);
       if (request.method === "GET" && pathname === "/pending-vehicles") return await handlePendingVehicles(request, env);
+      if (request.method === "GET" && pathname === "/vehicle-directory") return await handleVehicleDirectory(request, env);
       if (request.method === "GET" && pathname === "/pr-review-status") return await handlePrReviewStatus(request, env);
       if (request.method === "POST" && pathname === "/approve-vehicle") return await handleApproveVehicle(request, env);
       if (request.method === "POST" && pathname === "/manage-collaborator") return await handleManageCollaborator(request, env);
@@ -272,6 +273,36 @@ async function ghApi(path, installationToken, options = {}) {
     throw err;
   }
   return resp.status === 204 ? null : resp.json();
+}
+
+// Retries a ghApi call on transient failures (a network error -- no
+// `.status` at all -- GitHub's own secondary rate limiting, or a
+// server-side 5xx) with short exponential backoff, never on a
+// permanent failure (404, 422, or any other plain 4xx) where retrying
+// would just waste time before failing the exact same way anyway.
+// Real, confirmed bug this replaces (2026-09-12): the collaborator-
+// grant call in handleApproveVehicle was one best-effort attempt with
+// no retry, silently swallowed on failure -- `royal-lexon-s20`'s real
+// submitter never got push access because of exactly this, and nothing
+// ever surfaced it, discovered only by manually auditing collaborator
+// lists after the fact. A few retries over a couple seconds absorbs
+// the transient causes this kind of one-off call is actually
+// vulnerable to -- fixing the reliability of the call itself, not
+// building detection/audit tooling around a call that's allowed to
+// fail in the first place.
+async function ghApiWithRetry(path, installationToken, options = {}, attempts = 3) {
+  let lastErr;
+  for (let i = 0; i < attempts; i++) {
+    try {
+      return await ghApi(path, installationToken, options);
+    } catch (e) {
+      lastErr = e;
+      const retryable = !e.status || e.status === 403 || e.status === 429 || e.status >= 500;
+      if (!retryable || i === attempts - 1) throw e;
+      await new Promise((resolve) => setTimeout(resolve, 500 * 3 ** i));
+    }
+  }
+  throw lastErr;
 }
 
 async function sha256Hex(text) {
@@ -633,6 +664,64 @@ async function handlePendingVehicles(request, env) {
   return json({ pending: visible, is_member: isMember });
 }
 
+// Lists every APPROVED vehicle in the public registry, with each one's
+// REAL maintainer count -- looked up server-side with the installation
+// token, not the caller's own, since a maintainer's own browser token
+// generally can't list collaborators on a repo they aren't already on
+// (the collaborators endpoint needs push-or-better access to the repo
+// itself, not just being signed in). "Real" excludes anyone who's an
+// active org admin -- an admin gets implicit `admin`-level collaborator
+// access to every repo in the org just by being an owner, which isn't
+// the same thing as being intentionally invited onto THIS specific
+// vehicle (see SECURITY.md's "maintaining a repo is a separate
+// designation from org membership"). Counting them would make every
+// vehicle look staffed even when nobody was ever actually assigned.
+//
+// Built directly in response to a real gap: `royal-lexon-s20`'s
+// submitter never received the automatic maintainer grant (see
+// handleApproveVehicle's own maintainerGrantError, added the same
+// day), and there was no way for any maintainer to ever discover that
+// short of manually auditing collaborator lists one repo at a time, by
+// hand, exactly as happened here. This is a member-visible directory
+// (same bar as the pending queue above), not an org-admin-only report
+// -- it's read-only information any real maintainer benefits from
+// seeing, not a privileged action.
+async function handleVehicleDirectory(request, env) {
+  const login = await requireRealUser(request);
+  const installationToken = await getInstallationToken(env);
+  if (!(await getOrgMembership(login, installationToken))) {
+    throw new Error(`@${login} isn't an active member of ${REGISTRY_OWNER} -- this directory is member-visible only.`);
+  }
+
+  const registryResp = await fetch("https://raw.githubusercontent.com/BlaydeManual/registry/main/registry.json");
+  if (!registryResp.ok) throw new Error("Could not load the registry.");
+  const registryData = await registryResp.json();
+  const approved = (registryData.vehicles || []).filter((v) => v.status === "approved");
+
+  const orgAdmins = new Set(
+    (await ghApi(`/orgs/${REGISTRY_OWNER}/members?role=admin&per_page=100`, installationToken)).map((m) => m.login)
+  );
+
+  const vehicles = await Promise.all(approved.map(async (v) => {
+    try {
+      const [owner, repo] = new URL(v.repo_url).pathname.replace(/^\//, "").split("/");
+      const collaborators = await ghApi(`/repos/${owner}/${repo}/collaborators?per_page=100`, installationToken);
+      const realMaintainers = collaborators
+        .filter((c) => !orgAdmins.has(c.login) && ["admin", "maintain", "write", "push"].includes(c.role_name))
+        .map((c) => c.login);
+      return { ...v, real_maintainers: realMaintainers, real_maintainer_count: realMaintainers.length };
+    } catch (e) {
+      // Fail open per-vehicle, not for the whole directory -- one
+      // unreachable/renamed repo shouldn't hide every other vehicle's
+      // real maintainer status. null (not 0) distinguishes "couldn't
+      // check" from "genuinely has zero maintainers" in the UI.
+      return { ...v, real_maintainers: [], real_maintainer_count: null, error: e.message };
+    }
+  }));
+
+  return json({ vehicles });
+}
+
 // The real approval action: independently re-verifies everything (never
 // trusts whatever the browser claims about a submission) before doing
 // anything privileged, then flips the repo public and adds the
@@ -880,15 +969,20 @@ async function handleApproveVehicle(request, env) {
     // Joining the EXISTING maintainer pool with full authority -- the
     // accepted risk ROADMAP.md names directly ("a contributor who does
     // a solid job indexing a second edition becomes a full maintainer
-    // of the whole repo, including the original edition"). Best-effort,
-    // same reasoning as the new-vehicle grant below.
+    // of the whole repo, including the original edition"). Retried on
+    // transient failure (see ghApiWithRetry); if it still fails, the
+    // approval itself still succeeds -- this failure is reported back
+    // in the response instead of silently swallowed, so the approving
+    // admin actually sees it happen instead of it only surfacing much
+    // later via a manual audit (see ROADMAP.md/SECURITY.md, 2026-09-12).
+    let maintainerGrantError = null;
     try {
-      await ghApi(`/repos/${targetOwner}/${targetRepo}/collaborators/${logEntry.github_login}`, installationToken, {
+      await ghApiWithRetry(`/repos/${targetOwner}/${targetRepo}/collaborators/${logEntry.github_login}`, installationToken, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ permission: "push" }),
       });
-    } catch (e) { /* approval itself already succeeded; a maintainer can always be added manually via My Vehicles */ }
+    } catch (e) { maintainerGrantError = `Couldn't grant @${logEntry.github_login} push access on ${targetOwner}/${targetRepo}: ${e.message}`; }
 
     // vehicle_display_name/vehicle_class/category/manual_type copied
     // from whichever existing registry row already shares this
@@ -929,7 +1023,7 @@ async function handleApproveVehicle(request, env) {
       await ghApi(`/repos/${REGISTRY_OWNER}/${repoName}`, installationToken, { method: "DELETE" });
     } catch (e) { /* approval itself already succeeded; a leftover staging repo is a cleanup nit, not a correctness problem */ }
 
-    return json({ approved: true, repoUrl: logEntry.target_repo_url, isNewEdition: true });
+    return json({ approved: true, repoUrl: logEntry.target_repo_url, isNewEdition: true, maintainerGrantError });
   }
 
   // ---- Brand new vehicle -- existing flow below, unchanged ----
@@ -962,17 +1056,24 @@ async function handleApproveVehicle(request, env) {
   // an org admin approving a vehicle does NOT become its maintainer
   // just by approving it, and org membership/ownership never implies
   // repo access on its own (see SECURITY.md's "maintaining a vehicle
-  // repo is a separate designation from org membership"). Best-effort:
-  // a failure here shouldn't undo an otherwise-valid approval, since
-  // `logEntry.github_login` is always a real, already-verified GitHub
-  // identity from submit time, not user input that could be malformed.
+  // repo is a separate designation from org membership"). Retried on
+  // transient failure (see ghApiWithRetry) rather than one bare
+  // attempt -- real, confirmed bug this replaces (2026-09-12):
+  // `royal-lexon-s20`'s real submitter never got this grant, silently,
+  // discovered only via a manual audit weeks later. A failure here
+  // still shouldn't undo an otherwise-valid approval (`logEntry.
+  // github_login` is always a real, already-verified GitHub identity
+  // from submit time, not something that could be malformed), but it's
+  // reported back in the response now instead of swallowed, so the
+  // approving admin actually sees it instead of it staying invisible.
+  let maintainerGrantError = null;
   try {
-    await ghApi(`/repos/${REGISTRY_OWNER}/${repoName}/collaborators/${logEntry.github_login}`, installationToken, {
+    await ghApiWithRetry(`/repos/${REGISTRY_OWNER}/${repoName}/collaborators/${logEntry.github_login}`, installationToken, {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ permission: "push" }),
     });
-  } catch (e) { /* approval itself already succeeded; a maintainer can always be added manually via My Vehicles */ }
+  } catch (e) { maintainerGrantError = `Couldn't grant @${logEntry.github_login} push access on ${REGISTRY_OWNER}/${repoName}: ${e.message}`; }
 
   // Real dual-approval on photo contributions, enforced by GitHub itself
   // (branch protection), not app logic -- a maintainer with real push
@@ -1077,7 +1178,7 @@ async function handleApproveVehicle(request, env) {
     }),
   });
 
-  return json({ approved: true, repoUrl: `https://github.com/${REGISTRY_OWNER}/${repoName}`, branchProtectionApplied });
+  return json({ approved: true, repoUrl: `https://github.com/${REGISTRY_OWNER}/${repoName}`, branchProtectionApplied, maintainerGrantError });
 }
 
 // Lets a real vehicle maintainer manage their own repo's collaborators
@@ -1126,8 +1227,11 @@ async function handleManageCollaborator(request, env) {
     // Always "push", never anything higher -- a maintainer inviting
     // someone else grants exactly what this app's own functions need,
     // the same floor as the automatic grant on approval, never an
-    // escalation path to Admin.
-    await ghApi(`/repos/${owner}/${repo}/collaborators/${handle}`, installationToken, {
+    // escalation path to Admin. Retried the same way as that grant
+    // (ghApiWithRetry) -- this call already propagates a real failure
+    // back to the caller instead of swallowing it, so this is purely a
+    // reliability improvement, not a visibility fix.
+    await ghApiWithRetry(`/repos/${owner}/${repo}/collaborators/${handle}`, installationToken, {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ permission: "push" }),
