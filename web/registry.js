@@ -426,3 +426,28 @@ async function resolveViaRepoUrl(repoUrl, editionId, registryUrl, onProgress) {
   const entry = findByRepoUrl(registryData, repoUrl, editionId);
   return resolveEntry(entry, `No registry entry for repo ${repoUrl} edition '${editionId}' (from this file's own embedded state).`, onProgress);
 }
+
+// Cheap "does this person have any real reason to see the Maintainer
+// Portal link" check -- a plain GET /user/repos with the signed-in
+// person's own token, filtered to BlaydeManual repos they have real
+// push-or-better access to. Deliberately NOT cross-checked against the
+// registry the way maintainer-portal.js's own discoverMaintainedRepos()
+// is -- this only decides whether to SHOW a nav link, not any actual
+// access, so a false positive (someone with push on some non-vehicle
+// BlaydeManual repo sees an extra link to a portal with nothing to do)
+// costs nothing. Shared here rather than duplicated, since this is
+// purely a cross-portal navigation convenience, not a security check.
+async function hasAnyMaintainerAccess() {
+  const session = window.BlaydeAuth?.getSession();
+  if (!session) return false;
+  try {
+    const resp = await fetch("https://api.github.com/user/repos?affiliation=collaborator&per_page=100", {
+      headers: { Authorization: `Bearer ${session.token}`, Accept: "application/vnd.github+json" },
+    });
+    if (!resp.ok) return false;
+    const repos = await resp.json();
+    return repos.some((r) => r.owner?.login === "BlaydeManual" && r.permissions?.push);
+  } catch (e) {
+    return false; // fail closed -- an unreachable GitHub just means no link shown, not an error surfaced
+  }
+}

@@ -495,6 +495,35 @@ authenticated non-member, member, admin). Required reading before
 treating any of the direct-submit/direct-contribute/approve-vehicle
 controls as proven in production, not just in a mocked test.
 
+- **Closed, 2026-09-13**: the "All Manuals" directory (above) could show
+  that a vehicle had no real maintainer, but had no way to actually fix
+  that from the same view -- the real roster/join-requests/invite
+  actions only ever existed in My Vehicles, which is scoped to repos
+  the viewer is already a collaborator on. Exactly the same blind spot
+  as the grant bug above: the one place someone could act was
+  invisible to anyone without access, which is precisely who needs to
+  act. Fixed by extracting My Vehicles' existing roster/join-requests/
+  invite-by-handle card (`renderVehicleMaintenanceCard`, `web/my-
+  vehicles.js`) into a shared component and using it for every vehicle
+  in the All Manuals directory, not just ones the viewer already
+  maintains -- same real, installation-token-backed actions either
+  way. A plain member without real access to a specific vehicle will
+  see the same card, but its actions fail with a real GitHub-rejected
+  error if attempted; a genuine org admin's account has implicit admin
+  on every repo in the org (GitHub's own behavior, not app logic), so
+  this works seamlessly for exactly the case that matters. Also added
+  a small, secondary cross-link between the Contributor and Maintainer
+  portals (top-nav, next to sign-in) -- shown on the Maintainer Portal
+  unconditionally, shown on the Contributor Portal only for someone who
+  actually has real maintainer access somewhere, so the majority-
+  contributor audience never sees UI for a mode they have no reason to
+  use. Portals stay two separate pages, not merged into one switchable
+  app -- researched real precedent (Shopify storefront/admin, WordPress
+  site/wp-admin) before deciding, all of which keep a similar majority/
+  minority split as genuinely separate surfaces for the same reasons:
+  different information needs, blast-radius separation on higher-
+  stakes actions, and not bloating the casual majority's experience
+  with tooling they'll never use.
 - **Closed, 2026-09-12**: `handleApproveVehicle`'s automatic maintainer
   grant (the submitter's own push access to their newly-public repo --
   the ONLY way anyone becomes a maintainer here) used to be a single
