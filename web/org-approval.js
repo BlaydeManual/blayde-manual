@@ -51,7 +51,11 @@ function updateOrgSignInUI() {
   const signedIn = !!BlaydeAuth.getSession();
   document.getElementById("orgSignInPrompt").style.display = signedIn ? "none" : "block";
   document.getElementById("pendingListCard").style.display = signedIn ? "block" : "none";
-  if (signedIn) renderPendingList();
+  document.getElementById("vehicleDirectoryCard").style.display = signedIn ? "block" : "none";
+  if (signedIn) {
+    renderPendingList();
+    renderVehicleDirectory();
+  }
 }
 window.addEventListener("blayde:signedin", updateOrgSignInUI);
 
@@ -63,6 +67,87 @@ async function fetchPendingVehicles() {
   const result = await resp.json().catch(() => ({}));
   if (!resp.ok || result.error) throw new Error(result.error || `Couldn't load the pending list (${resp.status}).`);
   return result;
+}
+
+// Every approved manual, with each one's REAL maintainer count -- built
+// directly in response to a real gap: royal-lexon-s20's submitter never
+// got the automatic maintainer grant, and nothing surfaced that until a
+// manual audit found it by chance. Grouped by category (same convention
+// as contribute.js/review-panel.js/my-vehicles.js's own category
+// groupings); within each group, sorted by real maintainer count
+// ascending -- a manual with zero real maintainers surfaces first in
+// its category as a natural byproduct of the sort, not a separate
+// alert/audit mechanism bolted on top.
+async function fetchVehicleDirectory() {
+  const session = BlaydeAuth.getAppSession();
+  const resp = await fetch(`${BlaydeAuth.AUTH_WORKER_URL}vehicle-directory`, {
+    headers: { Authorization: `Bearer ${session.token}` },
+  });
+  const result = await resp.json().catch(() => ({}));
+  if (!resp.ok || result.error) throw new Error(result.error || `Couldn't load the manual directory (${resp.status}).`);
+  return result.vehicles;
+}
+
+async function renderVehicleDirectory() {
+  const wrap = document.getElementById("vehicleDirectoryList");
+  wrap.innerHTML = `<p class="sub">Loading...</p>`;
+  let vehicles;
+  try {
+    vehicles = await fetchVehicleDirectory();
+  } catch (e) {
+    wrap.innerHTML = `<p class="sub" style="color:#ff6b6b;">${e.message}</p>`;
+    return;
+  }
+  if (!vehicles.length) {
+    wrap.innerHTML = `<p class="sub">No approved manuals yet.</p>`;
+    return;
+  }
+  wrap.innerHTML = "";
+
+  const byCategory = new Map();
+  vehicles.forEach((v) => {
+    const key = v.category || null;
+    if (!byCategory.has(key)) byCategory.set(key, []);
+    byCategory.get(key).push(v);
+  });
+  const orderedCategoryKeys = [...CATEGORY_ORDER.filter((c) => byCategory.has(c)), ...(byCategory.has(null) ? [null] : [])];
+
+  orderedCategoryKeys.forEach((categoryKey) => {
+    const categoryVehicles = byCategory.get(categoryKey)
+      // null (couldn't check) sorts with 0 -- both mean "can't confirm
+      // this manual has a real maintainer," worth surfacing first either way.
+      .sort((a, b) => (a.real_maintainer_count ?? 0) - (b.real_maintainer_count ?? 0));
+
+    const categoryGroup = document.createElement("details");
+    categoryGroup.open = true;
+    categoryGroup.className = "category-group";
+    if (categoryKey) categoryGroup.style.setProperty("--accent", CATEGORY_STYLE[categoryKey].accent);
+    const label = categoryKey ? categoryKey[0].toUpperCase() + categoryKey.slice(1) : "Uncategorized";
+    const icon = categoryKey ? categoryIconSvg(categoryKey) : "";
+    const heading = document.createElement("summary");
+    heading.className = "category-bar";
+    heading.innerHTML = `${icon}${label} (${categoryVehicles.length})`;
+    categoryGroup.appendChild(heading);
+
+    categoryVehicles.forEach((v) => {
+      const row = document.createElement("div");
+      row.className = "pr-row";
+      const maintainerBit = v.real_maintainer_count === null
+        ? `<span style="color:#ffcc66;">couldn't check (${escapeHtml(v.error || "")})</span>`
+        : v.real_maintainer_count === 0
+          ? `<span style="color:#ff6b6b;">no real maintainer</span>`
+          : `${v.real_maintainer_count} real maintainer${v.real_maintainer_count === 1 ? "" : "s"} (${v.real_maintainers.map((m) => `@${m}`).join(", ")})`;
+      row.innerHTML = `
+        <div>
+          <div class="pr-title">${escapeHtml(v.vehicle_display_name || v.vehicle_slug)} -- ${v.edition_id}</div>
+          <div class="pr-meta">${maintainerBit}</div>
+        </div>
+        <a href="${v.repo_url}" target="_blank" rel="noopener"><button class="secondary">Repo</button></a>
+      `;
+      categoryGroup.appendChild(row);
+    });
+    wrap.appendChild(categoryGroup);
+  });
 }
 
 async function renderPendingList() {
@@ -400,10 +485,21 @@ document.getElementById("orgApproveBtn").addEventListener("click", async () => {
     const dualApprovalNote = result.branchProtectionApplied
       ? `Dual-approval is active on this repo -- it needs a second real maintainer before any photo PR can merge.`
       : `<span style="color:#ffcc66;">Could not confirm dual-approval branch protection was applied -- check this repo's branch protection settings directly.</span>`;
+    // Surfaced explicitly, not assumed, same reasoning as
+    // dualApprovalNote above -- real, confirmed bug this replaces
+    // (2026-09-12): the submitter's maintainer grant used to fail
+    // silently, discovered only via a manual audit weeks later. The
+    // Worker now retries this automatically, so it's rare, but a real
+    // failure here means the vehicle has NO real maintainer at all
+    // (the org admin's own access doesn't count -- see SECURITY.md),
+    // worth surfacing loudly, not just logging.
+    const maintainerGrantNote = result.maintainerGrantError
+      ? `<br><span style="color:#ff6b6b;">${escapeHtml(result.maintainerGrantError)} -- add them manually via My Vehicles.</span>`
+      : "";
     // manifest.vehicle is an unvalidated, client-supplied field --
     // escaped for the same reason as renderPendingList() above.
     document.getElementById("orgApproveSummaryText").innerHTML = `${escapeHtml(orgCurrentEntry.manifest.vehicle)} -- ${orgCurrentEntry.manifest.edition_id}. `
-      + `<a href="${result.repoUrl}" target="_blank" rel="noopener">Repo</a> is now public. ${dualApprovalNote}`;
+      + `<a href="${result.repoUrl}" target="_blank" rel="noopener">Repo</a> is now public. ${dualApprovalNote}${maintainerGrantNote}`;
     summaryCard.style.display = "block";
     renderPendingList();
   } catch (e) {
