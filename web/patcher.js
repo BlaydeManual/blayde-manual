@@ -35,6 +35,14 @@ const WHITE = rgb(0.91, 0.91, 0.92);
 const ANNO_BLACK = rgb(0, 0, 0);
 const ANNO_WHITE = rgb(1, 1, 1);
 
+// A `?vehicle=<slug>` param arrives from registry-browse.html's own
+// title links -- someone who already confirmed "yes, this manual is
+// registered" there used to land here on a blind, generic file picker
+// with no memory of what they just picked. Scopes the prompt to that
+// vehicle instead, and flags it below if the PDF they actually drop
+// resolves to something else (wrong download, wrong edition, etc).
+const expectedVehicleSlug = new URLSearchParams(location.search).get("vehicle");
+
 const log = document.getElementById("log");
 const pdfInput = document.getElementById("pdfInput");
 const scanManualBtn = document.getElementById("scanManualBtn");
@@ -50,6 +58,18 @@ const progressLabel = document.getElementById("progressLabel");
 function appendLog(line) {
   log.textContent += "\n" + line;
   log.scrollTop = log.scrollHeight;
+}
+
+if (expectedVehicleSlug) {
+  loadRegistry(DEFAULT_REGISTRY_URL).then((data) => {
+    const match = (data.vehicles || []).find((v) => v.vehicle_slug === expectedVehicleSlug);
+    const label = document.getElementById("pdfPickLabel");
+    if (label) {
+      label.textContent = match
+        ? `Continuing from the registry: ${match.vehicle_display_name}. Drop the PDF you downloaded below, still identified and checked locally.`
+        : `Continuing from the registry (${expectedVehicleSlug}). Drop the PDF you downloaded below, still identified and checked locally.`;
+    }
+  }).catch(() => { /* registry unreachable -- the generic label already covers this */ });
 }
 
 const BAR_WIDTH = 30;
@@ -273,6 +293,9 @@ pdfInput.addEventListener("change", async () => {
           (i, total, name) => setProgress(i, total, `fetching ${name} (${i}/${total})`));
     const { entry, manifest, photos } = registryResolution;
     appendLog(`Found: ${entry.vehicle_display_name} (${entry.edition_id}) -> ${entry.repo_url}`);
+    if (expectedVehicleSlug && entry.vehicle_slug !== expectedVehicleSlug) {
+      appendLog(`Heads up: this matches "${entry.vehicle_display_name}", not the manual you came from the registry to patch. Double-check you downloaded the right PDF.`);
+    }
     appendLog(`Manifest: ${manifest.entries.length} indexed figures, ${photos.size} photo(s) available.`);
     renderContributorList(computeContributorCounts(photos));
     setProgress(1, 1, "ready to patch");
