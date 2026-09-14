@@ -273,53 +273,52 @@
         <div class="big-node">
           <div class="big-dot" style="background:#262a30;border-color:#3a3e45;">📕</div>
           <span class="name">Your manual</span>
-          <span class="tag">A PDF you already legally own. Nothing sent anywhere yet.</span>
+          <span class="tag">A PDF you already legally own.</span>
         </div>
         <span class="big-arrow">➜</span>
         <div class="big-node">
           <div class="big-dot" style="background:#262a30;border-color:#3a3e45;">🔍</div>
           <span class="name">Scanned, locally</span>
-          <span class="tag">Reads structure on your own device: pages, sections, where each photo belongs.</span>
+          <span class="tag">Reads structure on your own device.</span>
         </div>
         <span class="big-arrow">➜</span>
         <div class="big-node">
           <div class="big-dot" style="background:#262a30;border-color:#3a3e45;">👥</div>
           <span class="name">Real photos</span>
-          <span class="tag">Photos other owners took, doing the same job. Credited, licensed, community-built.</span>
+          <span class="tag">From each community. Credited, licensed, reviewed.</span>
         </div>
         <span class="big-arrow">➜</span>
         <div class="big-node">
           <div class="big-dot" style="background:#3a1518;border-color:var(--red);">✨</div>
           <span class="name">Enhanced</span>
-          <span class="tag">Still your file, still yours. Just with real photos instead of an old scan.</span>
+          <span class="tag">Your manual, now enhanced with better photos.</span>
         </div>
       </div>
-      <p class="org-footnote">Nothing is uploaded, hosted, or redistributed by Blayde Manual. The overlay runs on your own copy, on your own machine (see "Is this legal?" below).</p>
     </div>
 
     <div class="qa">
       <h3>What is this, actually?</h3>
-      <p>Old manuals for anything you own, such as a motorcycle, a boat, a plane, a tractor, a home appliance, a sewing machine, or a ham radio, often have terrible photos: low-resolution scans that get worse every time someone re-scans them. This project replaces those photos with real ones, taken by real owners doing the actual work, and patches them back into your own copy of the manual.</p>
+      <p>Old manuals for a vehicle, appliance, or hobby tool often have terrible photos: blurry scans that get worse each re-scan. This project replaces them with real photos from real owners, patched straight into your own copy.</p>
     </div>
 
     <div class="qa">
       <h3>Is this legal? Manuals are copyrighted, right?</h3>
-      <p>Yes, they are, and that shaped almost every decision here. The public part of this project never contains the manual's own photos or text, only structure (page numbers, where a photo belongs). Photos are contributed by real people, licensed by them, and patched into <em>your own copy</em> of a manual you already own. Nothing copyrighted ever gets redistributed.</p>
+      <p>Yes, and that shaped almost every decision here. Nothing here ever contains the manual's own copyrighted photos or text, only structure (where a photo belongs). Photos are contributed and licensed by real people, then patched into your own copy, on your own machine. Nothing is uploaded or redistributed.</p>
     </div>
 
     <div class="qa">
       <h3>Hasn't someone already done this?</h3>
-      <p>Not quite. Paid services exist that shoot their own manual photos professionally (Cyclepedia is the closest example, for motorcycles), but they're closed, centralized, and usually scoped to one category at most. Nobody's built the open, crowd-sourced, legally-clean version that works the same way across a garage, a marina, a hangar, a farm, a home, or a hobby bench. That's the actual gap this fills.</p>
+      <p>Not quite. Paid services like Cyclepedia shoot their own manual photos professionally, but they're closed, centralized, and scoped to one category. Nobody's built the open, crowd-sourced version that works the same way across a garage, a marina, a hangar, or a hobby bench. That's the gap this fills.</p>
     </div>
 
     <div class="qa">
       <h3>Was AI used in making this?</h3>
-      <p>Yes, openly. This project was built with Claude (an AI assistant) doing the coding, research, and drafting, guided by a human who made every real call: what to build, which license to use, which tradeoffs to accept, and what to reject or correct along the way. Nothing about that is hidden. There's a full public ledger of it (<code>ledgers/TheBlayde_AILedger.md</code>), including the places the human caught real mistakes the AI made. If other contributors keep their own ledgers of their AI-assisted work someday, that's the folder where they'd live too, one per contributor.</p>
+      <p>Yes, openly. This project was built with Claude (an AI assistant) doing the coding and drafting, guided by a human who made every real call: what to build, which tradeoffs to accept, what to reject. Nothing is hidden — see the full public ledger at <code>ledgers/TheBlayde_AILedger.md</code>, including where the human caught real AI mistakes.</p>
     </div>
 
     <div class="qa">
       <h3>Is AI doing something when it patches my manual?</h3>
-      <p>No, and that's on purpose. Building the code used AI (see above); running it doesn't. Patching a manual is plain, predictable software: it reads pixel patterns to find where a photo goes, reads text off the page (OCR, the same kind of tech scanners have used for years) to label it, and swaps the image in. No AI model, no server, no query goes out while it works. That's why it can run entirely in your browser with nothing uploaded, and why it'll still work exactly the same way five years from now.</p>
+      <p>No, on purpose. Building the code used AI; running it doesn't. Patching is plain, predictable software: it reads pixel patterns to find where a photo goes, reads text via OCR to label it, and swaps the image in. No AI model, no server, nothing uploaded — it works the same way today and in five years.</p>
     </div>
   </div>
 </details>
