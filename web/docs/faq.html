@@ -196,6 +196,13 @@
   .mini-label { font-size: 0.7rem; color: #9aa0a8; font-weight: 700; }
   .mini-arrow { color: #4a4f57; font-size: 1rem; margin: 0 2px 20px; }
 
+  /* grid variant: for sets of options with no real sequence between
+     them (unlike Basics' scan-then-match-then-enhance pipeline, which
+     keeps the arrow row) -- a square has no left-to-right reading
+     order, so nothing here implies "step 1 before step 2" */
+  .mini-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px 28px; justify-items: center; max-width: 220px; margin: 0 auto; }
+  .big-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 22px 34px; justify-items: center; max-width: 320px; margin: 0 auto; }
+
   /* small "+" badge on the Real photos node -- the emoji alone didn't
      say "added in," just "photos exist" */
   .plus-badge {
@@ -339,42 +346,36 @@
       <span class="acc-title">Ways To Be Involved</span>
       <span class="acc-chev">▶</span>
     </div>
-    <div class="mini-flow">
+    <div class="mini-grid">
       <div class="mini-node"><div class="mini-dot" style="background:#1d3327;border-color:#1d9e75;color:#3ee6ab;">●</div><span class="mini-label">Use</span></div>
-      <span class="mini-arrow">➜</span>
       <div class="mini-node"><div class="mini-dot" style="background:#3a2e14;border-color:#c99a3f;color:#e0b662;">●</div><span class="mini-label">Contribute</span></div>
-      <span class="mini-arrow">➜</span>
       <div class="mini-node"><div class="mini-dot" style="background:#1c2536;border-color:#6f93b3;color:#a8cbe8;">●</div><span class="mini-label">Maintain</span></div>
-      <span class="mini-arrow">➜</span>
       <div class="mini-node"><div class="mini-dot" style="background:#3a1518;border-color:var(--red);color:#ff5a6e;">●</div><span class="mini-label">Steer</span></div>
     </div>
     <p class="teaser-hint">Tap to see how each level actually works ▾</p>
   </summary>
   <div class="acc-body">
     <div class="big-diagram">
-      <div class="big-flow">
+      <div class="big-grid">
         <div class="big-node">
           <div class="big-dot" style="background:#1d3327;border-color:#1d9e75;color:#3ee6ab;">●</div>
           <span class="name">Use</span>
           <span class="tag">Anyone, anonymously. Free, forever, no account.</span>
         </div>
-        <span class="big-arrow">➜</span>
         <div class="big-node">
           <div class="big-dot" style="background:#3a2e14;border-color:#c99a3f;color:#e0b662;">●</div>
           <span class="name">Contribute</span>
           <span class="tag">Give a photo back. Just needs a free GitHub account.</span>
         </div>
-        <span class="big-arrow">➜</span>
         <div class="big-node">
           <div class="big-dot" style="background:#1c2536;border-color:#6f93b3;color:#a8cbe8;">●</div>
           <span class="name">Maintain</span>
           <span class="tag">Review submissions for one item. A narrow, real job.</span>
         </div>
-        <span class="big-arrow">➜</span>
         <div class="big-node">
           <div class="big-dot" style="background:#3a1518;border-color:var(--red);color:#ff5a6e;">●</div>
           <span class="name">Steer</span>
-          <span class="tag">A small, 5-person team. Approves new items joining the project.</span>
+          <span class="tag">Develop and enhance the product.</span>
         </div>
       </div>
     </div>
