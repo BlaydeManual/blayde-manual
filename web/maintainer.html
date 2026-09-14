@@ -66,6 +66,10 @@
     background: var(--black-2); color: var(--text); border: 1px solid var(--steel-dark);
   }
   .pill-link.pill-home:hover { border-color: var(--steel); }
+  .pill-link.pill-switch {
+    background: transparent; color: var(--steel); border: 1px solid transparent;
+  }
+  .pill-link.pill-switch:hover { color: var(--text); }
   #authStatus {
     display: none; align-items: center; gap: 8px; font-size: 0.88rem; color: var(--steel);
   }
@@ -519,6 +523,7 @@
   <div class="top-nav">
     <span id="authStatus"></span>
     <button id="authSignInBtn">Sign in with GitHub</button>
+    <a class="pill-link pill-switch" href="contribute.html">Contribute a Photo &rarr;</a>
     <a class="pill-link pill-home" href="index.html">BlaydeManual Home</a>
   </div>
   <h1>BLAYDE MANUAL <span>// MAINTAINER PORTAL</span></h1>

@@ -93,7 +93,7 @@ async function renderVehicleTeams() {
       wrap.appendChild(categoryGroup);
       categoryWrap = categoryGroup;
     }
-    for (const { repoUrl, permissions } of reposInCategory) {
+    for (const { repoUrl } of reposInCategory) {
       // A vehicle repo can hold more than one edition -- maintainer
       // authority is vehicle-wide, so the roster stays one per repo,
       // but the card names which editions that covers.
@@ -103,44 +103,67 @@ async function renderVehicleTeams() {
         .filter((v) => norm(v.repo_url) === norm(repoUrl))
         .map((v) => v.edition_id);
       const vehicleSlug = await vehicleSlugForRepo(repoUrl);
-      // <details>, not a plain div -- collapsible per vehicle, same as
-      // the Review Photo Requests list, so a maintainer covering
-      // several repos can collapse the ones they're not managing right
-      // now. Open by default.
-      const card = document.createElement("details");
-      card.open = true;
-      card.className = "card";
-      card.innerHTML = `<summary class="vehicle-bar">${vehicleSlug}</summary>
-        <p class="sub" style="margin:0 0 10px;">Covers ${editions.length} edition${editions.length === 1 ? "" : "s"}: ${editions.join(", ")}</p>
-        <div class="roster"><p class="sub" style="margin:0;">Loading roster&hellip;</p></div>
-        <div class="join-requests" style="margin-top:12px;"></div>
-        <div style="display:flex; gap:8px; margin-top:12px;">
-          <input type="text" class="invite-input" placeholder="GitHub handle to invite" style="flex:1; width:auto; margin:0;">
-          <button class="invite-btn" style="margin:0; flex-shrink:0;">Invite</button>
-        </div>
-        <p class="sub invite-status" style="margin:6px 0 0;"></p>`;
-      const rosterEl = card.querySelector(".roster");
-      renderRoster(rosterEl, repoUrl);
-      const joinRequestsEl = card.querySelector(".join-requests");
-      renderJoinRequests(joinRequestsEl, rosterEl, repoUrl);
-      const statusEl = card.querySelector(".invite-status");
-      card.querySelector(".invite-btn").addEventListener("click", async () => {
-        const input = card.querySelector(".invite-input");
-        const handle = input.value.trim().replace(/^@/, "");
-        if (!handle) return;
-        statusEl.textContent = `Inviting @${handle}…`;
-        try {
-          await inviteCollaborator(repoUrl, handle);
-          statusEl.textContent = "";
-          input.value = "";
-          renderRoster(rosterEl, repoUrl);
-        } catch (e) {
-          statusEl.textContent = `Couldn't invite @${handle}: ${e.message}`;
-        }
-      });
-      categoryWrap.appendChild(card);
+      renderVehicleMaintenanceCard(categoryWrap, repoUrl, vehicleSlug, editions);
     }
   }
+}
+
+// Builds one vehicle's roster + join-requests + invite-by-handle card
+// and appends it to `container` -- shared between My Vehicles (a
+// maintainer's own repos, above) and the All Manuals directory in
+// org-approval.js (every approved vehicle, including ones the viewer
+// isn't already a collaborator on). Same real, installation-token-
+// backed actions either way; only the set of repos feeding it differs.
+// Built directly in response to a real gap: a vehicle with zero real
+// maintainers (see SECURITY.md, 2026-09-12) never showed up in My
+// Vehicles for ANYONE, so nobody could ever see or act on its join
+// requests short of a manual audit -- reusing this exact, already-
+// working component in a member-visible, all-vehicles view closes
+// that, rather than building a second, parallel implementation.
+//
+// <details>, not a plain div -- collapsible per vehicle, same as the
+// Review Photo Requests list, so a maintainer covering several repos
+// can collapse the ones they're not managing right now. `options.note`
+// is an optional HTML string shown right below the summary (the All
+// Manuals directory uses this for its "no real maintainer" warning);
+// `options.startOpen` (default true) lets a caller with many rows
+// collapse the healthy ones by default while still expanding the ones
+// that need attention.
+function renderVehicleMaintenanceCard(container, repoUrl, vehicleSlug, editions, options = {}) {
+  const card = document.createElement("details");
+  card.open = options.startOpen !== false;
+  card.className = "card";
+  card.innerHTML = `<summary class="vehicle-bar">${vehicleSlug}</summary>
+    ${options.note ? `<p class="sub" style="margin:0 0 6px;">${options.note}</p>` : ""}
+    <p class="sub" style="margin:0 0 10px;">Covers ${editions.length} edition${editions.length === 1 ? "" : "s"}: ${editions.join(", ")}</p>
+    <div class="roster"><p class="sub" style="margin:0;">Loading roster&hellip;</p></div>
+    <div class="join-requests" style="margin-top:12px;"></div>
+    <div style="display:flex; gap:8px; margin-top:12px;">
+      <input type="text" class="invite-input" placeholder="GitHub handle to invite" style="flex:1; width:auto; margin:0;">
+      <button class="invite-btn" style="margin:0; flex-shrink:0;">Invite</button>
+    </div>
+    <p class="sub invite-status" style="margin:6px 0 0;"></p>`;
+  const rosterEl = card.querySelector(".roster");
+  renderRoster(rosterEl, repoUrl);
+  const joinRequestsEl = card.querySelector(".join-requests");
+  renderJoinRequests(joinRequestsEl, rosterEl, repoUrl);
+  const statusEl = card.querySelector(".invite-status");
+  card.querySelector(".invite-btn").addEventListener("click", async () => {
+    const input = card.querySelector(".invite-input");
+    const handle = input.value.trim().replace(/^@/, "");
+    if (!handle) return;
+    statusEl.textContent = `Inviting @${handle}…`;
+    try {
+      await inviteCollaborator(repoUrl, handle);
+      statusEl.textContent = "";
+      input.value = "";
+      renderRoster(rosterEl, repoUrl);
+    } catch (e) {
+      statusEl.textContent = `Couldn't invite @${handle}: ${e.message}`;
+    }
+  });
+  container.appendChild(card);
+  return card;
 }
 
 // Merges accepted collaborators with still-pending invitations --
