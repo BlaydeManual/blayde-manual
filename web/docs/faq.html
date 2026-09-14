@@ -238,9 +238,24 @@
   .approver-headline { font-size: 1.05rem; font-weight: 800; color: #fff; text-align: center; margin: 10px 0 2px; }
   .approver-sub { font-size: 0.8rem; color: #9aa0a8; text-align: center; margin: 0 0 16px; }
   .org-footnote {
-    margin-top: 18px; padding-top: 14px; border-top: 1px dashed #3a3e45;
-    font-size: 0.76rem; color: #8a8f98; text-align: center;
+    margin-top: 12px; font-size: 0.76rem; color: #8a8f98; text-align: center;
   }
+
+  /* proof that "who's in charge" is per-manual, not global: three
+     example manuals, a different shape per one so they read as
+     distinct teams at a glance, 2 filled in to echo the "2 approvals"
+     pattern in the diagram above it */
+  .sep-row {
+    display: flex; gap: 10px; justify-content: center; flex-wrap: wrap;
+    padding-top: 18px; margin-top: 4px; border-top: 1px dashed #3a3e45;
+  }
+  .sep-chip {
+    background: #1e2126; border-radius: 8px; padding: 10px 14px;
+    display: flex; flex-direction: column; align-items: center; gap: 7px; width: 130px;
+  }
+  .sep-chip .manual-name { font-size: 0.78rem; font-weight: 800; color: #fff; text-align: center; }
+  .sep-count { font-size: 0.66rem; color: #6b7078; }
+  .sep-caption { font-size: 0.76rem; color: #6b7078; text-align: center; margin-top: 10px; }
   .mini-org-footnote { font-size: 0.68rem; color: #6b7078; text-align: center; margin-top: 6px; }
 
   .icon-row { display: flex; align-items: center; justify-content: center; gap: 6px; flex-wrap: wrap; }
@@ -500,6 +515,35 @@
         <div class="approver-dot no"></div>
       </div>
       <p class="approver-sub">2 community approvals per photo, from that manual's own maintainers</p>
+
+      <div class="sep-row">
+        <div class="sep-chip">
+          <span class="manual-name">Suzuki SV650</span>
+          <svg width="76" height="16" viewBox="0 0 76 16">
+            <circle cx="8" cy="8" r="7" fill="#c8102e"/><circle cx="24" cy="8" r="7" fill="#c8102e"/>
+            <circle cx="40" cy="8" r="7" fill="#3a3e45"/><circle cx="56" cy="8" r="7" fill="#3a3e45"/><circle cx="72" cy="8" r="7" fill="#3a3e45"/>
+          </svg>
+          <span class="sep-count">2 of 5 maintainers</span>
+        </div>
+        <div class="sep-chip">
+          <span class="manual-name">KitchenAid K45SS</span>
+          <svg width="60" height="16" viewBox="0 0 60 16">
+            <rect x="1" y="1" width="14" height="14" rx="3" fill="#c8102e"/><rect x="17" y="1" width="14" height="14" rx="3" fill="#c8102e"/>
+            <rect x="33" y="1" width="14" height="14" rx="3" fill="#3a3e45"/><rect x="49" y="1" width="14" height="14" rx="3" fill="#3a3e45"/>
+          </svg>
+          <span class="sep-count">2 of 4 maintainers</span>
+        </div>
+        <div class="sep-chip">
+          <span class="manual-name">Yaesu FT-101</span>
+          <svg width="44" height="16" viewBox="0 0 44 16">
+            <polygon points="8,1 15,15 1,15" fill="#c8102e"/><polygon points="24,1 31,15 17,15" fill="#c8102e"/>
+            <polygon points="40,1 47,15 33,15" fill="#3a3e45" transform="translate(-4,0)"/>
+          </svg>
+          <span class="sep-count">2 of 3 maintainers</span>
+        </div>
+      </div>
+      <p class="sep-caption">Different shape per manual. Each one has its own independent team.</p>
+
       <p class="org-footnote">New manuals go through a separate, one-time approval. One org member signs off, across any category.</p>
     </div>
 
