@@ -92,6 +92,10 @@
     color: var(--black);
   }
   .qa p { margin: 0; color: var(--text-dim); font-size: 0.94rem; }
+  .role-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
+  .role-list li { font-size: 0.94rem; color: var(--text-dim); line-height: 1.5; }
+  .acc.dark .role-list li { color: #b9bec6; }
+  .role-list b { font-weight: 800; }
   .qa p + p { margin-top: 10px; }
   .highlight {
     background: var(--pink);
@@ -430,17 +434,21 @@
 
     <div class="qa highlight">
       <h3>Which one do I pick?</h3>
-      <p>Use, Contribute, and Maintain are each open to anyone who wants to do that work. Steer is different and you don't opt into it. New Blayde Manual Org team members join by nomination as the project grows.</p>
+      <p>Use, Contribute, and Maintain are each open to anyone who wants to do that work. Steer is reserved for Blayde Manual Org members and you can't opt into it. New Org members join by nomination as the project grows.</p>
+    </div>
+
+    <div class="qa">
+      <h3>What does each role actually look like?</h3>
+      <ul class="role-list">
+        <li><b style="color:#3ee6ab;">Use.</b> Patch your manual. That's it, no account or extra steps needed.</li>
+        <li><b style="color:#e0b662;">Contribute.</b> Submit straight from your already-patched manual, then track it in the Contributor Portal.</li>
+        <li><b style="color:#a8cbe8;">Maintain.</b> Its own Maintainer Portal: review incoming photos, invite others to help, or index a manual nobody's started.</li>
+      </ul>
     </div>
 
     <div class="qa">
       <h3>Can I hold different roles on different manuals?</h3>
       <p>Yes, and that's normal. You can use the tool to patch any manual, no strings attached. Contribute a photo to one you care about, or step up further and review submissions on a manual you've asked to help maintain. Each role is scoped to that one manual, not to you as a person.</p>
-    </div>
-
-    <div class="qa">
-      <h3>What does each role actually look like?</h3>
-      <p>Use needs nothing: patch your manual and you're done. Contributing is genuinely easy: submit straight from your already-patched manual, then track it in the Contributor Portal. Maintaining has its own Maintainer Portal: review incoming photos, invite others to help, or index a manual nobody's started.</p>
     </div>
   </div>
 </details>
