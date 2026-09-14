@@ -72,18 +72,18 @@
   main {
     max-width: 780px;
     margin: 0 auto;
-    padding: 28px 24px 56px;
+    padding: 16px 24px 48px;
   }
   .expand-hint {
     text-align: center; font-size: 0.78rem; color: var(--steel); font-style: italic;
-    margin: 0 0 14px;
+    margin: 0 0 10px;
   }
   .qa {
     background: var(--card);
     border: 1px solid #ddd9cf;
     border-left: 4px solid var(--steel-dark);
     border-radius: 8px;
-    padding: 14px 18px;
+    padding: 12px 16px;
     margin-bottom: 10px;
   }
   .qa h3 {
@@ -153,7 +153,7 @@
   .acc-chev { color: var(--steel); transition: transform 0.15s ease; flex-shrink: 0; font-size: 0.9rem; }
   .acc.dark .acc-chev { color: #6b7078; }
   .acc[open] .acc-chev { transform: rotate(90deg); }
-  .acc-body { padding: 0 18px 16px; }
+  .acc-body { padding: 0 16px 14px; }
   .acc-body .qa:last-child { margin-bottom: 0; }
   .acc.dark .acc-body .qa { background: #1e2126; border-color: #2a2d33; }
   .acc.dark .acc-body .qa h3 { color: #f2f1ee; }
@@ -173,10 +173,10 @@
      same action as tapping the title -- no extra script needed for
      that part */
   .acc.teaser summary { flex-direction: column; align-items: stretch; }
-  .teaser-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 14px; }
-  .teaser-hint { font-size: 0.8rem; font-weight: 700; margin: 12px 0 0; text-align: center; }
-  .acc.dark .teaser-hint { color: #ff8a95; }
-  .acc:not(.dark) .teaser-hint { color: var(--red); }
+  .teaser-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 10px; }
+  .title-line { display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap; min-width: 0; }
+  .teaser-subtext { font-size: 0.78rem; font-weight: 600; color: var(--steel); }
+  .acc.dark .teaser-subtext { color: #9aa0a8; }
 
   /* the mini teaser REPLACES itself with the big diagram on open,
      rather than showing both -- scoped to elements inside <summary>
@@ -189,8 +189,7 @@
   .acc.dark[open] summary .badge-row,
   .acc.dark[open] summary .mini-approvers,
   .acc.dark[open] summary .approver-headline,
-  .acc.dark[open] summary .mini-org-footnote,
-  .acc.dark[open] summary .teaser-hint { display: none; }
+  .acc.dark[open] summary .mini-org-footnote { display: none; }
   .acc.dark[open] .teaser-head { margin-bottom: 0; }
 
   .mini-flow, .big-flow { display: flex; align-items: flex-start; justify-content: center; gap: 4px; flex-wrap: wrap; }
@@ -219,7 +218,7 @@
   }
   .plus-badge.big { width: 24px; height: 24px; font-size: 15px; bottom: -4px; right: -4px; border-width: 3px; }
 
-  .big-diagram { margin: 4px 0 10px; padding: 20px 16px 16px; border-radius: 8px; background: linear-gradient(180deg, #1a1d22, #131519); cursor: pointer; }
+  .big-diagram { margin: 0 0 10px; padding: 16px 16px 14px; border-radius: 8px; background: linear-gradient(180deg, #1a1d22, #131519); cursor: pointer; }
   .big-diagram:hover { filter: brightness(1.08); }
   .big-node { width: 130px; }
   .big-dot {
@@ -310,12 +309,15 @@
 
 <main>
 
-<p class="expand-hint">Expand any section below for more ▾</p>
+<p class="expand-hint">Expand any section below for more information</p>
 
 <details class="acc teaser dark" id="the-basics">
   <summary>
     <div class="teaser-head">
-      <h2 class="acc-title">The Basics</h2>
+      <span class="title-line">
+        <h2 class="acc-title">The Basics</h2>
+        <span class="teaser-subtext">The whole idea, in one picture</span>
+      </span>
       <span class="acc-chev">▶</span>
     </div>
     <div class="mini-flow">
@@ -327,7 +329,6 @@
       <span class="mini-arrow">➜</span>
       <div class="mini-node"><div class="mini-dot" style="background:#3a1518;border-color:var(--red);"><svg aria-hidden="true" width="18" height="18" viewBox="0 0 24 24" fill="#fff" stroke="none"><path d="M12 2.5l1.9 5.4 5.6.4-4.3 3.6 1.5 5.5-4.7-3.1-4.7 3.1 1.5-5.5-4.3-3.6 5.6-.4z"/></svg></div><span class="mini-label">Enhanced</span></div>
     </div>
-    <p class="teaser-hint">The whole idea, in one picture ▾</p>
   </summary>
   <div class="acc-body">
     <div class="big-diagram">
@@ -388,7 +389,10 @@
 <details class="acc teaser dark" id="how-this-works">
   <summary>
     <div class="teaser-head">
-      <h2 class="acc-title">Ways To Be Involved</h2>
+      <span class="title-line">
+        <h2 class="acc-title">Ways To Be Involved</h2>
+        <span class="teaser-subtext">How each role actually works</span>
+      </span>
       <span class="acc-chev">▶</span>
     </div>
     <div class="mini-grid">
@@ -397,7 +401,6 @@
       <div class="mini-node"><div class="mini-dot" style="background:#1c2536;border-color:#6f93b3;color:#a8cbe8;">●</div><span class="mini-label">Maintain</span></div>
       <div class="mini-node"><div class="mini-dot" style="background:#3a1518;border-color:var(--red);color:#ff5a6e;">●</div><span class="mini-label">Steer</span></div>
     </div>
-    <p class="teaser-hint">How each role actually works ▾</p>
   </summary>
   <div class="acc-body">
     <div class="big-diagram">
@@ -440,7 +443,10 @@
 <details class="acc teaser dark" id="contributing">
   <summary>
     <div class="teaser-head">
-      <h2 class="acc-title">Contributing</h2>
+      <span class="title-line">
+        <h2 class="acc-title">Contributing</h2>
+        <span class="teaser-subtext">Ownership, privacy, and how it physically works</span>
+      </span>
       <span class="acc-chev">▶</span>
     </div>
     <div class="icon-row">
@@ -450,7 +456,6 @@
       <span class="icon-arrow">➜</span>
       <div class="icon-node"><div class="credit-tag-mini"><span>@YOU</span></div><span class="icon-label">Stay credited</span></div>
     </div>
-    <p class="teaser-hint">Ownership, privacy, and how it physically works ▾</p>
   </summary>
   <div class="acc-body">
     <div class="big-diagram">
@@ -505,7 +510,10 @@
 <details class="acc teaser dark" id="whos-in-charge">
   <summary>
     <div class="teaser-head">
-      <h2 class="acc-title">Who's In Charge</h2>
+      <span class="title-line">
+        <h2 class="acc-title">Who's In Charge</h2>
+        <span class="teaser-subtext">Who approves what, and what maintainers do</span>
+      </span>
       <span class="acc-chev">▶</span>
     </div>
     <div class="mini-approvers">
@@ -514,7 +522,6 @@
       <div class="approver-dot no"></div>
     </div>
     <p class="approver-headline" style="font-size:0.86rem; margin:8px 0 0;">2 community approvals per photo</p>
-    <p class="teaser-hint">Who approves what, and what maintainers actually do ▾</p>
   </summary>
   <div class="acc-body">
     <div class="big-diagram">
@@ -595,7 +602,10 @@
 <details class="acc teaser dark" id="business">
   <summary>
     <div class="teaser-head">
-      <h2 class="acc-title">The Business Side</h2>
+      <span class="title-line">
+        <h2 class="acc-title">The Business Side</h2>
+        <span class="teaser-subtext">Paywalls, competitors, storage costs</span>
+      </span>
       <span class="acc-chev">▶</span>
     </div>
     <div class="badge-row">
@@ -603,7 +613,6 @@
       <span class="badge"><svg aria-hidden="true" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="8 6 2 12 8 18"/><polyline points="16 6 22 12 16 18"/></svg> Open source</span>
       <span class="badge"><svg aria-hidden="true" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 21V9M10 21V3M17 21v-6"/></svg> Scales per manual</span>
     </div>
-    <p class="teaser-hint">The money questions: paywalls, competitors, storage costs ▾</p>
   </summary>
   <div class="acc-body">
     <div class="big-diagram">
