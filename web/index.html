@@ -939,13 +939,13 @@
     <svg class="ct-rings-svg" id="ctRingsSvg" viewBox="0 0 560 560" xmlns="http://www.w3.org/2000/svg" role="img"
          aria-label="Four concentric rings: a wide outer ring of anonymous users, one highlighted as you, narrowing inward through contributors, then maintainers, down to a small org core at the center.">
 
-      <!-- ring bands, widest (Anyone) drawn first so it sits behind the
+      <!-- ring bands, widest (Use) drawn first so it sits behind the
            rest -- each is clickable across its whole band, not just its
            ct-pill, and the ct-selected one carries a data-tier match to it -->
-      <circle class="ct-ring-band ct-ring-anyone" data-tier="anyone" cx="280" cy="280" r="210" tabindex="0" role="button" aria-label="Anyone"/>
+      <circle class="ct-ring-band ct-ring-anyone" data-tier="use" cx="280" cy="280" r="210" tabindex="0" role="button" aria-label="Use"/>
       <circle class="ct-ring-band ct-ring-contribute" data-tier="contribute" cx="280" cy="280" r="150" tabindex="0" role="button" aria-label="Contribute"/>
       <circle class="ct-ring-band ct-ring-maintain" data-tier="maintain" cx="280" cy="280" r="90" tabindex="0" role="button" aria-label="Maintain"/>
-      <circle class="ct-ring-band ct-ring-org" data-tier="org" cx="280" cy="280" r="60" tabindex="0" role="button" aria-label="Org"/>
+      <circle class="ct-ring-band ct-ring-org" data-tier="steer" cx="280" cy="280" r="60" tabindex="0" role="button" aria-label="Steer"/>
 
       <circle class="ct-ring-border" cx="280" cy="280" r="240"/>
       <circle class="ct-ring-border" cx="280" cy="280" r="180"/>
@@ -1161,9 +1161,9 @@
       </g>
 
       <!-- clickable pills, one per ring: tap to bring up what it means -->
-      <g class="ct-pill" data-tier="anyone" tabindex="0" role="button" aria-label="Anyone">
+      <g class="ct-pill" data-tier="use" tabindex="0" role="button" aria-label="Use">
         <rect x="233" y="57" width="94" height="26" rx="13" fill="var(--black-2)" stroke="var(--mint)" stroke-width="1.5"/>
-        <text x="280" y="74" text-anchor="middle" font-size="13" font-weight="700" fill="var(--mint-text)">Anyone</text>
+        <text x="280" y="74" text-anchor="middle" font-size="13" font-weight="700" fill="var(--mint-text)">Use</text>
       </g>
       <g class="ct-pill" data-tier="contribute" tabindex="0" role="button" aria-label="Contribute">
         <rect x="223" y="117" width="114" height="26" rx="13" fill="var(--black-2)" stroke="var(--gold)" stroke-width="1.5"/>
@@ -1173,9 +1173,9 @@
         <rect x="228" y="177" width="104" height="26" rx="13" fill="var(--black-2)" stroke="var(--slate)" stroke-width="1.5"/>
         <text x="280" y="194" text-anchor="middle" font-size="13" font-weight="700" fill="var(--slate-text)">Maintain</text>
       </g>
-      <g class="ct-pill" data-tier="org" tabindex="0" role="button" aria-label="Org">
-        <rect x="253" y="237" width="54" height="26" rx="13" fill="var(--black-2)" stroke="var(--red)" stroke-width="1.5"/>
-        <text x="280" y="254" text-anchor="middle" font-size="13" font-weight="700" fill="var(--red-text)">Org</text>
+      <g class="ct-pill" data-tier="steer" tabindex="0" role="button" aria-label="Steer">
+        <rect x="242" y="237" width="76" height="26" rx="13" fill="var(--black-2)" stroke="var(--red)" stroke-width="1.5"/>
+        <text x="280" y="254" text-anchor="middle" font-size="13" font-weight="700" fill="var(--red-text)">Steer</text>
       </g>
     </svg>
 
@@ -1204,9 +1204,9 @@
   <script>
   (function () {
     const TIERS = {
-      anyone: {
-        name: "Anyone", color: "var(--mint)",
-        lines: ["Patch your manual, no strings attached.", "No account. Free."]
+      use: {
+        name: "Use", color: "var(--mint)",
+        lines: ["Anyone, anonymously.", "Patch your manual, no account, free forever."]
       },
       contribute: {
         name: "Contribute", color: "var(--gold)",
@@ -1216,9 +1216,9 @@
         name: "Maintain", color: "var(--slate)",
         lines: ["Approve quality submissions, annotate when needed.", "No major obligations.", "Index a new manual and invite others to help!"]
       },
-      org: {
-        name: "Org", color: "var(--red)",
-        lines: ["Approves manuals.", "Steers the product."]
+      steer: {
+        name: "Steer", color: "var(--red)",
+        lines: ["A small, 5-person team.", "Approves manuals. Steers the product."]
       }
     };
 
@@ -1233,12 +1233,12 @@
     let currentTier = null;
 
     // how far left the elbow reaches for each tier, in the ct-rings-svg's
-    // own coordinate space -- org reaches deepest (but stops short of
+    // own coordinate space -- steer reaches deepest (but stops short of
     // its own ct-pill, which sits close to center), each ring out from
-    // there reaches less far left, anyone the least of all. the height
-    // it bends at now matches that tier's own ct-pill, not a fixed row.
-    const TARGET_X = { org: 313, maintain: 338, contribute: 343, anyone: 333 };
-    const BEND_Y = { anyone: 70, contribute: 130, maintain: 190, org: 250 };
+    // there reaches less far left, use the least of all. the height it
+    // bends at now matches that tier's own ct-pill, not a fixed row.
+    const TARGET_X = { steer: 324, maintain: 338, contribute: 343, use: 333 };
+    const BEND_Y = { use: 70, contribute: 130, maintain: 190, steer: 250 };
 
     function selectTier(tier) {
       currentTier = tier;
@@ -1302,7 +1302,7 @@
       resizeTimer = setTimeout(updateConnector, 100);
     });
 
-    selectTier("anyone");
+    selectTier("use");
     // fonts/layout can still settle a frame or two after first paint
     requestAnimationFrame(() => requestAnimationFrame(updateConnector));
   })();
