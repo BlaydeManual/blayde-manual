@@ -368,6 +368,180 @@
   footer { text-align: center; padding: 32px 0 8px; color: var(--steel); font-size: 0.78rem; }
   footer a { color: var(--steel); }
   footer a:hover { color: var(--text); }
+
+  /* ---- community tiers: who keeps this running, from "anyone" all the
+     way to the org core -- scoped under #communityTiers, not :root, so
+     its tuned tokens (a brighter --red-text, plus gold/mint/slate/green
+     for the four tiers) never leak onto the rest of the page ---- */
+  #communityTiers {
+    --red-text: #ff4d63;
+    --gold: #c99a3f; --gold-text: #e0b662;
+    --mint: #1d9e75; --mint-text: #3ee6ab;
+    --slate: #6f93b3; --slate-text: #a8cbe8;
+    --green: #2fbf5f; --green-text: #4ee878;
+  }
+  #communityTiers { -webkit-tap-highlight-color: transparent; }
+  #communityTiers * { box-sizing: border-box; }
+  .ct-wrap { max-width: 920px; margin: 60px auto 0; }
+  .ct-eyebrow {
+    font-size: 0.72rem; font-weight: 700; letter-spacing: 0.14em; text-transform: uppercase;
+    color: var(--steel); margin: 0 0 8px; text-align: center;
+  }
+  .ct-heading { font-size: 1.4rem; margin: 0 auto 8px; text-align: center; max-width: 46ch; text-wrap: balance; font-weight: 700; color: var(--text); }
+  .ct-heading span { color: var(--red-text); }
+  .ct-sub {
+    text-align: center; color: var(--steel); font-size: 0.86rem; margin: 0 auto 30px;
+    max-width: 52ch; line-height: 1.55;
+  }
+  .ct-sub b { color: var(--text); font-weight: 600; }
+  .ct-super-sub {
+    text-align: center; font-size: 0.92rem; font-weight: 600; color: var(--text);
+    margin: 0 auto 30px; max-width: 56ch; line-height: 1.6;
+  }
+  .ct-tag-anyone { color: var(--mint-text); }
+  .ct-tag-contribute { color: var(--gold-text); }
+  .ct-tag-maintain { color: var(--slate-text); }
+  .ct-tag-org { color: var(--red-text); }
+
+  .ct-rings-svg { display: block; width: 100%; max-width: 460px; height: auto; margin: 0 auto; overflow: visible; }
+
+  /* ties the info panel to whichever ring is ct-selected, since the two
+     otherwise read as unrelated once you scroll past the diagram */
+  .ct-diagram-wrap { position: relative; }
+  .ct-connector-svg {
+    position: absolute; top: 0; left: 0; width: 100%; height: 100%;
+    overflow: visible; pointer-events: none; z-index: 2;
+  }
+  #ctConnectorPath { transition: stroke 0.15s ease, d 0.25s ease; }
+  #ctConnectorArrow { transition: fill 0.15s ease; }
+
+  /* equal-width bands (60 each): a wider band doesn't carry any real
+     population meaning here -- dot density already does that job --
+     so leaving them unequal just read as arbitrary. */
+  .ct-ring-anyone { fill: none; stroke: var(--mint); stroke-width: 60; opacity: 0.14; }
+  .ct-ring-contribute { fill: none; stroke: var(--gold); stroke-width: 60; opacity: 0.16; }
+  .ct-ring-maintain { fill: none; stroke: var(--slate); stroke-width: 60; opacity: 0.18; }
+  .ct-ring-org { fill: var(--red); opacity: 0.22; }
+
+  .ct-ring-band { cursor: pointer; transition: opacity 0.2s ease; outline: none; -webkit-tap-highlight-color: transparent; }
+  .ct-ring-band:focus-visible { outline: 2px dashed var(--text); outline-offset: 2px; }
+
+  /* ct-selected = a persistent brightness boost (unambiguous even in a
+     still frame) plus a light pulse on top (matches the rest of the
+     diagram's "alive" motion). pulse alone risked being missed if you
+     caught it mid-dip -- the static boost is what actually answers
+     "which one is ct-selected." */
+  .ct-ring-anyone.ct-selected { opacity: 0.30; }
+  .ct-ring-contribute.ct-selected { opacity: 0.32; }
+  .ct-ring-maintain.ct-selected { opacity: 0.34; }
+  .ct-ring-org.ct-selected { opacity: 0.42; }
+  .ct-ring-band.ct-selected { animation: ct-ring-pulse 2.4s ease-in-out infinite; }
+  @keyframes ct-ring-pulse {
+    0%, 100% { filter: brightness(1); }
+    50% { filter: brightness(1.45); }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .ct-ring-band.ct-selected { animation: none; }
+  }
+
+  .ct-ring-border { fill: none; stroke: var(--steel-dark); stroke-width: 1; opacity: 0.5; pointer-events: none; }
+
+  .ct-dot-anyone { fill: var(--mint); }
+  .ct-dot-contribute { fill: var(--gold); }
+  .ct-dot-maintain { fill: var(--slate); }
+  .ct-dot-org { fill: var(--red); }
+
+  .ct-pop-mark {
+    animation-name: ct-pop-mark; animation-timing-function: ease-in-out; animation-iteration-count: infinite;
+    transform-box: fill-box; transform-origin: center;
+  }
+  /* the contribute ring itself spins; without this, a "+" or heart
+     riding on it spins too -- and a "+" only looks like a plus at
+     0/90/180/270 degrees, an "X" everywhere in between. counter-
+     rotating the mark (not the dot) around its own center cancels the
+     parent's ct-spin exactly, so it stays upright at every angle. */
+  .ct-counter-contribute {
+    animation: ct-spin 65s linear infinite;
+    transform-box: fill-box; transform-origin: center;
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .ct-counter-contribute { animation: none; }
+  }
+  @keyframes ct-pop-mark {
+    0%, 100% { opacity: 0; transform: scale(0.5); }
+    18%, 55% { opacity: 1; transform: scale(1); }
+    75% { opacity: 0; transform: scale(0.6); }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .ct-pop-mark { animation: none; opacity: 0.85; }
+  }
+
+  /* a dark outline so + and heart marks read clearly regardless of
+     which color dot they're sitting on, not just barely-there fill */
+  .ct-mark-outline { paint-order: stroke; stroke: #04140d; stroke-width: 0.5px; stroke-linejoin: round; }
+
+  .ct-spin-anyone { animation: ct-spin 90s linear infinite; transform-box: fill-box; transform-origin: center; }
+  .ct-spin-contribute { animation: ct-spin-rev 65s linear infinite; transform-box: fill-box; transform-origin: center; }
+  .ct-spin-maintain { animation: ct-spin 42s linear infinite; transform-box: fill-box; transform-origin: center; }
+  .ct-spin-org { animation: ct-spin-rev 26s linear infinite; transform-box: fill-box; transform-origin: center; }
+  @keyframes ct-spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
+  @keyframes ct-spin-rev { from { transform: rotate(0deg); } to { transform: rotate(-360deg); } }
+  @media (prefers-reduced-motion: reduce) {
+    .ct-spin-anyone, .ct-spin-contribute, .ct-spin-maintain, .ct-spin-org { animation: none; }
+  }
+
+  .ct-you-wrap {
+    animation: ct-bob 2.2s ease-in-out infinite;
+    transform-box: fill-box; transform-origin: center;
+  }
+  @keyframes ct-bob {
+    0%, 100% { transform: translateY(0); }
+    50% { transform: translateY(-4px); }
+  }
+  .ct-you-pulse {
+    animation: ct-you-pulse 2.4s ease-in-out infinite;
+    transform-box: fill-box; transform-origin: center;
+  }
+  @keyframes ct-you-pulse {
+    0%, 100% { transform: scale(1); }
+    50% { transform: scale(1.22); }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .ct-you-wrap, .ct-you-pulse { animation: none; }
+  }
+
+  .ct-node-tag {
+    font-size: 8.5px; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase;
+  }
+
+  /* the ring labels are real buttons now, not static text -- tap one
+     to bring up what that tier actually means, below */
+  .ct-pill { cursor: pointer; outline: none; -webkit-tap-highlight-color: transparent; }
+  .ct-pill:focus-visible rect { stroke-width: 3; }
+  .ct-pill rect { transition: filter 0.15s ease, stroke-width 0.15s ease; }
+  .ct-pill:hover rect { filter: brightness(1.2); }
+  .ct-pill.ct-active rect { stroke-width: 3; }
+  .ct-pill text { pointer-events: none; }
+
+  .ct-info-panel {
+    border: 2px solid var(--steel-dark); border-radius: 12px;
+    padding: 16px 18px; text-align: center; margin: 22px auto 0; max-width: 460px;
+    transition: border-color 0.2s ease;
+  }
+  .ct-info-panel h3 { font-size: 1rem; font-weight: 800; margin: 0 0 8px; color: var(--text); }
+  .ct-info-panel .ct-lines { display: flex; flex-direction: column; gap: 6px; }
+  .ct-info-panel .ct-lines p { font-size: 0.82rem; color: var(--steel); margin: 0; line-height: 1.45; }
+  .ct-info-hint { font-size: 0.82rem; color: var(--steel); margin: 0; font-style: italic; }
+
+  .ct-enjoy {
+    text-align: center; color: var(--mint-text); font-size: 1.7rem; font-weight: 800;
+    margin: 26px 0 0; letter-spacing: 0.01em;
+  }
+  .ct-foot {
+    text-align: center; color: var(--steel); font-size: 0.82rem; margin-top: 10px;
+  }
+  .ct-foot a { color: var(--red-text); text-decoration: none; font-weight: 600; }
+  .ct-foot a:hover { text-decoration: underline; }
 </style>
 </head>
 <body>
@@ -755,6 +929,265 @@
   </div>
   </div>
 
+  <section class="ct-wrap" id="communityTiers">
+    <p class="ct-eyebrow">Pulling back the curtain</p>
+    <h2 class="ct-heading">These people <span>make it happen.</span></h2>
+    <p class="ct-super-sub">Available to <b class="ct-tag-anyone">anyone</b>. Completed by <b class="ct-tag-contribute">Contributors</b>. Started by <b class="ct-tag-maintain">Maintainers</b>. Steered by the <b class="ct-tag-org">Blayde Manual Org</b>.</p>
+
+    <div class="ct-diagram-wrap" id="ctDiagramWrap">
+    <svg class="ct-connector-svg" id="ctConnectorSvg"><path id="ctConnectorPath" fill="none" stroke-width="5" stroke-linecap="butt" stroke-linejoin="round"/><circle id="ctConnectorArrow" r="7" fill="none" stroke="var(--black)" stroke-width="2"/></svg>
+    <svg class="ct-rings-svg" id="ctRingsSvg" viewBox="0 0 560 560" xmlns="http://www.w3.org/2000/svg" role="img"
+         aria-label="Four concentric rings: a wide outer ring of anonymous users, one highlighted as you, narrowing inward through contributors, then maintainers, down to a small org core at the center.">
+
+      <!-- ring bands, widest (Use) drawn first so it sits behind the
+           rest -- each is clickable across its whole band, not just its
+           ct-pill, and the ct-selected one carries a data-tier match to it -->
+      <circle class="ct-ring-band ct-ring-anyone" data-tier="use" cx="280" cy="280" r="210" tabindex="0" role="button" aria-label="Use"/>
+      <circle class="ct-ring-band ct-ring-contribute" data-tier="contribute" cx="280" cy="280" r="150" tabindex="0" role="button" aria-label="Contribute"/>
+      <circle class="ct-ring-band ct-ring-maintain" data-tier="maintain" cx="280" cy="280" r="90" tabindex="0" role="button" aria-label="Maintain"/>
+      <circle class="ct-ring-band ct-ring-org" data-tier="steer" cx="280" cy="280" r="60" tabindex="0" role="button" aria-label="Steer"/>
+
+      <circle class="ct-ring-border" cx="280" cy="280" r="240"/>
+      <circle class="ct-ring-border" cx="280" cy="280" r="180"/>
+      <circle class="ct-ring-border" cx="280" cy="280" r="120"/>
+      <circle class="ct-ring-border" cx="280" cy="280" r="60"/>
+
+      <!-- population, densest at the edge, sparsest at the core -->
+      <g class="ct-spin-anyone">
+        <circle class="ct-dot-anyone" cx="424.1" cy="442.2" r="7.9" opacity="0.64"/>
+        <circle class="ct-dot-anyone" cx="71.1" cy="286.0" r="7.4" opacity="0.83"/>
+        <circle class="ct-dot-anyone" cx="446.7" cy="391.5" r="8.3" opacity="0.7"/>
+        <circle class="ct-dot-anyone" cx="295.4" cy="80.6" r="6.7" opacity="0.8"/>
+        <circle class="ct-dot-anyone" cx="309.1" cy="497.0" r="8.4" opacity="0.56"/>
+        <circle class="ct-dot-anyone" cx="488.1" cy="313.6" r="8.6" opacity="0.68"/>
+        <circle class="ct-dot-anyone" cx="323.4" cy="483.9" r="5.2" opacity="0.63"/>
+        <circle class="ct-dot-anyone" cx="85.9" cy="359.9" r="6.0" opacity="0.63"/>
+        <circle class="ct-dot-anyone" cx="320.8" cy="485.2" r="7.4" opacity="0.62"/>
+        <circle class="ct-dot-anyone" cx="390.4" cy="100.0" r="5.4" opacity="0.67"/>
+        <circle class="ct-dot-anyone" cx="497.0" cy="269.8" r="8.6" opacity="0.7"/>
+        <circle class="ct-dot-anyone" cx="241.8" cy="69.2" r="6.1" opacity="0.76"/>
+        <circle class="ct-dot-anyone" cx="382.9" cy="93.0" r="7.0" opacity="0.76"/>
+        <circle class="ct-dot-anyone" cx="440.4" cy="134.0" r="8.0" opacity="0.7"/>
+        <circle class="ct-dot-anyone" cx="480.1" cy="324.1" r="7.7" opacity="0.79"/>
+        <circle class="ct-dot-anyone" cx="378.1" cy="466.8" r="7.0" opacity="0.82"/>
+        <circle class="ct-dot-anyone" cx="132.6" cy="427.9" r="7.0" opacity="0.56"/>
+        <circle class="ct-dot-anyone" cx="73.9" cy="252.7" r="8.9" opacity="0.76"/>
+        <circle class="ct-dot-anyone" cx="486.1" cy="337.8" r="7.0" opacity="0.89"/>
+        <circle class="ct-dot-anyone" cx="120.4" cy="406.1" r="8.3" opacity="0.63"/>
+        <circle class="ct-dot-anyone" cx="307.1" cy="71.0" r="7.3" opacity="0.71"/>
+      </g>
+
+      <g class="ct-spin-contribute">
+        <g style="animation-duration:4.16s;animation-delay:-1.55s">
+          <circle class="ct-dot-contribute" cx="432.9" cy="236.6" r="5.2" opacity="0.58"/>
+          <g class="ct-counter-contribute">
+            <text class="ct-pop-mark ct-mark-outline" x="419.3" y="239.7" text-anchor="middle" font-size="13" font-weight="800" fill="var(--green-text)" style="animation-duration:4.16s;animation-delay:-1.55s">+</text>
+          </g>
+        </g>
+        <g style="animation-duration:3.35s;animation-delay:-2.9s">
+          <circle class="ct-dot-contribute" cx="359.2" cy="147.1" r="7.4" opacity="0.66"/>
+          <g class="ct-counter-contribute">
+            <text class="ct-pop-mark ct-mark-outline" x="355.2" y="156.0" text-anchor="middle" font-size="14" font-weight="800" fill="var(--green-text)" style="animation-duration:3.35s;animation-delay:-2.9s">+</text>
+          </g>
+        </g>
+        <g style="animation-duration:3.02s;animation-delay:-1.52s">
+          <circle class="ct-dot-contribute" cx="160.3" cy="186.0" r="7.3" opacity="0.61"/>
+          <g class="ct-counter-contribute">
+            <text class="ct-pop-mark ct-mark-outline" x="169.5" y="186.1" text-anchor="middle" font-size="13" fill="var(--red-text)" style="animation-duration:3.02s;animation-delay:-1.52s">&#10084;</text>
+          </g>
+        </g>
+        <g style="animation-duration:5.25s;animation-delay:-0.42s">
+          <circle class="ct-dot-contribute" cx="145.9" cy="342.4" r="7.7" opacity="0.9"/>
+          <g class="ct-counter-contribute">
+            <text class="ct-pop-mark ct-mark-outline" x="152.7" y="338.2" text-anchor="middle" font-size="14" font-weight="800" fill="var(--green-text)" style="animation-duration:5.25s;animation-delay:-0.42s">+</text>
+          </g>
+        </g>
+        <g style="animation-duration:4.39s;animation-delay:-2.71s">
+          <circle class="ct-dot-contribute" cx="423.3" cy="232.8" r="6.7" opacity="0.64"/>
+          <g class="ct-counter-contribute">
+            <text class="ct-pop-mark ct-mark-outline" x="417.1" y="232.7" text-anchor="middle" font-size="13" font-weight="800" fill="var(--green-text)" style="animation-duration:4.39s;animation-delay:-2.71s">+</text>
+          </g>
+        </g>
+        <g style="animation-duration:3.1s;animation-delay:-1.17s">
+          <circle class="ct-dot-contribute" cx="417.0" cy="311.5" r="6.7" opacity="0.66"/>
+          <g class="ct-counter-contribute">
+            <text class="ct-pop-mark ct-mark-outline" x="409.7" y="308.2" text-anchor="middle" font-size="13" font-weight="800" fill="var(--green-text)" style="animation-duration:3.1s;animation-delay:-1.17s">+</text>
+          </g>
+        </g>
+        <g style="animation-duration:4.76s;animation-delay:-2.15s">
+          <circle class="ct-dot-contribute" cx="164.9" cy="388.0" r="7.1" opacity="0.75"/>
+          <g class="ct-counter-contribute">
+            <text class="ct-pop-mark ct-mark-outline" x="174.4" y="379.4" text-anchor="middle" font-size="13" font-weight="800" fill="var(--green-text)" style="animation-duration:4.76s;animation-delay:-2.15s">+</text>
+          </g>
+        </g>
+        <g style="animation-duration:4.81s;animation-delay:-0.76s">
+          <circle class="ct-dot-contribute" cx="292.2" cy="419.9" r="6.4" opacity="0.6"/>
+          <g class="ct-counter-contribute">
+            <text class="ct-pop-mark ct-mark-outline" x="292.7" y="411.9" text-anchor="middle" font-size="13" font-weight="800" fill="var(--green-text)" style="animation-duration:4.81s;animation-delay:-0.76s">+</text>
+          </g>
+        </g>
+        <g style="animation-duration:3.6s;animation-delay:-0.4s">
+          <circle class="ct-dot-contribute" cx="120.4" cy="269.7" r="7.4" opacity="0.61"/>
+          <g class="ct-counter-contribute">
+            <text class="ct-pop-mark ct-mark-outline" x="135.5" y="268.5" text-anchor="middle" font-size="14" fill="var(--red-text)" style="animation-duration:3.6s;animation-delay:-0.4s">&#10084;</text>
+          </g>
+        </g>
+        <g style="animation-duration:4.27s;animation-delay:-3.94s">
+          <circle class="ct-dot-contribute" cx="402.4" cy="183.3" r="7.9" opacity="0.87"/>
+          <g class="ct-counter-contribute">
+            <text class="ct-pop-mark ct-mark-outline" x="393.6" y="189.9" text-anchor="middle" font-size="14" font-weight="800" fill="var(--green-text)" style="animation-duration:4.27s;animation-delay:-3.94s">+</text>
+          </g>
+        </g>
+        <g style="animation-duration:4.48s;animation-delay:-3.47s">
+          <circle class="ct-dot-contribute" cx="292.6" cy="124.7" r="6.4" opacity="0.89"/>
+          <g class="ct-counter-contribute">
+            <text class="ct-pop-mark ct-mark-outline" x="293.9" y="135.7" text-anchor="middle" font-size="13" font-weight="800" fill="var(--green-text)" style="animation-duration:4.48s;animation-delay:-3.47s">+</text>
+          </g>
+        </g>
+        <g style="animation-duration:3.96s;animation-delay:-2.95s">
+          <circle class="ct-dot-contribute" cx="419.1" cy="246.0" r="7.9" opacity="0.8"/>
+          <g class="ct-counter-contribute">
+            <text class="ct-pop-mark ct-mark-outline" x="411.1" y="246.4" text-anchor="middle" font-size="14" fill="var(--red-text)" style="animation-duration:3.96s;animation-delay:-2.95s">&#10084;</text>
+          </g>
+        </g>
+        <g style="animation-duration:3.25s;animation-delay:-0.95s">
+          <circle class="ct-dot-contribute" cx="133.8" cy="316.2" r="7.0" opacity="0.87"/>
+          <g class="ct-counter-contribute">
+            <text class="ct-pop-mark ct-mark-outline" x="140.7" y="312.1" text-anchor="middle" font-size="13" font-weight="800" fill="var(--green-text)" style="animation-duration:3.25s;animation-delay:-0.95s">+</text>
+          </g>
+        </g>
+      </g>
+
+      <g class="ct-spin-maintain">
+        <circle class="ct-dot-maintain" cx="286.9" cy="370.6" r="6.4" opacity="0.76"/>
+        <circle class="ct-dot-maintain" cx="222.8" cy="222.2" r="5.0" opacity="0.84"/>
+        <circle class="ct-dot-maintain" cx="275.0" cy="364.5" r="8.9" opacity="0.71"/>
+        <circle class="ct-dot-maintain" cx="326.3" cy="203.4" r="7.4" opacity="0.6"/>
+        <circle class="ct-dot-maintain" cx="215.6" cy="207.0" r="7.0" opacity="0.81"/>
+        <circle class="ct-dot-maintain" cx="241.5" cy="208.4" r="7.9" opacity="0.76"/>
+        <circle class="ct-dot-maintain" cx="254.5" cy="356.5" r="8.3" opacity="0.72"/>
+      </g>
+
+      <g class="ct-spin-org">
+        <circle class="ct-dot-org" cx="281.9" cy="302.0" r="6.5" opacity="0.6"/>
+        <circle class="ct-dot-org" cx="305.6" cy="291.4" r="8.4" opacity="0.83"/>
+        <circle class="ct-dot-org" cx="282.3" cy="255.7" r="7.1" opacity="0.65"/>
+      </g>
+
+      <!-- journeys: most people who show up stay Anyone forever. a few
+           become Contributors and stay there. rarer still, one keeps
+           going and becomes a Maintainer. each one fades in from
+           nowhere at the rim, travels inward as it's promoted, and
+           eventually fades out to make room for the next arrival. -->
+      <g>
+        <circle r="8.0" fill="var(--mint)">
+          <animate attributeName="cx" values="513.0;513.0;467.3;467.3;407.9;407.9;407.9" keyTimes="0;0.04;0.12;0.45;0.52;0.88;1" dur="27s" repeatCount="indefinite"/>
+          <animate attributeName="cy" values="383.7;383.7;363.4;363.4;336.9;336.9;336.9" keyTimes="0;0.04;0.12;0.45;0.52;0.88;1" dur="27s" repeatCount="indefinite"/>
+          <animate attributeName="fill" values="#1d9e75;#1d9e75;#1d9e75;#1d9e75;#569d63;#909b51;#c99a3f;#c99a3f;#c99a3f" keyTimes="0;0.04;0.12;0.56;0.57;0.58;0.59;0.88;1" dur="27s" repeatCount="indefinite"/>
+          <animate attributeName="opacity" values="0;1;1;1;1;1;0" keyTimes="0;0.04;0.12;0.45;0.52;0.9;1" dur="27s" repeatCount="indefinite"/>
+        </circle>
+        <text class="ct-mark-outline" text-anchor="middle" font-size="14" font-weight="800" fill="var(--green-text)">+
+          <animate attributeName="x" values="513.0;513.0;467.3;467.3;411.9;411.9;411.9" keyTimes="0;0.04;0.12;0.45;0.52;0.88;1" dur="27s" repeatCount="indefinite"/>
+          <animate attributeName="y" values="379.7;379.7;359.4;359.4;332.9;332.9;332.9" keyTimes="0;0.04;0.12;0.45;0.52;0.88;1" dur="27s" repeatCount="indefinite"/>
+          <animate attributeName="opacity" values="0;0;0;1;1;0;0" keyTimes="0;0.04;0.61;0.65;0.83;0.88;1" dur="27s" repeatCount="indefinite"/>
+        </text>
+      </g>
+
+      <g>
+        <circle r="7.7" fill="var(--mint)">
+          <animate attributeName="cx" values="235.7;235.7;244.4;244.4;255.7;255.7;255.7" keyTimes="0;0.05;0.15;0.44;0.5;0.87;1" dur="31s" repeatCount="indefinite" begin="-9s"/>
+          <animate attributeName="cy" values="531.1;531.1;481.9;481.9;417.9;417.9;417.9" keyTimes="0;0.05;0.15;0.44;0.5;0.87;1" dur="31s" repeatCount="indefinite" begin="-9s"/>
+          <animate attributeName="fill" values="#1d9e75;#1d9e75;#1d9e75;#1d9e75;#569d63;#909b51;#c99a3f;#c99a3f;#c99a3f" keyTimes="0;0.05;0.15;0.54;0.55;0.56;0.57;0.87;1" dur="31s" repeatCount="indefinite" begin="-9s"/>
+          <animate attributeName="opacity" values="0;1;1;1;1;1;0" keyTimes="0;0.05;0.15;0.44;0.5;0.89;1" dur="31s" repeatCount="indefinite" begin="-9s"/>
+        </circle>
+        <text class="ct-mark-outline" text-anchor="middle" font-size="14" fill="var(--red-text)">&#10084;
+          <animate attributeName="x" values="235.7;235.7;244.4;244.4;259.7;259.7;259.7" keyTimes="0;0.05;0.15;0.44;0.5;0.87;1" dur="31s" repeatCount="indefinite" begin="-9s"/>
+          <animate attributeName="y" values="527.1;527.1;477.9;477.9;413.9;413.9;413.9" keyTimes="0;0.05;0.15;0.44;0.5;0.87;1" dur="31s" repeatCount="indefinite" begin="-9s"/>
+          <animate attributeName="opacity" values="0;0;0;1;1;0;0" keyTimes="0;0.05;0.59;0.63;0.81;0.86;1" dur="31s" repeatCount="indefinite" begin="-9s"/>
+        </text>
+      </g>
+
+      <!-- the rare one: keeps going all the way to Maintain -->
+      <g>
+        <circle r="8.4" fill="var(--mint)">
+          <animate attributeName="cx" values="27.5;27.5;77.0;77.0;141.4;141.4;205.7;205.7;205.7" keyTimes="0;0.04;0.12;0.38;0.45;0.62;0.68;0.92;1" dur="34s" repeatCount="indefinite" begin="-18s"/>
+          <animate attributeName="cy" values="315.5;315.5;308.5;308.5;299.5;299.5;290.4;290.4;290.4" keyTimes="0;0.04;0.12;0.38;0.45;0.62;0.68;0.92;1" dur="34s" repeatCount="indefinite" begin="-18s"/>
+          <animate attributeName="fill" values="#1d9e75;#1d9e75;#1d9e75;#1d9e75;#569d63;#909b51;#c99a3f;#c99a3f;#ab9866;#8d958c;#6f93b3;#6f93b3;#6f93b3" keyTimes="0;0.04;0.12;0.49;0.5;0.51;0.52;0.72;0.73;0.74;0.75;0.92;1" dur="34s" repeatCount="indefinite" begin="-18s"/>
+          <animate attributeName="opacity" values="0;1;1;1;1;1;1;1;0" keyTimes="0;0.04;0.12;0.38;0.45;0.62;0.68;0.95;1" dur="34s" repeatCount="indefinite" begin="-18s"/>
+        </circle>
+        <text class="ct-mark-outline" text-anchor="middle" font-size="14" font-weight="800" fill="var(--green-text)">+
+          <animate attributeName="x" values="27.5;27.5;77.0;77.0;145.4;145.4;205.7;205.7;205.7" keyTimes="0;0.04;0.12;0.38;0.45;0.62;0.68;0.92;1" dur="34s" repeatCount="indefinite" begin="-18s"/>
+          <animate attributeName="y" values="311.5;311.5;304.5;304.5;295.5;295.5;290.4;290.4;290.4" keyTimes="0;0.04;0.12;0.38;0.45;0.62;0.68;0.92;1" dur="34s" repeatCount="indefinite" begin="-18s"/>
+          <animate attributeName="opacity" values="0;0;0;1;1;0;0" keyTimes="0;0.04;0.54;0.58;0.66;0.7;1" dur="34s" repeatCount="indefinite" begin="-18s"/>
+        </text>
+      </g>
+
+      <g>
+        <circle r="7.9" fill="var(--mint)">
+          <animate attributeName="cx" values="172.2;172.2;193.4;193.4;220.8;220.8;220.8" keyTimes="0;0.05;0.14;0.43;0.49;0.86;1" dur="29s" repeatCount="indefinite" begin="-21s"/>
+          <animate attributeName="cy" values="48.9;48.9;94.2;94.2;153.1;153.1;153.1" keyTimes="0;0.05;0.14;0.43;0.49;0.86;1" dur="29s" repeatCount="indefinite" begin="-21s"/>
+          <animate attributeName="fill" values="#1d9e75;#1d9e75;#1d9e75;#1d9e75;#569d63;#909b51;#c99a3f;#c99a3f;#c99a3f" keyTimes="0;0.05;0.14;0.53;0.54;0.55;0.56;0.86;1" dur="29s" repeatCount="indefinite" begin="-21s"/>
+          <animate attributeName="opacity" values="0;1;1;1;1;1;0" keyTimes="0;0.05;0.14;0.43;0.49;0.88;1" dur="29s" repeatCount="indefinite" begin="-21s"/>
+        </circle>
+        <text class="ct-mark-outline" text-anchor="middle" font-size="14" font-weight="800" fill="var(--green-text)">+
+          <animate attributeName="x" values="172.2;172.2;193.4;193.4;224.8;224.8;224.8" keyTimes="0;0.05;0.14;0.43;0.49;0.86;1" dur="29s" repeatCount="indefinite" begin="-21s"/>
+          <animate attributeName="y" values="44.9;44.9;90.2;90.2;149.1;149.1;149.1" keyTimes="0;0.05;0.14;0.43;0.49;0.86;1" dur="29s" repeatCount="indefinite" begin="-21s"/>
+          <animate attributeName="opacity" values="0;0;0;1;1;0;0" keyTimes="0;0.05;0.58;0.62;0.8;0.84;1" dur="29s" repeatCount="indefinite" begin="-21s"/>
+        </text>
+      </g>
+
+      <g>
+        <circle r="7.4" fill="var(--mint)">
+          <animate attributeName="cx" values="450.6;450.6;417.2;417.2;373.7;373.7;373.7" keyTimes="0;0.05;0.13;0.46;0.53;0.89;1" dur="26s" repeatCount="indefinite" begin="-13s"/>
+          <animate attributeName="cy" values="90.5;90.5;127.7;127.7;176.0;176.0;176.0" keyTimes="0;0.05;0.13;0.46;0.53;0.89;1" dur="26s" repeatCount="indefinite" begin="-13s"/>
+          <animate attributeName="fill" values="#1d9e75;#1d9e75;#1d9e75;#1d9e75;#569d63;#909b51;#c99a3f;#c99a3f;#c99a3f" keyTimes="0;0.05;0.13;0.57;0.58;0.59;0.6;0.89;1" dur="26s" repeatCount="indefinite" begin="-13s"/>
+          <animate attributeName="opacity" values="0;1;1;1;1;1;0" keyTimes="0;0.05;0.13;0.46;0.53;0.91;1" dur="26s" repeatCount="indefinite" begin="-13s"/>
+        </circle>
+        <text class="ct-mark-outline" text-anchor="middle" font-size="14" fill="var(--red-text)">&#10084;
+          <animate attributeName="x" values="450.6;450.6;417.2;417.2;377.7;377.7;377.7" keyTimes="0;0.05;0.13;0.46;0.53;0.89;1" dur="26s" repeatCount="indefinite" begin="-13s"/>
+          <animate attributeName="y" values="86.5;86.5;123.7;123.7;172.0;172.0;172.0" keyTimes="0;0.05;0.13;0.46;0.53;0.89;1" dur="26s" repeatCount="indefinite" begin="-13s"/>
+          <animate attributeName="opacity" values="0;0;0;1;1;0;0" keyTimes="0;0.05;0.62;0.66;0.83;0.87;1" dur="26s" repeatCount="indefinite" begin="-13s"/>
+        </text>
+      </g>
+
+      <!-- you: fixed, doesn't ct-spin with the crowd -- up near the top of
+           the Anyone band, on the LEFT so it doesn't compete with the
+           connector line running up the right side -->
+      <g class="ct-you-wrap">
+        <path d="M151,80 L141,61 L161,61 Z" fill="var(--mint)"/>
+        <rect x="105" y="35" width="92" height="22" rx="11" fill="var(--mint)"/>
+        <text x="151" y="50" text-anchor="middle" class="ct-node-tag" fill="#04140d">You are here</text>
+        <circle class="ct-you-pulse" cx="151" cy="127" r="12.6" fill="var(--mint)" stroke="var(--text)" stroke-width="3"/>
+      </g>
+
+      <!-- clickable pills, one per ring: tap to bring up what it means -->
+      <g class="ct-pill" data-tier="use" tabindex="0" role="button" aria-label="Use">
+        <rect x="233" y="57" width="94" height="26" rx="13" fill="var(--black-2)" stroke="var(--mint)" stroke-width="1.5"/>
+        <text x="280" y="74" text-anchor="middle" font-size="13" font-weight="700" fill="var(--mint-text)">Use</text>
+      </g>
+      <g class="ct-pill" data-tier="contribute" tabindex="0" role="button" aria-label="Contribute">
+        <rect x="223" y="117" width="114" height="26" rx="13" fill="var(--black-2)" stroke="var(--gold)" stroke-width="1.5"/>
+        <text x="280" y="134" text-anchor="middle" font-size="13" font-weight="700" fill="var(--gold-text)">Contribute</text>
+      </g>
+      <g class="ct-pill" data-tier="maintain" tabindex="0" role="button" aria-label="Maintain">
+        <rect x="228" y="177" width="104" height="26" rx="13" fill="var(--black-2)" stroke="var(--slate)" stroke-width="1.5"/>
+        <text x="280" y="194" text-anchor="middle" font-size="13" font-weight="700" fill="var(--slate-text)">Maintain</text>
+      </g>
+      <g class="ct-pill" data-tier="steer" tabindex="0" role="button" aria-label="Steer">
+        <rect x="242" y="237" width="76" height="26" rx="13" fill="var(--black-2)" stroke="var(--red)" stroke-width="1.5"/>
+        <text x="280" y="254" text-anchor="middle" font-size="13" font-weight="700" fill="var(--red-text)">Steer</text>
+      </g>
+    </svg>
+
+    <div class="ct-info-panel" id="ctInfoPanel">
+      <p class="ct-info-hint">Select a ring above to see what it means.</p>
+    </div>
+    </div>
+
+    <p class="ct-enjoy">Enjoy.</p>
+    <p class="ct-foot">Need more information about roles, product, or purpose? <a href="docs/faq.html#how-this-works">Read the full breakdown &rarr;</a></p>
+  </section>
+
   <footer>
     See <a href="https://github.com/BlaydeManual/blayde-manual/blob/main/README.md">README.md</a> for the technical pipeline, <a href="https://github.com/BlaydeManual/blayde-manual/blob/main/LEGAL.md">LEGAL.md</a> for the full legal reasoning, and <a href="https://github.com/BlaydeManual/blayde-manual/blob/main/ROADMAP.md">ROADMAP.md</a> for what's designed but not yet built.
   </footer>
@@ -768,6 +1201,116 @@
   <script src="hero.js"></script>
   <script src="category-style.js"></script>
   <script src="hero-category.js"></script>
+  <script>
+  (function () {
+    const TIERS = {
+      use: {
+        name: "Use", color: "var(--mint)",
+        lines: ["Anyone, anonymously.", "Patch your manual, no account, free forever."]
+      },
+      contribute: {
+        name: "Contribute", color: "var(--gold)",
+        lines: ["Give your photos back to your community.", "Easy upload, straight from your patched manual."]
+      },
+      maintain: {
+        name: "Maintain", color: "var(--slate)",
+        lines: ["Approve quality submissions, annotate when needed.", "No major obligations.", "Index a new manual and invite others to help!"]
+      },
+      steer: {
+        name: "Steer", color: "var(--red)",
+        lines: ["Develop and enhance the product.", "Approves new manuals joining the project."]
+      }
+    };
+
+    const panel = document.getElementById("ctInfoPanel");
+    const pills = document.querySelectorAll(".ct-pill");
+    const bands = document.querySelectorAll(".ct-ring-band");
+    const ctDiagramWrap = document.getElementById("ctDiagramWrap");
+    const ctRingsSvg = document.getElementById("ctRingsSvg");
+    const ctConnectorSvg = document.getElementById("ctConnectorSvg");
+    const ctConnectorPath = document.getElementById("ctConnectorPath");
+    const ctConnectorArrow = document.getElementById("ctConnectorArrow");
+    let currentTier = null;
+
+    // how far left the elbow reaches for each tier, in the ct-rings-svg's
+    // own coordinate space -- steer reaches deepest (but stops short of
+    // its own ct-pill, which sits close to center), each ring out from
+    // there reaches less far left, use the least of all. the height it
+    // bends at now matches that tier's own ct-pill, not a fixed row.
+    const TARGET_X = { steer: 324, maintain: 338, contribute: 343, use: 333 };
+    const BEND_Y = { use: 70, contribute: 130, maintain: 190, steer: 250 };
+
+    function selectTier(tier) {
+      currentTier = tier;
+      const t = TIERS[tier];
+      panel.style.borderColor = t.color;
+      panel.innerHTML = `<h3 style="color:${t.color}">${t.name}</h3><div class="ct-lines">${t.lines.map(l => `<p>${l}</p>`).join("")}</div>`;
+      pills.forEach(p => p.classList.toggle("ct-active", p.dataset.tier === tier));
+      bands.forEach(b => b.classList.toggle("ct-selected", b.dataset.tier === tier));
+      updateConnector();
+    }
+
+    // a solid elbow from the info panel's top-right, straight up, then
+    // left to whichever ring is ct-selected -- org reaches all the way to
+    // center, anyone barely reaches left at all. ties the panel to the
+    // diagram without relying on anyone reading instructional text.
+    function updateConnector() {
+      if (!currentTier) return;
+      const wrapRect = ctDiagramWrap.getBoundingClientRect();
+      const panelRect = panel.getBoundingClientRect();
+      if (!panelRect.width) return;
+
+      ctConnectorSvg.setAttribute("width", wrapRect.width);
+      ctConnectorSvg.setAttribute("height", wrapRect.height);
+
+      const startX = panelRect.right - 36 - wrapRect.left;
+      const startY = panelRect.top - wrapRect.top;
+
+      // convert the target point from the ct-rings-svg's own coordinate
+      // space into this overlay's pixel space, via its live CTM --
+      // stays correct at any responsive width, no hardcoded scale math
+      const pt = ctRingsSvg.createSVGPoint();
+      pt.x = TARGET_X[currentTier];
+      pt.y = BEND_Y[currentTier];
+      const screenPt = pt.matrixTransform(ctRingsSvg.getScreenCTM());
+      const targetX = screenPt.x - wrapRect.left;
+      const bendY = screenPt.y - wrapRect.top;
+
+      // the line stops short of the landing dot, not at its tip --
+      // otherwise a round cap (or any gap) makes it look "set back"
+      // from where the line actually ends
+      const s = 6;
+      ctConnectorPath.setAttribute("d", `M ${startX} ${startY} L ${startX} ${bendY} L ${targetX + s} ${bendY}`);
+      ctConnectorArrow.setAttribute("cx", targetX);
+      ctConnectorArrow.setAttribute("cy", bendY);
+
+      const color = TIERS[currentTier].color;
+      ctConnectorPath.style.stroke = color;
+      ctConnectorArrow.style.fill = color;
+    }
+
+    [...pills, ...bands].forEach(el => {
+      el.addEventListener("click", () => selectTier(el.dataset.tier));
+      el.addEventListener("keydown", (e) => {
+        if (e.key === "Enter" || e.key === " ") { e.preventDefault(); selectTier(el.dataset.tier); }
+      });
+    });
+
+    let resizeTimer;
+    window.addEventListener("resize", () => {
+      clearTimeout(resizeTimer);
+      resizeTimer = setTimeout(updateConnector, 100);
+    });
+
+    selectTier("use");
+    // fonts/layout can still settle a frame or two after first paint, and
+    // images/fonts finishing even later can shift things again -- the
+    // circle starts with fill="none" so a mistimed run stays invisible
+    // instead of showing as a stray black dot
+    requestAnimationFrame(() => requestAnimationFrame(updateConnector));
+    window.addEventListener("load", updateConnector);
+  })();
+  </script>
 </main>
 </body>
 </html>
