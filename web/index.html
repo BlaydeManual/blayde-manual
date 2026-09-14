@@ -935,7 +935,7 @@
     <p class="ct-super-sub">Available to <b class="ct-tag-anyone">anyone</b>. Completed by <b class="ct-tag-contribute">Contributors</b>. Started by <b class="ct-tag-maintain">Maintainers</b>. Steered by the <b class="ct-tag-org">Blayde Manual Org</b>.</p>
 
     <div class="ct-diagram-wrap" id="ctDiagramWrap">
-    <svg class="ct-connector-svg" id="ctConnectorSvg"><path id="ctConnectorPath" fill="none" stroke-width="5" stroke-linecap="butt" stroke-linejoin="round"/><circle id="ctConnectorArrow" r="7" stroke="var(--black)" stroke-width="2"/></svg>
+    <svg class="ct-connector-svg" id="ctConnectorSvg"><path id="ctConnectorPath" fill="none" stroke-width="5" stroke-linecap="butt" stroke-linejoin="round"/><circle id="ctConnectorArrow" r="7" fill="none" stroke="var(--black)" stroke-width="2"/></svg>
     <svg class="ct-rings-svg" id="ctRingsSvg" viewBox="0 0 560 560" xmlns="http://www.w3.org/2000/svg" role="img"
          aria-label="Four concentric rings: a wide outer ring of anonymous users, one highlighted as you, narrowing inward through contributors, then maintainers, down to a small org core at the center.">
 
@@ -1303,8 +1303,12 @@
     });
 
     selectTier("use");
-    // fonts/layout can still settle a frame or two after first paint
+    // fonts/layout can still settle a frame or two after first paint, and
+    // images/fonts finishing even later can shift things again -- the
+    // circle starts with fill="none" so a mistimed run stays invisible
+    // instead of showing as a stray black dot
     requestAnimationFrame(() => requestAnimationFrame(updateConnector));
+    window.addEventListener("load", updateConnector);
   })();
   </script>
 </main>
