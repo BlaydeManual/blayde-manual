@@ -196,7 +196,17 @@
   .mini-label { font-size: 0.7rem; color: #9aa0a8; font-weight: 700; }
   .mini-arrow { color: #4a4f57; font-size: 1rem; margin: 0 2px 20px; }
 
-  .big-diagram { margin: 4px 0 14px; padding: 26px 16px 20px; border-radius: 8px; background: linear-gradient(180deg, #1a1d22, #131519); }
+  /* small "+" badge on the Real photos node -- the emoji alone didn't
+     say "added in," just "photos exist" */
+  .plus-badge {
+    position: absolute; bottom: -2px; right: -2px; width: 16px; height: 16px;
+    border-radius: 50%; background: var(--red); color: #fff; font-size: 11px; font-weight: 800;
+    display: flex; align-items: center; justify-content: center; border: 2px solid #16181c; line-height: 1;
+  }
+  .plus-badge.big { width: 24px; height: 24px; font-size: 15px; bottom: -4px; right: -4px; border-width: 3px; }
+
+  .big-diagram { margin: 4px 0 14px; padding: 26px 16px 20px; border-radius: 8px; background: linear-gradient(180deg, #1a1d22, #131519); cursor: pointer; }
+  .big-diagram:hover { filter: brightness(1.08); }
   .big-node { width: 130px; }
   .big-dot {
     width: 62px; height: 62px; border-radius: 50%; display: flex; align-items: center;
@@ -261,7 +271,7 @@
       <span class="mini-arrow">➜</span>
       <div class="mini-node"><div class="mini-dot">🔍</div><span class="mini-label">Scanned locally</span></div>
       <span class="mini-arrow">➜</span>
-      <div class="mini-node"><div class="mini-dot">👥</div><span class="mini-label">Real photos</span></div>
+      <div class="mini-node"><div class="mini-dot" style="position:relative;">👥<span class="plus-badge">+</span></div><span class="mini-label">Real photos</span></div>
       <span class="mini-arrow">➜</span>
       <div class="mini-node"><div class="mini-dot">✨</div><span class="mini-label">Enhanced</span></div>
     </div>
@@ -283,7 +293,7 @@
         </div>
         <span class="big-arrow">➜</span>
         <div class="big-node">
-          <div class="big-dot" style="background:#262a30;border-color:#3a3e45;">👥</div>
+          <div class="big-dot" style="background:#262a30;border-color:#3a3e45;position:relative;">👥<span class="plus-badge big">+</span></div>
           <span class="name">Real photos</span>
           <span class="tag">From each community. Credited, licensed, reviewed.</span>
         </div>
@@ -346,32 +356,37 @@
         <div class="big-node">
           <div class="big-dot" style="background:#1d3327;border-color:#1d9e75;color:#3ee6ab;">●</div>
           <span class="name">Anyone</span>
-          <span class="tag">Free, forever. No account. Patch your manual with whatever the community has already approved.</span>
+          <span class="tag">Free, forever. Patch your manual, no account needed.</span>
         </div>
         <span class="big-arrow">➜</span>
         <div class="big-node">
           <div class="big-dot" style="background:#3a2e14;border-color:#c99a3f;color:#e0b662;">●</div>
           <span class="name">Contribute</span>
-          <span class="tag">Give a photo back to your community. Needs a free GitHub account, nothing else.</span>
+          <span class="tag">Give a photo back. Just needs a free GitHub account.</span>
         </div>
         <span class="big-arrow">➜</span>
         <div class="big-node">
           <div class="big-dot" style="background:#1c2536;border-color:#6f93b3;color:#a8cbe8;">●</div>
           <span class="name">Maintain</span>
-          <span class="tag">Review photo submissions for one item. A narrow, real job — not a big commitment.</span>
+          <span class="tag">Review submissions for one item. A narrow, real job.</span>
         </div>
         <span class="big-arrow">➜</span>
         <div class="big-node">
           <div class="big-dot" style="background:#3a1518;border-color:var(--red);color:#ff5a6e;">●</div>
           <span class="name">Org</span>
-          <span class="tag">A small team that reviews new items joining the project, keeping quality honest.</span>
+          <span class="tag">A small team that approves new items joining the project.</span>
         </div>
       </div>
     </div>
 
     <div class="qa highlight">
       <h3>Do I have to move through these in order?</h3>
-      <p>No. Anyone, Contribute, Maintain, and Org are each a real, separate way to be part of this, not rungs on a ladder you're expected to climb. Most people stay at "Anyone" forever, and that's the point, not a consolation prize: patching your own manual is the whole product for most people who'll ever use it. Moving up a level is always optional, and nothing about using this project pushes you toward it. See "Contributing" and "Who's In Charge" below for what each of the last three actually look like day to day.</p>
+      <p>No. Each is a real, separate way to be part of this, not rungs on a ladder. Most people stay at "Anyone" forever, and that's the point: patching your own manual is the whole product for most people who'll ever use it. Moving up is always optional.</p>
+    </div>
+
+    <div class="qa">
+      <h3>Can I be at different levels on different manuals?</h3>
+      <p>Yes, and that's normal, not an edge case. You might maintain your own motorcycle's manual, just contribute the odd photo to a boat you also own, and never touch a third item beyond patching your own copy. Each level is scoped to that one item, not to you as a person.</p>
     </div>
   </div>
 </details>
@@ -703,6 +718,16 @@
   }
   openFromHash();
   window.addEventListener('hashchange', openFromHash);
+
+  // the big diagram is the expanded state's own version of the teaser
+  // that was clickable to open -- it should be just as clickable to
+  // close, not force a visitor to scroll back up and find the header
+  document.querySelectorAll('.big-diagram').forEach(function (el) {
+    el.addEventListener('click', function () {
+      var section = el.closest('details.acc');
+      if (section) section.open = false;
+    });
+  });
 })();
 </script>
 
