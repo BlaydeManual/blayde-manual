@@ -182,6 +182,7 @@
   .acc.dark[open] summary .mini-flow,
   .acc.dark[open] summary .mini-grid,
   .acc.dark[open] summary .icon-row,
+  .acc.dark[open] summary .badge-row,
   .acc.dark[open] summary .mini-approvers,
   .acc.dark[open] summary .approver-headline,
   .acc.dark[open] summary .mini-org-footnote,
@@ -288,8 +289,11 @@
   .badge-row { display: flex; gap: 8px; justify-content: center; flex-wrap: wrap; }
   .badge {
     display: flex; align-items: center; gap: 6px; font-size: 0.8rem; font-weight: 700;
-    background: #fff; border: 1px solid #ddd9cf; border-radius: 999px; padding: 6px 13px; color: var(--text-dim);
+    background: #262a30; border: 1.5px solid #3a3e45; border-radius: 999px; padding: 6px 13px 6px 10px; color: #ede8dc;
   }
+  .badge svg, .badge .infinity { flex-shrink: 0; }
+  .badge .infinity { font-size: 14px; font-weight: 800; line-height: 1; }
+  .big-dot .infinity { font-size: 1.7rem; font-weight: 800; color: #fff; }
 </style>
 </head>
 <body>
@@ -582,20 +586,40 @@
   </div>
 </details>
 
-<details class="acc teaser" id="business">
+<details class="acc teaser dark" id="business">
   <summary>
     <div class="teaser-head">
       <span class="acc-title">The Business Side</span>
       <span class="acc-chev">▶</span>
     </div>
     <div class="badge-row">
-      <span class="badge">🆓 Free forever</span>
-      <span class="badge">🔓 Open source</span>
-      <span class="badge">📈 Scales per item</span>
+      <span class="badge"><span class="infinity">&#8734;</span> Free forever</span>
+      <span class="badge"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="8 6 2 12 8 18"/><polyline points="16 6 22 12 16 18"/></svg> Open source</span>
+      <span class="badge"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 21V9M10 21V3M17 21v-6"/></svg> Scales per manual</span>
     </div>
     <p class="teaser-hint">Expand for the money questions: paywalls, competitors, storage costs ▾</p>
   </summary>
   <div class="acc-body">
+    <div class="big-diagram">
+      <div class="big-flow">
+        <div class="big-node">
+          <div class="big-dot"><span class="infinity">&#8734;</span></div>
+          <span class="name">Free forever</span>
+          <span class="tag">No paywall, no trial. That's not changing.</span>
+        </div>
+        <div class="big-node">
+          <div class="big-dot"><svg width="30" height="30" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><polyline points="8 6 2 12 8 18"/><polyline points="16 6 22 12 16 18"/></svg></div>
+          <span class="name">Open source</span>
+          <span class="tag">AGPL licensed. Fork it, audit it, run your own.</span>
+        </div>
+        <div class="big-node">
+          <div class="big-dot"><svg width="30" height="30" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M3 21V9M10 21V3M17 21v-6"/></svg></div>
+          <span class="name">Scales per manual</span>
+          <span class="tag">Storage sized independently. No shared limit.</span>
+        </div>
+      </div>
+    </div>
+
     <div class="qa">
       <h3>Is this free?</h3>
       <p>Yes, and that's not just a nice idea. It's the reason contributing works at all. Nobody's going to photograph their own brake job for a paywall. The free, open version is what makes the whole thing possible. To just <em>use</em> it, patching your own legally-owned PDF, you don't need an account of any kind; contributing a photo needs a free GitHub account, since that's how your credit and license grant are attached to what you submit, but there's no cost involved either way.</p>
