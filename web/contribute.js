@@ -309,9 +309,22 @@ if (existingSession) {
   // that only exists on GitHub once the search completes, then
   // re-renders.
   syncRealSubmissions();
+  updateMaintainerPortalLink();
 }
 BlaydeAuth?.renderAuthStatus(handleLoggedOut);
 updateRecatVisibility();
+
+// Shown only if this person actually has real maintainer access
+// somewhere -- most visitors here are contributors, not maintainers,
+// so a link to a portal with nothing for them to do would just be
+// clutter for the majority. Fire-and-forget: renderUploads() etc.
+// already show something useful immediately, this just adds the link
+// a moment later once the check resolves.
+function updateMaintainerPortalLink() {
+  hasAnyMaintainerAccess().then((hasAccess) => {
+    document.getElementById("maintainerPortalLink").style.display = hasAccess ? "inline-block" : "none";
+  });
+}
 
 // The single shared top-nav button (auth.js) does the actual sign-in;
 // this just reacts once it succeeds -- covers both what the old
@@ -325,6 +338,7 @@ window.addEventListener("blayde:signedin", (e) => {
   updateRecatVisibility();
   log(`Signed in with GitHub as @${currentUsername}.`);
   syncRealSubmissions();
+  updateMaintainerPortalLink();
   renderUploads();
   if (pendingMaintainRequest) {
     performMaintainRequest(pendingMaintainRequest.vehicleKey, pendingMaintainRequest.repoUrl);
@@ -337,6 +351,7 @@ function handleLoggedOut() {
   currentUsername = null;
   remoteUploads = []; // scoped to whoever was signed in -- stale otherwise if a different account signs in next
   if (!hasProcedureContext) document.getElementById("signedOutNote").style.display = "block";
+  document.getElementById("maintainerPortalLink").style.display = "none";
   updateRecatVisibility();
   renderUploads();
 }

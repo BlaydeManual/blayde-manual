@@ -4,6 +4,31 @@
 
 Direct call: "backlog mobile compatibility. annotation is rough. let's focus on core desktop for now." The canvas-based crop/annotation tooling (contribute.js's crop editor, review-panel.js's annotation toolbar, indexer-review.js's review gallery) is built and tested against desktop mouse/keyboard interaction -- dragging a crop box or drawing an annotation with a fingertip on a touchscreen is a genuinely different interaction model, not just a layout/breakpoint issue a media query would fix. Not scoped or estimated; revisit once the core desktop flows are solid.
 
+## Backlog: patch-time downsampling for the final PDF's file size (2026-09-13)
+
+Direct call, once the base `suzuki-sv650-1999` OEM PDF's real size (75MB)
+was known: 917 photo slots fully filled adds roughly 175-180MB on top
+(measured from the 5 already-submitted photos in that repo, ~195KB
+average each), pushing the fully-patched PDF to ~250MB total: "a bit
+rough to carry around."
+
+Deliberately not pulling the resolution lever at the wrong layer.
+`contribute.js`'s `TARGET_DPI`/`HEADROOM` (see the closed section below)
+bakes resolution into the bytes stored in each vehicle repo at
+contribution time, and `patcher.js` embeds those bytes unchanged via
+`embedJpg`/`embedPng` with no recompression. Lowering `TARGET_DPI`
+today would only shrink *future* contributions and would permanently
+cap the quality kept in the repo, the actual source of truth.
+
+The real fix, when this gets prioritized: a downsample/recompress step
+added to `patcher.js` itself, applied only to the bytes going into the
+generated output PDF, never touching what's stored in the repo. Keeps
+full resolution recoverable forever (a future higher-DPI viewer, print
+use, or just changing our minds costs nothing) while making the everyday
+downloaded file smaller. Deliberately deferred rather than estimated:
+revisit once real photo volume is in and the actual file size is a
+felt problem, not a projected one.
+
 ## Repo-size math behind the photo downscale cap (reference, not open)
 
 **Closed 2026-08-28**, logged here as the reasoning behind a real number

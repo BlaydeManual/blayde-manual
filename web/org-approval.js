@@ -130,21 +130,31 @@ async function renderVehicleDirectory() {
     categoryGroup.appendChild(heading);
 
     categoryVehicles.forEach((v) => {
-      const row = document.createElement("div");
-      row.className = "pr-row";
-      const maintainerBit = v.real_maintainer_count === null
-        ? `<span style="color:#ffcc66;">couldn't check (${escapeHtml(v.error || "")})</span>`
+      // Same real roster + join-requests + invite-by-handle card My
+      // Vehicles uses for a maintainer's own repos (my-vehicles.js) --
+      // this is the actual fix for the gap that started this: a
+      // vehicle with zero real maintainers never showed up in My
+      // Vehicles for anyone, so nobody could ever act on it short of a
+      // manual audit. A plain member without real access to a
+      // particular vehicle will see this same card, but its
+      // roster/invite/decline actions will fail with a real error if
+      // attempted (GitHub itself rejects them) -- an org admin's own
+      // account has implicit admin on every org repo, so this works
+      // seamlessly for exactly the case that matters, without needing
+      // a separate permission model here.
+      const note = v.real_maintainer_count === null
+        ? `<span style="color:#ffcc66;">Couldn't check real maintainer count (${escapeHtml(v.error || "")}).</span>`
         : v.real_maintainer_count === 0
-          ? `<span style="color:#ff6b6b;">no real maintainer</span>`
-          : `${v.real_maintainer_count} real maintainer${v.real_maintainer_count === 1 ? "" : "s"} (${v.real_maintainers.map((m) => `@${m}`).join(", ")})`;
-      row.innerHTML = `
-        <div>
-          <div class="pr-title">${escapeHtml(v.vehicle_display_name || v.vehicle_slug)} -- ${v.edition_id}</div>
-          <div class="pr-meta">${maintainerBit}</div>
-        </div>
-        <a href="${v.repo_url}" target="_blank" rel="noopener"><button class="secondary">Repo</button></a>
-      `;
-      categoryGroup.appendChild(row);
+          ? `<span style="color:#ff6b6b;">No real maintainer -- invite one below, or check for an open join request.</span>`
+          : `<span style="color:var(--steel);">${v.real_maintainer_count} real maintainer${v.real_maintainer_count === 1 ? "" : "s"}: ${v.real_maintainers.map((m) => `@${m}`).join(", ")}</span>`;
+      const startOpen = v.real_maintainer_count === null || v.real_maintainer_count === 0;
+      renderVehicleMaintenanceCard(
+        categoryGroup,
+        v.repo_url,
+        `${escapeHtml(v.vehicle_display_name || v.vehicle_slug)} -- ${v.edition_id}`,
+        [v.edition_id],
+        { note, startOpen }
+      );
     });
     wrap.appendChild(categoryGroup);
   });
