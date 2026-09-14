@@ -245,17 +245,17 @@
      example manuals, a different shape per one so they read as
      distinct teams at a glance, 2 filled in to echo the "2 approvals"
      pattern in the diagram above it */
-  .sep-row {
-    display: flex; gap: 10px; justify-content: center; flex-wrap: wrap;
-    padding-top: 18px; margin-top: 4px; border-top: 1px dashed #3a3e45;
+  .sep-heading {
+    font-size: 0.86rem; font-weight: 800; color: #fff; text-align: center;
+    padding-top: 18px; margin: 0 0 12px; border-top: 1px dashed #3a3e45;
   }
+  .sep-row { display: flex; gap: 10px; justify-content: center; flex-wrap: wrap; }
   .sep-chip {
     background: #1e2126; border-radius: 8px; padding: 10px 14px;
     display: flex; flex-direction: column; align-items: center; gap: 7px; width: 130px;
   }
   .sep-chip .manual-name { font-size: 0.78rem; font-weight: 800; color: #fff; text-align: center; }
   .sep-count { font-size: 0.66rem; color: #6b7078; }
-  .sep-caption { font-size: 0.76rem; color: #6b7078; text-align: center; margin-top: 10px; }
   .mini-org-footnote { font-size: 0.68rem; color: #6b7078; text-align: center; margin-top: 6px; }
 
   .icon-row { display: flex; align-items: center; justify-content: center; gap: 6px; flex-wrap: wrap; }
@@ -516,6 +516,7 @@
       </div>
       <p class="approver-sub">2 community approvals per photo, from that manual's own maintainers</p>
 
+      <p class="sep-heading">Per-Manual Teams</p>
       <div class="sep-row">
         <div class="sep-chip">
           <span class="manual-name">Suzuki SV650</span>
@@ -542,9 +543,7 @@
           <span class="sep-count">2 of 3 maintainers</span>
         </div>
       </div>
-      <p class="sep-caption">Different shape per manual. Each one has its own independent team.</p>
-
-      <p class="org-footnote">New manuals go through a separate, one-time approval. One org member signs off, across any category.</p>
+      <p class="org-footnote">Blayde Manual Org members approve new manual requests.</p>
     </div>
 
     <div class="qa highlight">
