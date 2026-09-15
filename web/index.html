@@ -36,6 +36,21 @@
     --red-text: #ff002b;
   }
   * { box-sizing: border-box; }
+  /* Direct report: mobile text was hard to read even though the rings
+     graphic itself scaled up fine. Root cause: every other real page
+     on this site (maintainer.html, contribute.html,
+     registry-browse.html) already carries this exact rule as its
+     base, mobile included -- this page only ever had the desktop-only
+     bump below (inside the 900px+ media query), so it silently fell
+     back to the browser default 16px on every phone, and almost every
+     size on this page is a small rem fraction (0.78rem, 0.82rem...)
+     of whatever that root turns out to be. Placed BEFORE the desktop
+     media query below, not after -- the desktop clamp() still needs
+     to win at 900px+, and equal-specificity CSS resolves by source
+     order regardless of which side is inside a media query (see the
+     .cat-tab and .ct-rings-svg comments elsewhere in this file for the
+     same lesson learned twice already). */
+  html { font-size: 17px; }
   body {
     background: var(--black); color: var(--text); margin: 0; padding: 40px 24px;
     font-family: -apple-system, "Segoe UI", Roboto, sans-serif; line-height: 1.55;
