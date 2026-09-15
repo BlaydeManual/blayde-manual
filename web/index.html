@@ -543,6 +543,27 @@
   .ct-info-panel .ct-lines p { font-size: 0.82rem; color: var(--steel); margin: 0; line-height: 1.45; }
   .ct-info-hint { font-size: 0.82rem; color: var(--steel); margin: 0; font-style: italic; }
 
+  /* The ring diagram itself was capped at a flat 460px regardless of
+     viewport, while the hero diagram and "Pick your PDF manual" card
+     right above it both grow with `main` on a real desktop screen --
+     direct report: it read as noticeably less exciting than the
+     sections around it once the window got wide. Grown here instead
+     of just deleting the cap: the viewBox is square (560x560), so
+     `width:100%; height:auto` keeps it perfectly unskewed at any size,
+     but the info panel below it reads as a paragraph, not a diagram,
+     so it grows by a smaller amount, enough to not look stranded next
+     to a much bigger ring. Placed AFTER the base .ct-rings-svg/
+     .ct-info-panel rules above, not before -- equal-specificity CSS
+     resolves by source order regardless of which side is inside a
+     matching media query (confirmed the hard way earlier in this same
+     file, see the .cat-tab desktop-override comment for the same
+     lesson learned once already). */
+  @media (min-width: 900px) {
+    .ct-wrap { max-width: min(1100px, 90vw); }
+    .ct-rings-svg { max-width: 720px; }
+    .ct-info-panel { max-width: 560px; }
+  }
+
   .ct-enjoy {
     text-align: center; color: var(--mint-text); font-size: 1.7rem; font-weight: 800;
     margin: 26px 0 0; letter-spacing: 0.01em;
@@ -957,6 +978,17 @@
       <circle class="ct-ring-band ct-ring-maintain" data-tier="maintain" cx="280" cy="280" r="90" tabindex="0" role="button" aria-label="Maintain"/>
       <circle class="ct-ring-band ct-ring-org" data-tier="steer" cx="280" cy="280" r="60" tabindex="0" role="button" aria-label="Steer"/>
 
+      <!-- everything below here (borders, the scattered dots, the
+           traveling arrival particles, the "you are here" marker) is
+           purely decorative, drawn on top of the clickable ring bands
+           above -- real bug, confirmed live: without pointer-events:
+           none here, a click landing on a dot (or the you-are-here
+           pulse) silently ate the click instead of falling through to
+           the ring band underneath it, since SVG hit-tests paint
+           order, not visual "belongs to" grouping. One wrapping <g>
+           covers all of it so nothing new added in here needs its own
+           opt-out later. -->
+      <g pointer-events="none">
       <circle class="ct-ring-border" cx="280" cy="280" r="240"/>
       <circle class="ct-ring-border" cx="280" cy="280" r="180"/>
       <circle class="ct-ring-border" cx="280" cy="280" r="120"/>
@@ -1168,6 +1200,7 @@
         <rect x="105" y="35" width="92" height="22" rx="11" fill="var(--mint)"/>
         <text x="151" y="50" text-anchor="middle" class="ct-node-tag" fill="#04140d">You are here</text>
         <circle class="ct-you-pulse" cx="151" cy="127" r="12.6" fill="var(--mint)" stroke="var(--text)" stroke-width="3"/>
+      </g>
       </g>
 
       <!-- clickable pills, one per ring: tap to bring up what it means -->
