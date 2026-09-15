@@ -1,5 +1,66 @@
 # Roadmap / open design problems
 
+## Alternate photo views: append pages instead of building a custom viewer (2026-09-14)
+
+Direct brainstorm, rejecting a much bigger idea along the way: building a
+custom Chrome extension with the "best PDF viewer ever" as a side quest,
+just to let someone flip between alternate photos of the same procedure
+in place. Rejected before starting -- a whole viewer is a project of its
+own, not a feature, and every visitor would still need the extension
+installed for it to do anything.
+
+**The actual proposal:** stop discarding alternate photos, and stop
+needing a special viewer to show them. Append extra pages to the very
+end of the generated PDF, after the original manual's own last page,
+holding whatever alternate photos exist for procedures that have more
+than one real candidate. On the original page, where the winning photo
+already gets patched in, overlay a small link ("Additional views here",
+or "Additional procedure notes") pointing at the matching appended page.
+Each appended page carries its own "&larr; Back to [procedure]" link
+back to where it came from. The original manual's own pages are never
+touched beyond the link overlay already patched onto them today --
+this is pure addition at the end, not a rewrite of anything.
+
+**Checked against the real code, not just the idea -- this is closer to
+already-built than it looks:**
+- `patchViaRegistry` (`patcher.js`) already groups every real candidate
+  photo by `procedure_id` into `photosByProcedure`, specifically because
+  "there can be more than one (alternate angles, multiple
+  contributors), never just the last one seen." `pickPhoto` then throws
+  every non-winning candidate away, keeping only the one that gets
+  embedded. The alternates this idea needs already exist in memory at
+  patch time; nothing about contribution, review, or the manifest needs
+  to change to get them.
+- `addLinkAnnotation` (`patcher.js:465`) already builds a real,
+  clickable link annotation via `pdf-lib`'s low-level object
+  construction (`ctx.obj(...)`), used today for the QR-marker's URI
+  link on missing photos. It only knows `URI` actions (opens a browser
+  URL). A same-document jump needs a sibling using a `GoTo` action with
+  a `Dest` array (`[pageRef, /XYZ, x, y, zoom]`) instead of a `URI` one
+  -- same annotation mechanism, same `Annots` array wiring, a new
+  action type rather than new machinery.
+
+**What's still a real open design question, not yet decided:**
+- Layout of the appended pages -- one page per procedure-with-alternates,
+  or a shared appendix page bundling several thumbnails per page (fewer
+  pages added, more scrolling within one page to find the right photo).
+- Whether every procedure with 2+ candidates gets an appended page
+  automatically, or only ones a maintainer deliberately flags as having
+  a genuinely useful alternate angle (some alternates might just be
+  near-duplicates not worth surfacing).
+- Idempotent re-patch: `patched_figures` already tracks per-procedure
+  state across incremental re-patches (see `readEmbeddedState`/
+  `writeEmbeddedState`) so patching again doesn't duplicate work --
+  whatever tracks the appended pages needs the same discipline, so
+  re-patching a manual with a newly-submitted alternate doesn't
+  duplicate or orphan pages already appended from a prior patch.
+- Whether the appended pages still make sense once patch-time
+  downsampling (see the file-size backlog entry below) ships -- more
+  photos kept per manual pushes the same file-size question further.
+
+Not scoped or estimated. Revisit once the core single-photo-per-procedure
+flow feels solid and worth building on top of.
+
 ## Backlog: mobile compatibility, deliberately deprioritized (2026-09-11)
 
 Direct call: "backlog mobile compatibility. annotation is rough. let's focus on core desktop for now." The canvas-based crop/annotation tooling (contribute.js's crop editor, review-panel.js's annotation toolbar, indexer-review.js's review gallery) is built and tested against desktop mouse/keyboard interaction -- dragging a crop box or drawing an annotation with a fingertip on a touchscreen is a genuinely different interaction model, not just a layout/breakpoint issue a media query would fix. Not scoped or estimated; revisit once the core desktop flows are solid.
