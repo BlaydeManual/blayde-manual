@@ -61,6 +61,16 @@
        instead of just slightly larger than mobile. */
     html { font-size: clamp(18px, 1.4vw, 21px); }
   }
+  /* Phones were carrying the same 24px side gutter as desktop, which
+     reads as a lot of wasted edge on a ~390px-wide screen -- cards
+     already stretch to fill `main`'s own width, so trimming this is
+     the only lever that actually gets content closer to the real
+     viewport edges. Left well short of true edge-to-edge: cards keep
+     their own border-radius, which needs a little breathing room on
+     each side to still read as a rounded card and not a clipped one. */
+  @media (max-width: 480px) {
+    body { padding: 32px 10px; }
+  }
   .top-nav { display: flex; justify-content: flex-end; gap: 8px; margin-bottom: 14px; }
   .pill-link {
     font-size: 0.78rem; font-weight: 700; text-decoration: none;
@@ -832,7 +842,7 @@
 
   <div class="card">
     <h2>Pick your PDF manual</h2>
-    <label>Any PDF you legally own. Identified locally and checked against the registry automatically.</label>
+    <label id="pdfPickLabel">Any PDF you legally own. Identified locally and checked against the registry automatically.</label>
     <button type="button" id="scanManualBtn">
       <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true">
         <path d="M4 8V5a1 1 0 0 1 1-1h3"/><path d="M20 8V5a1 1 0 0 0-1-1h-3"/>
