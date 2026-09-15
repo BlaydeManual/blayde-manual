@@ -47,7 +47,28 @@
        --card box, never directly against --bg. */
     --bg: #c2ccd4;
     --card: #f7f6f2;
+    /* Direct report: pure white text on the dark accordion cards read
+       just as rough as the pure white page background did. First pass
+       reused .badge's own hardcoded warm ivory -- explicit hard rule
+       from direct follow-up against that exact color, don't reuse it
+       again. Landed on a COOL off-white instead, matching the same
+       steel hue direction as --bg/--steel/--steel-dark rather than
+       fighting it with a warm tone. Applied everywhere real heading or
+       label text sits directly on a dark card background. Enormous
+       contrast headroom against every dark background this page
+       actually uses (11:1 to 15:1, well past AAA), so this is purely a
+       softness/hue choice, not a compliance one -- unlike the page
+       background above, nothing here was close to a floor. */
+    --off-white: #e4e8ec;
     --pink: #fcebeb;
+    /* Section headings need to pop against the dark cards, per direct
+       request ("it's an FAQ, those headings need to pop"). First pass
+       reused the page's existing muted gold (Contribute tier's own
+       color) -- direct rejection ("gross"). Pitched four fresh,
+       contrast-checked options; this bold, more saturated amber won.
+       10:1 against the accordion's own dark background, clears
+       normal-text AA outright. */
+    --heading-accent: #ffb454;
   }
   * { box-sizing: border-box; }
   body {
@@ -174,7 +195,7 @@
   .acc summary:hover { filter: brightness(0.98); }
   .acc.dark summary:hover { filter: brightness(1.15); }
   .acc-title { font-weight: 800; font-size: 1.15rem; color: var(--black); margin: 0; }
-  .acc.dark .acc-title { color: #fff; }
+  .acc.dark .acc-title { color: var(--heading-accent); }
   .acc-chev { color: var(--steel-dark); transition: transform 0.15s ease; flex-shrink: 0; font-size: 0.9rem; }
   .acc.dark .acc-chev { color: #6b7078; }
   .acc[open] .acc-chev { transform: rotate(90deg); }
@@ -250,7 +271,7 @@
     width: 62px; height: 62px; border-radius: 50%; display: flex; align-items: center;
     justify-content: center; font-size: 1.6rem; border: 2px solid;
   }
-  .big-node .name { font-size: 0.86rem; font-weight: 800; color: #fff; }
+  .big-node .name { font-size: 0.86rem; font-weight: 800; color: var(--off-white); }
   .big-node .tag { font-size: 0.74rem; color: #9aa0a8; line-height: 1.4; }
   .big-arrow { color: #3a3e45; font-size: 1.4rem; align-self: center; margin-top: 31px; flex: 0 0 auto; }
   @media (max-width: 620px) {
@@ -264,7 +285,7 @@
   .big-approvers .approver-dot { width: 40px; height: 40px; font-size: 1rem; }
   .approver-dot.yes { background: var(--red); color: #fff; }
   .approver-dot.no { background: #3a3e45; color: #6b7078; }
-  .approver-headline { font-size: 1.05rem; font-weight: 800; color: #fff; text-align: center; margin: 10px 0 2px; }
+  .approver-headline { font-size: 1.05rem; font-weight: 800; color: var(--off-white); text-align: center; margin: 10px 0 2px; }
   .approver-sub { font-size: 0.8rem; color: #9aa0a8; text-align: center; margin: 0 0 16px; }
   .org-footnote {
     margin-top: 12px; font-size: 0.76rem; color: #8a8f98; text-align: center;
@@ -275,7 +296,7 @@
      distinct teams at a glance, 2 filled in to echo the "2 approvals"
      pattern in the diagram above it */
   .sep-heading {
-    font-size: 0.86rem; font-weight: 800; color: #fff; text-align: center;
+    font-size: 0.86rem; font-weight: 800; color: var(--off-white); text-align: center;
     padding-top: 18px; margin: 0 0 12px; border-top: 1px dashed #3a3e45;
   }
   .sep-row { display: flex; gap: 8px; justify-content: center; flex-wrap: wrap; }
@@ -283,7 +304,7 @@
     background: #1e2126; border-radius: 8px; padding: 10px 12px;
     display: flex; flex-direction: column; align-items: center; gap: 7px; width: 158px;
   }
-  .sep-chip .manual-name { font-size: 0.78rem; font-weight: 800; color: #fff; text-align: center; white-space: nowrap; }
+  .sep-chip .manual-name { font-size: 0.78rem; font-weight: 800; color: var(--off-white); text-align: center; white-space: nowrap; }
   .sep-count { font-size: 0.66rem; color: #6b7078; }
   .mini-org-footnote { font-size: 0.68rem; color: #6b7078; text-align: center; margin-top: 6px; }
 
@@ -311,17 +332,17 @@
   }
   .credit-tag-mini::before { width: 6px; }
   .credit-tag-big::before { width: 9px; }
-  .credit-tag-mini span { font-family: "Courier New", monospace; font-weight: 700; font-size: 10px; color: #fff; letter-spacing: 0.05em; }
-  .credit-tag-big span { font-family: "Courier New", monospace; font-weight: 700; font-size: 15px; color: #fff; letter-spacing: 0.05em; }
+  .credit-tag-mini span { font-family: "Courier New", monospace; font-weight: 700; font-size: 10px; color: var(--off-white); letter-spacing: 0.05em; }
+  .credit-tag-big span { font-family: "Courier New", monospace; font-weight: 700; font-size: 15px; color: var(--off-white); letter-spacing: 0.05em; }
 
   .badge-row { display: flex; gap: 8px; justify-content: center; flex-wrap: wrap; }
   .badge {
     display: flex; align-items: center; gap: 6px; font-size: 0.8rem; font-weight: 700;
-    background: #262a30; border: 1.5px solid #3a3e45; border-radius: 999px; padding: 6px 13px 6px 10px; color: #ede8dc;
+    background: #262a30; border: 1.5px solid #3a3e45; border-radius: 999px; padding: 6px 13px 6px 10px; color: var(--off-white);
   }
   .badge svg, .badge .infinity { flex-shrink: 0; }
   .badge .infinity { font-size: 14px; font-weight: 800; line-height: 1; }
-  .big-dot .infinity { font-size: 1.7rem; font-weight: 800; color: #fff; }
+  .big-dot .infinity { font-size: 1.7rem; font-weight: 800; color: var(--off-white); }
 </style>
 </head>
 <body>
