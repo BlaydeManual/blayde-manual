@@ -29,7 +29,23 @@
     --steel-dark: #4a4f57;
     --text: #22252a;
     --text-dim: #5f5e5a;
-    --bg: #ffffff;
+    /* Direct report: pure white read as rough/harsh, especially with
+       every accordion card floating on it in its dark variant. Tinted
+       toward the same cool steel hue already used for --steel/
+       --steel-dark rather than reused-then-diverging colder or
+       warmer. Two rounds of "still too subtle" direct feedback pushed
+       this well past a barely-there tint into real, visible color --
+       the actual limiting factor at this saturation is --steel-dark,
+       used directly on this background as real text (.expand-hint,
+       .teaser-subtext, .acc-chev, footer): it clears WCAG AA's 4.5:1
+       floor for normal text here at 5.1:1, which is about as far as
+       this hue can go before that specific text starts failing.
+       --text (body's own default, also sits directly on this
+       background) has enormous headroom regardless, at 9.4:1.
+       --text-dim's own contrast against this background is
+       academic, not load-bearing -- it's only ever used inside a
+       --card box, never directly against --bg. */
+    --bg: #c2ccd4;
     --card: #f7f6f2;
     --pink: #fcebeb;
   }
@@ -75,7 +91,7 @@
     padding: 16px 24px 48px;
   }
   .expand-hint {
-    text-align: center; font-size: 0.78rem; color: var(--steel); font-style: italic;
+    text-align: center; font-size: 0.78rem; color: var(--steel-dark); font-style: italic;
     margin: 0 0 10px;
   }
   .qa {
@@ -120,7 +136,12 @@
   footer {
     text-align: center;
     padding: 32px 24px 48px;
-    color: var(--steel);
+    /* --steel itself was already borderline for real body text (3.25:1
+       on the old white background, below AA's 4.5:1 floor) before the
+       background even changed -- --steel-dark clears 7:1+ on the new
+       one, same hue family, just dark enough to actually read as text
+       rather than a light decorative accent. */
+    color: var(--steel-dark);
     font-size: 0.85rem;
   }
   footer a { color: var(--red-dark); }
@@ -154,7 +175,7 @@
   .acc.dark summary:hover { filter: brightness(1.15); }
   .acc-title { font-weight: 800; font-size: 1.15rem; color: var(--black); margin: 0; }
   .acc.dark .acc-title { color: #fff; }
-  .acc-chev { color: var(--steel); transition: transform 0.15s ease; flex-shrink: 0; font-size: 0.9rem; }
+  .acc-chev { color: var(--steel-dark); transition: transform 0.15s ease; flex-shrink: 0; font-size: 0.9rem; }
   .acc.dark .acc-chev { color: #6b7078; }
   .acc[open] .acc-chev { transform: rotate(90deg); }
   .acc-body { padding: 0 16px 14px; }
@@ -179,7 +200,7 @@
   .acc.teaser summary { flex-direction: column; align-items: stretch; }
   .teaser-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 10px; }
   .title-line { display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap; min-width: 0; }
-  .teaser-subtext { font-size: 0.78rem; font-weight: 600; color: var(--steel); }
+  .teaser-subtext { font-size: 0.78rem; font-weight: 600; color: var(--steel-dark); }
   .acc.dark .teaser-subtext { color: #9aa0a8; }
 
   /* the mini teaser REPLACES itself with the big diagram on open,
