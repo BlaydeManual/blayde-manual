@@ -549,19 +549,42 @@
      direct report: it read as noticeably less exciting than the
      sections around it once the window got wide. Grown here instead
      of just deleting the cap: the viewBox is square (560x560), so
-     `width:100%; height:auto` keeps it perfectly unskewed at any size,
-     but the info panel below it reads as a paragraph, not a diagram,
-     so it grows by a smaller amount, enough to not look stranded next
-     to a much bigger ring. Placed AFTER the base .ct-rings-svg/
-     .ct-info-panel rules above, not before -- equal-specificity CSS
-     resolves by source order regardless of which side is inside a
-     matching media query (confirmed the hard way earlier in this same
-     file, see the .cat-tab desktop-override comment for the same
-     lesson learned once already). */
+     `width:100%; height:auto` keeps it perfectly unskewed at any size.
+     Placed AFTER the base .ct-rings-svg/.ct-info-panel rules above,
+     not before -- equal-specificity CSS resolves by source order
+     regardless of which side is inside a matching media query
+     (confirmed the hard way earlier in this same file, see the
+     .cat-tab desktop-override comment for the same lesson learned
+     once already).
+     Direct report on the very first version of this: at 720px tall,
+     selecting a ring pushed the info panel (still stacked below the
+     diagram) out of view, so seeing the answer meant scrolling down
+     and losing the diagram, then scrolling back up to pick a
+     different ring -- "scrolling back and forth isn't fun and ruins
+     the graphic." Fixed by going side-by-side instead of stacked at
+     this same breakpoint: the panel sits next to the ring, not under
+     it, so selecting a tier never moves anything out of view. The
+     connector line/arrow only made sense bridging a real vertical gap
+     between a diagram and a panel far below it -- adjacent, the
+     selected ring's own pulse animation plus the panel's
+     tier-colored border already say "this panel is about that ring"
+     without it, so it's hidden here rather than re-deriving its path
+     math for a layout it wasn't built for. */
   @media (min-width: 900px) {
-    .ct-wrap { max-width: min(1100px, 90vw); }
-    .ct-rings-svg { max-width: 720px; }
-    .ct-info-panel { max-width: 560px; }
+    .ct-wrap { max-width: min(1160px, 92vw); }
+    .ct-diagram-wrap { display: flex; align-items: center; justify-content: center; gap: 36px; flex-wrap: wrap; }
+    /* min-width: 0 undoes the classic flex trap: a flex item's default
+       min-width is auto, which for a replaced element like an <svg>
+       resolves to its intrinsic/max-width size and blocks shrinking
+       below it -- confirmed live, without this the ring stayed pinned
+       at 720px and pushed the panel into real horizontal overflow at
+       any width between 900px and roughly 1300px, not just a visual
+       squeeze. flex-basis 360px lets it still grow up to its own
+       720px max-width where there's room, but actually give up that
+       room when there isn't. */
+    .ct-rings-svg { max-width: 720px; min-width: 0; flex: 1 1 360px; margin: 0; }
+    .ct-connector-svg { display: none; }
+    .ct-info-panel { max-width: none; flex: 0 0 300px; margin: 0; text-align: left; }
   }
 
   .ct-enjoy {
