@@ -34,6 +34,11 @@
     --pink: #fcebeb;
   }
   * { box-sizing: border-box; }
+  /* Matches maintainer.html/contribute.html/registry-browse.html's own
+     base root size -- this page never had it, so it silently fell
+     back to the browser default 16px, same gap just fixed on
+     index.html for the same direct report. */
+  html { font-size: 17px; }
   body {
     margin: 0;
     background: var(--bg);
