@@ -2129,7 +2129,15 @@ document.getElementById("recatManualTypeSelect").addEventListener("change", upda
 // (handleAcceptRecategorization) validates: one file, modified, one
 // entry, only those two fields differing.
 async function submitRecategorizationProposal(entry, newCategory, newManualType) {
-  const session = BlaydeAuth.getSession();
+  // Forks -- the App session can't do that (see auth.js's file-top
+  // comment: "the App isn't installed on a fork that doesn't exist
+  // yet"). Real, confirmed live bug: this used to read getSession()
+  // (the App session), which always has a token but one GitHub
+  // rejects for the /forks call with "Resource not accessible by
+  // integration" -- not a permissions gap to grant, a wrong-session
+  // bug, since no App permission scope covers forking into someone
+  // else's personal account.
+  const session = BlaydeAuth.getPrivateSession();
   if (!session) throw new Error("Not signed in.");
   const owner = "BlaydeManual", repo = "registry";
 
@@ -2201,9 +2209,20 @@ async function submitRecategorizationProposal(entry, newCategory, newManualType)
 }
 
 document.getElementById("recatSubmitBtn").addEventListener("click", async () => {
-  if (!BlaydeAuth.getSession()) {
-    recatLog("Signing in...");
-    if (!(await performSignIn())) return;
+  // Same rare, contextual grant as Private submit -- forks the
+  // registry repo into the proposer's own account, which only the
+  // classic OAuth session can do. Gating on the App session here was
+  // the bug: it's always signed in already by the time this button is
+  // reachable, so this never actually prompted for the session the
+  // fork call needed.
+  if (!BlaydeAuth.getPrivateSession()) {
+    recatLog("Signing in for this proposal...");
+    try {
+      await BlaydeAuth.signInWithGitHubPrivate();
+    } catch (err) {
+      recatLog(`Sign-in failed: ${err.message}`);
+      return;
+    }
   }
   const category = document.getElementById("recatCategorySelect").value;
   const manualType = document.getElementById("recatManualTypeSelect").value;

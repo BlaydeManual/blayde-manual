@@ -513,7 +513,14 @@ function deleteNewSlotIssue(box) {
 // the Worker's /accept-manifest-change gate, which independently
 // re-validates the diff before merging; this function only proposes.
 async function submitManifestChange(repoUrl, editionId, issue) {
-  const session = BlaydeAuth.getSession();
+  // Forks -- the App session can't do that (see auth.js's file-top
+  // comment: "the App isn't installed on a fork that doesn't exist
+  // yet"). Real, confirmed live bug, exact same shape as
+  // contribute.js's submitRecategorizationProposal: this read
+  // getSession() (the App session), which GitHub rejects for the
+  // /forks call with "Resource not accessible by integration" every
+  // time, not a permission to grant, a wrong-session bug.
+  const session = BlaydeAuth.getPrivateSession();
   if (!session) throw new Error("Not signed in.");
   const [owner, repo] = ownerRepo(repoUrl);
 
@@ -603,6 +610,18 @@ async function submitManifestChange(repoUrl, editionId, issue) {
 
 document.getElementById("issueSubmitAllBtn").addEventListener("click", async () => {
   const btn = document.getElementById("issueSubmitAllBtn");
+  // submitManifestChange forks the vehicle repo into the proposer's
+  // own account -- the same rare, contextual grant as Private submit,
+  // needing its own sign-in only at the moment it's actually used.
+  if (!BlaydeAuth.getPrivateSession()) {
+    issueLog("Signing in to propose this fix...");
+    try {
+      await BlaydeAuth.signInWithGitHubPrivate();
+    } catch (err) {
+      issueLog(`Sign-in failed: ${err.message}`);
+      return;
+    }
+  }
   btn.disabled = true;
   const { repoUrl, editionId } = currentIssueSelection();
   const toSubmit = pendingIssues.slice();
