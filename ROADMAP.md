@@ -1,5 +1,9 @@
 # Roadmap / open design problems
 
+## Backlog: reviewing a move/resize proposal against an unpatched manual (2026-09-20)
+
+Direct call: "we need to be direct when users are reviewing photo proposals to use an 'UNPATCHED' manual." Real bug, not yet fixed: reviewing a move-or-resize request (an already-approved photo's location being corrected) against a manual that's already been patched hides the very thing the reviewer needs to see. The patched manual already has a photo permanently embedded at that procedure's OLD location -- likely the wrong one, since that's exactly what the proposal is trying to fix -- so there's no way to see the original, unmarked page to judge whether the proposed new location is actually correct. Needs the review flow to point reviewers at (or generate on the fly) an unpatched copy specifically for this case, or otherwise make clear which manual to use before reviewing. Not scoped or estimated; logged here so it isn't lost, revisit when back on maintainer-review work.
+
 ## Alternate photo views: append pages instead of building a custom viewer (2026-09-14)
 
 Direct brainstorm, rejecting a much bigger idea along the way: building a
