@@ -45,6 +45,8 @@ export default {
       if (request.method === "POST" && pathname === "/app-token/refresh") return await handleAppTokenRefresh(request, env);
       if (request.method === "POST" && pathname === "/direct-submit") return await handleDirectSubmit(request, env);
       if (request.method === "POST" && pathname === "/direct-contribute") return await handleDirectContribute(request, env);
+      if (request.method === "POST" && pathname === "/direct-recategorization") return await handleDirectRecategorization(request, env);
+      if (request.method === "POST" && pathname === "/direct-manifest-change") return await handleDirectManifestChange(request, env);
       if (request.method === "GET" && pathname === "/pending-vehicles") return await handlePendingVehicles(request, env);
       if (request.method === "GET" && pathname === "/vehicle-directory") return await handleVehicleDirectory(request, env);
       if (request.method === "GET" && pathname === "/pr-review-status") return await handlePrReviewStatus(request, env);
@@ -1269,9 +1271,7 @@ async function handleManageCollaborator(request, env) {
 // person, so this checks the photo's own filename convention first
 // (<procedure_id>__by_<login>(__altN)?.ext, same as parsePhotoFilename
 // client-side) and only falls back to pr.user.login for PRs that don't
-// carry a photo at all (recategorization and manifest-change proposals
-// are both fork-based, so pr.user.login is already the real proposer
-// there).
+// carry a photo at all.
 function resolveRealSubmitter(pr, files) {
   const photoFile = files.find((f) => f.status === "added" && /^[^/]+\/images\//.test(f.filename));
   if (photoFile) {
@@ -1280,6 +1280,32 @@ function resolveRealSubmitter(pr, files) {
     const [, rest] = stem.split("__by_");
     if (rest) return rest.split("__alt")[0];
   }
+  return pr.user?.login || null;
+}
+
+// Recategorization and manifest-change proposals have no filename to
+// carry attribution the way a photo does (they're plain JSON diffs),
+// and now that /direct-recategorization and /direct-manifest-change
+// exist, they're no longer necessarily fork-based either -- pr.user.login
+// on one of those is the App's own bot identity, not the real proposer,
+// the exact same gap resolveRealSubmitter's photo-filename check
+// exists to close. Closed the same way handleDirectContribute already
+// does it for photos: the commit that made the change has its author
+// set explicitly to the real proposer's login, via a noreply email
+// GitHub resolves back to that real, verified account (not just a free-
+// text name it can't verify). Checking the commit's own resolved
+// author here, rather than trusting a PR-body marker, means nothing an
+// editable PR description could spoof. Still correct for an older,
+// genuinely fork-based PR (if this Worker ever accepts one again) --
+// the fork owner's own commit author naturally resolves to themselves
+// either way, so this isn't a breaking change for anything already in
+// flight when this shipped.
+async function resolveDirectProposer(pr, owner, repo, installationToken) {
+  try {
+    const commits = await ghApi(`/repos/${owner}/${repo}/pulls/${pr.number}/commits`, installationToken);
+    const last = commits[commits.length - 1];
+    if (last?.author?.login) return last.author.login;
+  } catch (e) { /* fall through to the PR-author fallback below */ }
   return pr.user?.login || null;
 }
 
@@ -1532,6 +1558,89 @@ async function handleAcceptPhotoPr(request, env) {
   return json({ merged: true });
 }
 
+// Recategorization's "propose" half -- same reasoning as
+// /direct-contribute's own file-top comment: the App creates a branch
+// directly on the registry repo and opens the PR immediately, no fork
+// of the contributor's own needed just to propose one category/
+// manual_type change. Used to be fork-based client-side
+// (contribute.js's submitRecategorizationProposal); direct report
+// flagged the real cost of that -- a personal fork sitting around
+// forever just to open one PR, plus a confirmed live bug where that
+// path read the wrong session and always failed with "Resource not
+// accessible by integration" (the App session can't fork; see
+// auth.js's file-top comment). The commit's author is set to the real
+// proposer for attribution even though the App's own token performed
+// the write -- resolveDirectProposer (below) reads it back for
+// handleAcceptRecategorization's self-approval check.
+async function handleDirectRecategorization(request, env) {
+  const login = await requireRealUser(request);
+  const body = await parseJson(request);
+  const { vehicle_slug: vehicleSlug, edition_id: editionId, new_category: newCategory, new_manual_type: newManualType } = body;
+  if (!vehicleSlug || !editionId || !newCategory || !newManualType) {
+    return json({ error: "missing vehicle_slug, edition_id, new_category, or new_manual_type" }, 400);
+  }
+
+  const installationToken = await getInstallationToken(env);
+
+  let defaultBranch = null, upstreamSha = null;
+  for (const branch of ["main", "master"]) {
+    try {
+      const ref = await ghApi(`/repos/${REGISTRY_OWNER}/${REGISTRY_REPO}/git/ref/heads/${branch}`, installationToken);
+      defaultBranch = branch; upstreamSha = ref.object.sha; break;
+    } catch (e) { /* try next */ }
+  }
+  if (!defaultBranch) throw new Error(`Could not find a main or master branch on ${REGISTRY_OWNER}/${REGISTRY_REPO}.`);
+
+  const registryFile = await ghApi(`/repos/${REGISTRY_OWNER}/${REGISTRY_REPO}/contents/registry.json?ref=${defaultBranch}`, installationToken);
+  const registryData = JSON.parse(base64ToUtf8(registryFile.content));
+  const target = (registryData.vehicles || []).find((v) => v.vehicle_slug === vehicleSlug && v.edition_id === editionId);
+  if (!target) throw new Error("Couldn't find that entry in the registry -- it may have changed since this page loaded. Try reloading and proposing again.");
+  const oldCategory = target.category, oldManualType = target.manual_type;
+  target.category = newCategory;
+  target.manual_type = newManualType;
+
+  const branchName = `recategorize/${vehicleSlug}-${editionId}-${Date.now()}`;
+  await ghApi(`/repos/${REGISTRY_OWNER}/${REGISTRY_REPO}/git/refs`, installationToken, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ ref: `refs/heads/${branchName}`, sha: upstreamSha }),
+  });
+
+  await ghApi(`/repos/${REGISTRY_OWNER}/${REGISTRY_REPO}/contents/registry.json`, installationToken, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      message: `Recategorize ${vehicleSlug} (${editionId})`,
+      content: utf8ToBase64(JSON.stringify(registryData, null, 2) + "\n"),
+      sha: registryFile.sha,
+      branch: branchName,
+      author: { name: login, email: `${login}@users.noreply.github.com`, date: new Date().toISOString() },
+    }),
+  });
+
+  const pr = await ghApi(`/repos/${REGISTRY_OWNER}/${REGISTRY_REPO}/pulls`, installationToken, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      title: `Recategorize ${vehicleSlug} (${editionId}) to ${newCategory}/${newManualType}`,
+      head: branchName,
+      base: defaultBranch,
+      body: [
+        `Proposes changing \`${vehicleSlug}\` (${editionId})'s category/manual_type:`,
+        ``,
+        `- category: \`${oldCategory || "(none)"}\` -> \`${newCategory}\``,
+        `- manual_type: \`${oldManualType || "(none)"}\` -> \`${newManualType}\``,
+        ``,
+        `Submitted by @${login} via the Contributor Portal's "Propose a recategorization" action. Only this one entry's category/manual_type changed -- nothing else in registry.json was touched.`,
+        ``,
+        `---`,
+        `### Visit [BlaydeManual.com](https://blaydemanual.com) Maintainer Portal to properly manage this request`,
+      ].join("\n"),
+    }),
+  });
+  return json({ prUrl: pr.html_url, prNumber: pr.number });
+}
+
 // The registry.json-only recategorization merge-gate, per ROADMAP.md's
 // "Other, and how something gets out of it" design: category/manual_type
 // describe the whole item, not one photo, so recategorizing targets the
@@ -1543,13 +1652,11 @@ async function handleAcceptPhotoPr(request, env) {
 // pattern as handleApproveVehicle -- lets the UI show the exact reason
 // Approve is disabled before anyone clicks it.
 //
-// Real next step once this exists: a Contributor-side "propose
-// recategorization" action that actually opens one of these PRs --
-// not built yet (see ROADMAP.md), so today this only gates a PR
-// someone opened by hand directly against the registry repo. That's a
-// real, usable path on its own (same way a photo PR could always be
-// opened directly via git even before contribute.js existed), just not
-// the eventual polished one.
+// The Contributor-side "propose recategorization" action that opens
+// one of these PRs lives at /direct-recategorization, below -- no
+// fork needed there either, same reasoning as /direct-contribute:
+// eliminating a personal fork just to propose one small change,
+// closing the gap this comment used to describe as not built yet.
 async function handleAcceptRecategorization(request, env) {
   const login = await requireRealUser(request);
   const body = await parseJson(request);
@@ -1569,11 +1676,12 @@ async function handleAcceptRecategorization(request, env) {
   const files = await ghApi(`/repos/${REGISTRY_OWNER}/${REGISTRY_REPO}/pulls/${prNumber}/files`, installationToken);
 
   // Same real gap as handleAcceptPhotoPr -- GitHub's own website hides
-  // this for a PR's own author, but the REST API doesn't. A
-  // recategorization PR is always fork-based, so pr.user.login (what
-  // resolveRealSubmitter falls back to when there's no photo file) is
-  // already the real proposer here.
-  if (resolveRealSubmitter(pr, files) === login) {
+  // this for a PR's own author, but the REST API doesn't. Now that
+  // /direct-recategorization exists, pr.user.login is usually the App's
+  // own bot identity, not the real proposer -- resolveDirectProposer
+  // reads it from the change's own commit author instead (see that
+  // function's own comment).
+  if ((await resolveDirectProposer(pr, REGISTRY_OWNER, REGISTRY_REPO, installationToken)) === login) {
     throw new Error(`@${login} proposed this recategorization -- can't also be the one accepting it.`);
   }
 
@@ -1668,10 +1776,120 @@ async function handleAcceptRecategorization(request, env) {
   return json({ merged: true, entry: key, changedFields });
 }
 
-// Gates a contributor's proposed manifest change (contribute.js's
-// submitManifestChangeProposal, fork-based -- the proposer doesn't have
-// push access, unlike a repo's own maintainer using Issue Requests'
-// direct-write path, which never touches this endpoint at all). A
+// Manifest-fix's "propose" half -- same reasoning as
+// handleDirectRecategorization above and /direct-contribute's own
+// file-top comment: the App creates a branch directly on the vehicle
+// repo and opens the PR immediately, no fork needed just to propose a
+// move/resize/add/remove of one tracked procedure slot. Used to be
+// fork-based client-side (issue-requests.js's submitManifestChange);
+// same direct report, same confirmed live bug as
+// handleDirectRecategorization's own comment describes. Covers the
+// same three proposal shapes handleAcceptManifestChange (below)
+// validates: add a missed slot, remove a false-positive one, or
+// reposition/resize an existing one's pixel_bbox.
+async function handleDirectManifestChange(request, env) {
+  const login = await requireRealUser(request);
+  const body = await parseJson(request);
+  const {
+    repo_url: repoUrl, edition_id: editionId, kind, procedure_id: procedureId,
+    section_heading: sectionHeading, bbox, page,
+  } = body;
+  if (!repoUrl || !editionId || !kind || !procedureId) {
+    return json({ error: "missing repo_url, edition_id, kind, or procedure_id" }, 400);
+  }
+  if (!/^[a-z0-9][a-z0-9-]{0,40}$/.test(editionId)) {
+    return json({ error: "edition_id has an unexpected shape -- refusing rather than risk writing outside a real edition folder." }, 400);
+  }
+
+  await requireRegisteredRepo(repoUrl);
+  const [owner, repo] = new URL(repoUrl).pathname.replace(/^\//, "").split("/");
+  const installationToken = await getInstallationToken(env);
+
+  let defaultBranch = null, upstreamSha = null;
+  for (const branch of ["main", "master"]) {
+    try {
+      const ref = await ghApi(`/repos/${owner}/${repo}/git/ref/heads/${branch}`, installationToken);
+      defaultBranch = branch; upstreamSha = ref.object.sha; break;
+    } catch (e) { /* try next */ }
+  }
+  if (!defaultBranch) throw new Error(`Could not find a main or master branch on ${owner}/${repo}.`);
+
+  const manifestFile = await ghApi(`/repos/${owner}/${repo}/contents/${editionId}/manifest.json?ref=${defaultBranch}`, installationToken);
+  const manifestData = JSON.parse(base64ToUtf8(manifestFile.content));
+  const entries = manifestData.entries || [];
+  let summary, prTitle;
+  if (kind === "remove") {
+    const idx = entries.findIndex((e) => e.procedure_id === procedureId);
+    if (idx === -1) throw new Error(`Couldn't find ${procedureId} in the manifest -- it may have changed since this page loaded.`);
+    entries.splice(idx, 1);
+    summary = `Removes \`${procedureId}\` (${sectionHeading}) -- flagged as not a real photo opportunity.`;
+    prTitle = `Remove tracked slot: ${sectionHeading}`;
+  } else if (kind === "structure") {
+    const entry = entries.find((e) => e.procedure_id === procedureId);
+    if (!entry) throw new Error(`Couldn't find ${procedureId} in the manifest -- it may have changed since this page loaded.`);
+    entry.pixel_bbox = bbox;
+    summary = `Repositions \`${procedureId}\` (${sectionHeading}).`;
+    prTitle = `Reposition: ${sectionHeading}`;
+  } else {
+    entries.push({
+      procedure_id: procedureId,
+      page,
+      section_heading: sectionHeading,
+      pixel_bbox: bbox,
+      content_type: "photo",
+      source_layout: "contributor_added",
+      status: "needs_contributed_photo",
+    });
+    summary = `Adds a new tracked slot: \`${procedureId}\` (${sectionHeading}).`;
+    prTitle = `Add missed photo slot: ${sectionHeading}`;
+  }
+  manifestData.entries = entries;
+
+  const branchName = `manifest-fix/${kind}-${procedureId}-${Date.now()}`;
+  await ghApi(`/repos/${owner}/${repo}/git/refs`, installationToken, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ ref: `refs/heads/${branchName}`, sha: upstreamSha }),
+  });
+
+  await ghApi(`/repos/${owner}/${repo}/contents/${editionId}/manifest.json`, installationToken, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      message: `Manifest change: ${kind} ${procedureId}`,
+      content: utf8ToBase64(JSON.stringify(manifestData, null, 2) + "\n"),
+      sha: manifestFile.sha,
+      branch: branchName,
+      author: { name: login, email: `${login}@users.noreply.github.com`, date: new Date().toISOString() },
+    }),
+  });
+
+  const pr = await ghApi(`/repos/${owner}/${repo}/pulls`, installationToken, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      title: prTitle,
+      head: branchName,
+      base: defaultBranch,
+      body: [
+        summary,
+        ``,
+        `Submitted by @${login} via the Contributor Portal's "Propose a photo location fix" action.`,
+        ``,
+        `---`,
+        `### Visit [BlaydeManual.com](https://blaydemanual.com) Maintainer Portal to properly manage this request`,
+        `<!-- blaydemanifestchange -->`,
+      ].join("\n"),
+    }),
+  });
+  return json({ prUrl: pr.html_url, prNumber: pr.number });
+}
+
+// Gates a contributor's proposed manifest change (issue-requests.js's
+// submitManifestChange, via /direct-manifest-change below -- the
+// proposer doesn't have push access, unlike a repo's own maintainer
+// using Issue Requests' direct-write path, which never touches this
+// endpoint at all). A
 // manifest describes one vehicle's own content, not org-wide
 // classification data, so this uses the same per-repo push-or-better
 // bar handleAcceptPhotoPr checks for the APPROVER, not
@@ -1710,11 +1928,12 @@ async function handleAcceptManifestChange(request, env) {
   const files = await ghApi(`/repos/${owner}/${repo}/pulls/${prNumber}/files`, installationToken);
 
   // Same real gap as handleAcceptPhotoPr -- GitHub's own website hides
-  // this for a PR's own author, but the REST API doesn't. A manifest-
-  // change proposal is always fork-based, so pr.user.login (what
-  // resolveRealSubmitter falls back to when there's no photo file) is
-  // already the real proposer here.
-  const realProposer = resolveRealSubmitter(pr, files);
+  // this for a PR's own author, but the REST API doesn't. Now that
+  // /direct-manifest-change exists, pr.user.login is usually the App's
+  // own bot identity, not the real proposer -- resolveDirectProposer
+  // reads it from the change's own commit author instead (see that
+  // function's own comment).
+  const realProposer = await resolveDirectProposer(pr, owner, repo, installationToken);
   if (realProposer === login) {
     throw new Error(`@${login} proposed this manifest change -- can't also be the one accepting it.`);
   }

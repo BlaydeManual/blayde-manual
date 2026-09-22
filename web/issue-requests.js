@@ -506,122 +506,41 @@ function deleteNewSlotIssue(box) {
   renderPendingIssues();
 }
 
-// Fork-based, same shape as contribute.js's submitRecategorizationProposal
-// -- an arbitrary contributor doesn't have push access on a vehicle
-// repo they don't maintain, so this proposes the change via a PR
-// instead of writing directly. Reviewed by a real maintainer through
-// the Worker's /accept-manifest-change gate, which independently
-// re-validates the diff before merging; this function only proposes.
+// Worker-side, no fork -- same shape as contribute.js's
+// submitRecategorizationProposal (see that function's own comment for
+// the full reasoning: a personal fork left behind forever just to
+// propose one change, plus a confirmed live bug where this used to
+// read the wrong session and always failed with "Resource not
+// accessible by integration"). The Worker's handleDirectManifestChange
+// does the same read-modify-write against manifest.json this used to
+// do client-side against a fork, now directly on the vehicle repo, and
+// sets the commit's author to the real proposer for attribution.
+// Reviewed by a real maintainer through the Worker's
+// /accept-manifest-change gate, which independently re-validates the
+// diff before merging; this function only proposes.
 async function submitManifestChange(repoUrl, editionId, issue) {
-  // Forks -- the App session can't do that (see auth.js's file-top
-  // comment: "the App isn't installed on a fork that doesn't exist
-  // yet"). Real, confirmed live bug, exact same shape as
-  // contribute.js's submitRecategorizationProposal: this read
-  // getSession() (the App session), which GitHub rejects for the
-  // /forks call with "Resource not accessible by integration" every
-  // time, not a permission to grant, a wrong-session bug.
-  const session = BlaydeAuth.getPrivateSession();
+  const session = BlaydeAuth.getAppSession();
   if (!session) throw new Error("Not signed in.");
-  const [owner, repo] = ownerRepo(repoUrl);
-
-  let defaultBranch = null, upstreamSha = null;
-  for (const branch of ["main", "master"]) {
-    try {
-      const ref = await githubApi(`/repos/${owner}/${repo}/git/ref/heads/${branch}`, session.token);
-      defaultBranch = branch; upstreamSha = ref.object.sha; break;
-    } catch (e) { /* try next */ }
-  }
-  if (!defaultBranch) throw new Error(`Could not find a main or master branch on ${owner}/${repo}.`);
-
-  await githubApi(`/repos/${owner}/${repo}/forks`, session.token, { method: "POST" });
-  const forkOwner = session.username;
-  const forkRef = await waitForForkRef(forkOwner, repo, defaultBranch, session.token);
-
-  const branchName = `manifest-fix/${issue.kind}-${issue.procedure_id}-${Date.now()}`;
-  await githubApi(`/repos/${forkOwner}/${repo}/git/refs`, session.token, {
+  const resp = await fetch(`${BlaydeAuth.AUTH_WORKER_URL}direct-manifest-change`, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ ref: `refs/heads/${branchName}`, sha: forkRef.object.sha }),
-  });
-
-  const manifestFile = await githubApi(`/repos/${forkOwner}/${repo}/contents/${editionId}/manifest.json?ref=${branchName}`, session.token);
-  const manifestData = JSON.parse(base64ToUtf8(manifestFile.content));
-  const entries = manifestData.entries || [];
-  let summary, prTitle;
-  if (issue.kind === "remove") {
-    const idx = entries.findIndex((e) => e.procedure_id === issue.procedure_id);
-    if (idx === -1) throw new Error(`Couldn't find ${issue.procedure_id} in the manifest -- it may have changed since this page loaded.`);
-    entries.splice(idx, 1);
-    summary = `Removes \`${issue.procedure_id}\` (${issue.section_heading}) -- flagged as not a real photo opportunity.`;
-    prTitle = `Remove tracked slot: ${issue.section_heading}`;
-  } else if (issue.kind === "structure") {
-    const entry = entries.find((e) => e.procedure_id === issue.procedure_id);
-    if (!entry) throw new Error(`Couldn't find ${issue.procedure_id} in the manifest -- it may have changed since this page loaded.`);
-    entry.pixel_bbox = issue.bbox;
-    summary = `Repositions \`${issue.procedure_id}\` (${issue.section_heading}).`;
-    prTitle = `Reposition: ${issue.section_heading}`;
-  } else {
-    entries.push({
+    headers: { "Content-Type": "application/json", Authorization: `Bearer ${session.token}` },
+    body: JSON.stringify({
+      repo_url: repoUrl,
+      edition_id: editionId,
+      kind: issue.kind,
       procedure_id: issue.procedure_id,
-      page: issue.page,
       section_heading: issue.section_heading,
-      pixel_bbox: issue.bbox,
-      content_type: "photo",
-      source_layout: "contributor_added",
-      status: "needs_contributed_photo",
-    });
-    summary = `Adds a new tracked slot: \`${issue.procedure_id}\` (${issue.section_heading}).`;
-    prTitle = `Add missed photo slot: ${issue.section_heading}`;
-  }
-  manifestData.entries = entries;
-
-  await githubApi(`/repos/${forkOwner}/${repo}/contents/${editionId}/manifest.json`, session.token, {
-    method: "PUT",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      message: `Manifest change: ${issue.kind} ${issue.procedure_id}`,
-      content: utf8ToBase64(JSON.stringify(manifestData, null, 2) + "\n"),
-      sha: manifestFile.sha,
-      branch: branchName,
+      bbox: issue.bbox,
+      page: issue.page,
     }),
   });
-
-  const prBody = [
-    summary,
-    ``,
-    `Submitted via the Contributor Portal's "Propose a photo location fix" action.`,
-    ``,
-    `---`,
-    `### Visit [BlaydeManual.com](https://blaydemanual.com) Maintainer Portal to properly manage this request`,
-    `<!-- blaydemanifestchange -->`,
-  ].join("\n");
-  const pr = await githubApi(`/repos/${owner}/${repo}/pulls`, session.token, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      title: prTitle,
-      head: `${forkOwner}:${branchName}`,
-      base: defaultBranch,
-      body: prBody,
-    }),
-  });
-  return { number: pr.number, url: pr.html_url };
+  const result = await resp.json().catch(() => ({}));
+  if (!resp.ok || result.error) throw new Error(result.error || `Submit failed (${resp.status}).`);
+  return { number: result.prNumber, url: result.prUrl };
 }
 
 document.getElementById("issueSubmitAllBtn").addEventListener("click", async () => {
   const btn = document.getElementById("issueSubmitAllBtn");
-  // submitManifestChange forks the vehicle repo into the proposer's
-  // own account -- the same rare, contextual grant as Private submit,
-  // needing its own sign-in only at the moment it's actually used.
-  if (!BlaydeAuth.getPrivateSession()) {
-    issueLog("Signing in to propose this fix...");
-    try {
-      await BlaydeAuth.signInWithGitHubPrivate();
-    } catch (err) {
-      issueLog(`Sign-in failed: ${err.message}`);
-      return;
-    }
-  }
   btn.disabled = true;
   const { repoUrl, editionId } = currentIssueSelection();
   const toSubmit = pendingIssues.slice();

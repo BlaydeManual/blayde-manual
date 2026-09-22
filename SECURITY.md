@@ -335,20 +335,35 @@ can't be one of the 2 approvers if you submitted it" -- checked rather
 than assumed, and found the app genuinely had no such check anywhere,
 whatever GitHub's own platform separately does or doesn't enforce.
 
-Closed with `resolveRealSubmitter(pr, files)`, used identically by all
-three accept handlers and by `handlePrReviewStatus`:
+Closed with `resolveRealSubmitter(pr, files)` for the two photo paths
+(`handleAcceptPhotoPr`, `handlePrReviewStatus`), and its own sibling
+`resolveDirectProposer(pr, owner, repo, installationToken)` for the two
+data-only paths (`handleAcceptRecategorization`,
+`handleAcceptManifestChange`):
 
-- **Checks the photo's own filename convention first**
-  (`<procedure_id>__by_<login>...`) -- required for the Public
+- **`resolveRealSubmitter` checks the photo's own filename convention
+  first** (`<procedure_id>__by_<login>...`) -- required for the Public
   (direct-contribute) path, where the PR's recorded `pr.user.login` is
   always the GitHub App's bot identity, never the real contributor, so
   `pr.user.login` alone would never catch a Public-path self-approval
-  at all.
-- **Falls back to `pr.user.login`** for the two fork-based paths
-  (Private-path photos, recategorization proposals, manifest-change
-  proposals) -- already the real proposer there, since GitHub always
-  attributes a fork-based PR's authorship to whichever account's token
-  opened it.
+  at all. Falls back to `pr.user.login` only for the Private-path photo
+  case, still genuinely fork-based, where GitHub attributes the PR's
+  authorship to whichever account's token opened it.
+- **`resolveDirectProposer` reads the change's own commit author**
+  instead. Recategorization and manifest-change proposals are plain
+  JSON diffs with no filename to carry attribution the way a photo's
+  does, and both moved off forking onto `/direct-recategorization` and
+  `/direct-manifest-change` (2026-09-22, see ROADMAP.md-turned-CHANGELOG
+  entry) -- once the App's own token opens the PR, `pr.user.login` is
+  the bot, not the real proposer, the exact gap the filename check
+  exists to close for photos. Closed the same way: the commit that made
+  the change has its author set explicitly to the real proposer's
+  login via a noreply email GitHub resolves back to that verified
+  account (the same mechanism `direct-contribute` already used), so
+  this reads the commit's own resolved author rather than trusting
+  anything in the editable PR body. Still correct for an older,
+  genuinely fork-based PR of either kind, since a fork owner's own
+  commit naturally resolves to themselves either way.
 
 This runs in two places, not just one: `handlePrReviewStatus` excludes
 a matching self-review from ever counting toward `approved_count` in

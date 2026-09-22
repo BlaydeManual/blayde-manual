@@ -2118,111 +2118,41 @@ document.getElementById("recatCategorySelect").addEventListener("change", (e) =>
 
 document.getElementById("recatManualTypeSelect").addEventListener("change", updateRecatSubmitState);
 
-// Same fork -> branch -> commit -> PR sequence submitPhotoPrivate
-// already uses for a vehicle repo (verified against GitHub's REST API
-// docs when that was built -- POST .../forks is async, a cross-repo
-// PR's head must be "username:branch"), aimed at BlaydeManual/registry
-// instead. The one real difference: EDITING registry.json's existing
-// content (fetch current file + sha, change only this one entry's
-// category/manual_type, write back with the same sha) rather than
-// ADDING a new file -- matching exactly what the Worker-side merge-gate
-// (handleAcceptRecategorization) validates: one file, modified, one
-// entry, only those two fields differing.
+// Worker-side, no fork -- same shape as submitPhotoPublic. Used to
+// fork BlaydeManual/registry into the proposer's own account just to
+// edit one entry's category/manual_type; direct feedback flagged the
+// real cost of that (a personal fork left behind forever just to open
+// one PR), on top of a confirmed live bug where this read the wrong
+// session (the App session can't fork -- see auth.js's file-top
+// comment) and always failed with "Resource not accessible by
+// integration." The Worker's handleDirectRecategorization does the
+// same fetch-current-content, change-one-entry, write-back-with-the-
+// same-sha edit this used to do client-side against a fork, now
+// directly against the upstream repo, and sets the commit's author to
+// the real proposer for attribution the same way submitPhotoPublic's
+// server-side counterpart does.
 async function submitRecategorizationProposal(entry, newCategory, newManualType) {
-  // Forks -- the App session can't do that (see auth.js's file-top
-  // comment: "the App isn't installed on a fork that doesn't exist
-  // yet"). Real, confirmed live bug: this used to read getSession()
-  // (the App session), which always has a token but one GitHub
-  // rejects for the /forks call with "Resource not accessible by
-  // integration" -- not a permissions gap to grant, a wrong-session
-  // bug, since no App permission scope covers forking into someone
-  // else's personal account.
-  const session = BlaydeAuth.getPrivateSession();
+  const session = BlaydeAuth.getAppSession();
   if (!session) throw new Error("Not signed in.");
-  const owner = "BlaydeManual", repo = "registry";
-
-  let defaultBranch = null, upstreamSha = null;
-  for (const branch of ["main", "master"]) {
-    try {
-      const ref = await githubApi(`/repos/${owner}/${repo}/git/ref/heads/${branch}`, session.token);
-      defaultBranch = branch; upstreamSha = ref.object.sha; break;
-    } catch (e) { /* try next */ }
-  }
-  if (!defaultBranch) throw new Error(`Could not find a main or master branch on ${owner}/${repo}.`);
-
-  // POST is safe even if a fork already exists from a previous
-  // proposal -- GitHub just returns the existing one.
-  await githubApi(`/repos/${owner}/${repo}/forks`, session.token, { method: "POST" });
-  const forkOwner = session.username;
-  const forkRef = await waitForForkRef(forkOwner, repo, defaultBranch, session.token);
-
-  const branchName = `recategorize/${entry.vehicle_slug}-${entry.edition_id}-${Date.now()}`;
-  await githubApi(`/repos/${forkOwner}/${repo}/git/refs`, session.token, {
+  const resp = await fetch(`${BlaydeAuth.AUTH_WORKER_URL}direct-recategorization`, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ ref: `refs/heads/${branchName}`, sha: forkRef.object.sha }),
-  });
-
-  const registryFile = await githubApi(`/repos/${forkOwner}/${repo}/contents/registry.json?ref=${branchName}`, session.token);
-  const registryData = JSON.parse(base64ToUtf8(registryFile.content));
-  const target = (registryData.vehicles || []).find(
-    (v) => v.vehicle_slug === entry.vehicle_slug && v.edition_id === entry.edition_id
-  );
-  if (!target) throw new Error("Couldn't find that entry in the registry -- it may have changed since this page loaded. Try reloading and proposing again.");
-  const oldCategory = target.category, oldManualType = target.manual_type;
-  target.category = newCategory;
-  target.manual_type = newManualType;
-
-  await githubApi(`/repos/${forkOwner}/${repo}/contents/registry.json`, session.token, {
-    method: "PUT",
-    headers: { "Content-Type": "application/json" },
+    headers: { "Content-Type": "application/json", Authorization: `Bearer ${session.token}` },
     body: JSON.stringify({
-      message: `Recategorize ${entry.vehicle_slug} (${entry.edition_id})`,
-      content: utf8ToBase64(JSON.stringify(registryData, null, 2) + "\n"),
-      sha: registryFile.sha,
-      branch: branchName,
+      vehicle_slug: entry.vehicle_slug,
+      edition_id: entry.edition_id,
+      new_category: newCategory,
+      new_manual_type: newManualType,
     }),
   });
-
-  const prBody = [
-    `Proposes changing \`${entry.vehicle_slug}\` (${entry.edition_id})'s category/manual_type:`,
-    ``,
-    `- category: \`${oldCategory || "(none)"}\` -> \`${newCategory}\``,
-    `- manual_type: \`${oldManualType || "(none)"}\` -> \`${newManualType}\``,
-    ``,
-    `Submitted via the Contributor Portal's "Propose a recategorization" action. Only this one entry's category/manual_type changed -- nothing else in registry.json was touched.`,
-    ``,
-    `---`,
-    `### Visit [BlaydeManual.com](https://blaydemanual.com) Maintainer Portal to properly manage this request`,
-  ].join("\n");
-  const pr = await githubApi(`/repos/${owner}/${repo}/pulls`, session.token, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      title: `Recategorize ${entry.vehicle_slug} (${entry.edition_id}) to ${newCategory}/${newManualType}`,
-      head: `${forkOwner}:${branchName}`,
-      base: defaultBranch,
-      body: prBody,
-    }),
-  });
-  return { number: pr.number, url: pr.html_url };
+  const result = await resp.json().catch(() => ({}));
+  if (!resp.ok || result.error) throw new Error(result.error || `Submit failed (${resp.status}).`);
+  return { number: result.prNumber, url: result.prUrl };
 }
 
 document.getElementById("recatSubmitBtn").addEventListener("click", async () => {
-  // Same rare, contextual grant as Private submit -- forks the
-  // registry repo into the proposer's own account, which only the
-  // classic OAuth session can do. Gating on the App session here was
-  // the bug: it's always signed in already by the time this button is
-  // reachable, so this never actually prompted for the session the
-  // fork call needed.
-  if (!BlaydeAuth.getPrivateSession()) {
-    recatLog("Signing in for this proposal...");
-    try {
-      await BlaydeAuth.signInWithGitHubPrivate();
-    } catch (err) {
-      recatLog(`Sign-in failed: ${err.message}`);
-      return;
-    }
+  if (!BlaydeAuth.getAppSession()) {
+    recatLog("Signing in...");
+    if (!(await performSignIn())) return;
   }
   const category = document.getElementById("recatCategorySelect").value;
   const manualType = document.getElementById("recatManualTypeSelect").value;
