@@ -349,7 +349,7 @@ PR #6) rather than a direct push, per standing instruction that changes
 to real repos go through a PR for review. A follow-up normal merge
 attempt against a still-failing check then confirmed 6.2 for real.
 
-## Tier 7: category expansion writes (`/accept-recategorization`, registry.json fork+PR)
+## Tier 7: category expansion writes (`/accept-recategorization`, registry.json)
 
 Added 2026-09-01, prompted by a direct instruction to review this whole
 matrix now that most of the category-expansion procedures are in
@@ -382,17 +382,22 @@ registry (auth-worker PR, 2026-09-01).
   admin behavior as `/approve-vehicle`, see Tier 4's real quorum
   finding, which applies here identically), `dry_run` support, merge
   pinned to `pr.head.sha`.
-- **The new client-side write path** (`contribute.js`'s
-  `submitRecategorizationProposal`) -- fork `BlaydeManual/registry`
-  with the *contributor's own OAuth token* (not the Worker, not the
-  installation credential), edit `registry.json` on a new branch,
-  open a PR back to the org repo. Same fork-then-PR shape as the
-  existing Private photo-contribution path, just aimed at the registry
-  repo and editing an existing file instead of adding a new one. The
-  real security boundary here isn't this step at all (anyone forking a
-  public repo and opening a PR is just normal GitHub, by design, same
-  "anyone can propose" posture as `/direct-submit`'s Tier 2.3) -- it's
-  entirely `/accept-recategorization`'s merge-time gate, above.
+- **The propose side** (`contribute.js`'s `submitRecategorizationProposal`).
+  **Superseded 2026-09-22**: originally forked `BlaydeManual/registry`
+  with the contributor's own OAuth token, edited `registry.json` on a
+  new branch there, and opened a cross-fork PR -- direct feedback
+  flagged the real cost of a personal fork left behind forever just to
+  propose one change, on top of a confirmed live bug where this read
+  the wrong session (the App session, which can't fork) and always
+  failed with "Resource not accessible by integration." Now goes
+  through `POST /direct-recategorization`: the Worker's installation
+  token creates the branch and opens the PR directly against the
+  registry repo, no fork, with the commit's author set to the real
+  proposer for attribution. The real security boundary is still
+  entirely `/accept-recategorization`'s merge-time gate, below --
+  "anyone can propose" was always the intended posture (same as
+  `/direct-submit`'s Tier 2.3), this just closes the fork-cost and
+  wrong-session problems without changing that posture.
 
 | # | Call | Expected | Status |
 |---|---|---|---|
@@ -404,7 +409,7 @@ registry (auth-worker PR, 2026-09-01).
 | 7.6 | Same, but the PR changes a field other than `category`/`manual_type` on the target entry (e.g. `repo_url`, `status`) | Rejected -- single-entry diff validation catches the extra field | Pending |
 | 7.7 | Same, but the new `category`/`manual_type` values aren't real ids in `manual-types.json` | Rejected -- the same validation just added to `/approve-vehicle` (this tier's own found-bug, above) | Pending |
 | 7.8 | Same, but the PR adds or removes a `registry.json` entry instead of just changing one | Rejected -- entry-count/identity check | Pending |
-| 7.9 | A contributor forks `BlaydeManual/registry` and opens a real PR via `submitRecategorizationProposal`, using their own OAuth token, NOT a member | **Succeeds** -- by design, same "anyone can propose" posture as `/direct-submit` 2.3; the real gate is 7.1-7.8 at merge time, not here | Pending |
+| 7.9 | A non-member contributor uses `submitRecategorizationProposal` (now `POST /direct-recategorization`) to propose a recategorization | **Succeeds** -- by design, same "anyone can propose" posture as `/direct-submit` 2.3; the real gate is 7.1-7.8 at merge time, not here | Pending re-verification against the new no-fork mechanism -- the original fork-based version of this test was never independently re-run before the propose side changed (2026-09-22) |
 | 7.10 | `POST /direct-submit` (or a new-edition submission) with a manifest containing a `category`/`manual_type` that isn't real | **Rejected** post-fix -- confirms the bug found in this review is actually closed, not just theoretically fixed | Pending -- needs a live re-run against the fixed code |
 
 **Not covered by this tier, logged as a real gap, not silently
@@ -415,7 +420,7 @@ as "not yet built." That's a missing feature, not a security gap, but
 it means 7.4/7.9/7.10 above can't be exercised against a genuinely
 real, user-initiated recategorization yet, only a hand-crafted one.
 
-## Tier 8: manifest-fix proposals (`/accept-manifest-change`, manifest.json fork+PR)
+## Tier 8: manifest-fix proposals (`/accept-manifest-change`, manifest.json)
 
 Added 2026-09-02. Same real gap Tier 7 covers for `registry.json` --
 anyone can propose a fix (a mispositioned/mis-sized box, a missed photo
@@ -434,14 +439,15 @@ own content, not org-wide classification data.
   (`page_geometry`, vehicle metadata) staying byte-identical. Same
   negative-file-allowlist + single-change-diff shape as Tier 7's gate,
   aimed at `<edition_id>/manifest.json` instead of `registry.json`.
-- **The client-side write path** (`issue-requests.js`'s
-  `submitManifestChange`, loaded from the Contributor Portal) -- fork
-  the vehicle repo with the *contributor's own OAuth token*, edit
-  `manifest.json` on a new branch, open a PR back to the org repo. Same
-  fork-then-PR shape as `submitRecategorizationProposal`; the real
-  security boundary is entirely the merge-time gate above, not this
-  step (anyone forking a public repo and opening a PR is just normal
-  GitHub, same "anyone can propose" posture as Tier 2.3/7.9).
+- **The propose side** (`issue-requests.js`'s `submitManifestChange`,
+  loaded from the Contributor Portal). **Superseded 2026-09-22**, same
+  reasoning and same day as `submitRecategorizationProposal` above --
+  originally forked the vehicle repo with the contributor's own OAuth
+  token; now goes through `POST /direct-manifest-change`, the Worker's
+  installation token creating the branch and PR directly, commit author
+  set to the real proposer. The real security boundary is still
+  entirely the merge-time gate above, not this step -- "anyone can
+  propose" was always the intended posture (same as Tier 2.3/7.9).
 
 **Real, confirmed gap found and closed in the same pass, not specific
 to this endpoint:** direct question ("I swear we had repo policies in
@@ -455,17 +461,25 @@ an earlier version of this note overstated that as "confirmed," which
 it wasn't. What IS confirmed: nothing in `handleAcceptPhotoPr`,
 `handleAcceptRecategorization`, or this endpoint checked the approver's
 identity against the real submitter at all before this fix, regardless
-of what GitHub's own platform separately does. Closed with `resolveRealSubmitter`
-(checks the photo's own filename convention first, since a Public-path
-PR's recorded `pr.user.login` is always the App's bot identity, never
-the real contributor; falls back to `pr.user.login` for the two
-fork-based paths, where it's already the real proposer) -- applied as
-an explicit block in all three accept/merge handlers, and as an
-exclusion in `handlePrReviewStatus` so a self-review never counts
-toward the required approval count in the first place, not just at
-final-merge time. `review-panel.js`'s Approve button is also disabled
-client-side for the real submitter, so the UI doesn't invite a click
-that would silently do nothing.
+of what GitHub's own platform separately does. Closed with
+`resolveRealSubmitter` for `handleAcceptPhotoPr` (checks the photo's
+own filename convention first, since a Public-path PR's recorded
+`pr.user.login` is always the App's bot identity, never the real
+contributor) and its sibling `resolveDirectProposer` for
+`handleAcceptRecategorization`/`handleAcceptManifestChange`
+(**updated 2026-09-22** alongside those two endpoints moving off
+forking: reads the change's own commit author, set explicitly to the
+real proposer at propose time via a noreply email GitHub resolves back
+to that verified account, rather than falling back to `pr.user.login`
+-- which is now usually the App's own bot identity for these two, not
+the real proposer, once `/direct-recategorization`/
+`/direct-manifest-change` stopped requiring a fork) -- applied as an
+explicit block in all three accept/merge handlers, and as an exclusion
+in `handlePrReviewStatus` so a self-review never counts toward the
+required approval count in the first place, not just at final-merge
+time. `review-panel.js`'s Approve button is also disabled client-side
+for the real submitter, so the UI doesn't invite a click that would
+silently do nothing.
 
 | # | Call | Expected | Status |
 |---|---|---|---|
@@ -476,8 +490,8 @@ that would silently do nothing.
 | 8.5 | Same, but the PR also touches a second file, or something outside `entries` in the same manifest.json | Rejected -- negative allowlist / "changes something besides its entries list" | Pending |
 | 8.6 | Same, but the diff adds AND removes/modifies more than one entry's worth | Rejected -- "not exactly 1" changed-entries check | Pending |
 | 8.7 | Same, but a newly added entry is missing a required field, doesn't start `needs_contributed_photo`, or has a malformed `pixel_bbox` | Rejected -- new-entry field validation | Pending |
-| 8.8 | **The real submitter of the PR being reviewed attempts to Accept or Approve their own proposal** | Rejected server-side (`resolveRealSubmitter` match); Approve button already disabled client-side; the review-status count excludes their own review even if one somehow got submitted | **Live, confirmed 2026-09-10** against `suzuki-sv650-1999#26` (real PR authored by `TheBlayde`, called by `TheBlayde`): `{"error":"@TheBlayde proposed this manifest change -- can't also be the one accepting it."}`, rejected before the file-allowlist check even ran. Not yet independently re-verified for `/accept-photo-pr` and `/accept-recategorization` -- same fix, same shape, no real self-submitted PR of those two kinds currently open to test against |
-| 8.9 | A contributor forks a vehicle repo and opens a real PR via `submitManifestChange`, using their own OAuth token, NOT a maintainer of that repo | **Succeeds** -- by design, same "anyone can propose" posture as Tier 2.3/7.9; the real gate is 8.1-8.8 at merge time | Pending |
+| 8.8 | **The real submitter of the PR being reviewed attempts to Accept or Approve their own proposal** | Rejected server-side (`resolveDirectProposer` match); Approve button already disabled client-side; the review-status count excludes their own review even if one somehow got submitted | **Live, confirmed 2026-09-10** against `suzuki-sv650-1999#26` (real PR authored by `TheBlayde`, called by `TheBlayde`): `{"error":"@TheBlayde proposed this manifest change -- can't also be the one accepting it."}`, rejected before the file-allowlist check even ran. That test ran against the original fork-based proposal (identity resolved via `resolveRealSubmitter`'s `pr.user.login` fallback, correct for a fork-based PR); the check now runs through `resolveDirectProposer` instead (2026-09-22, see above) -- not yet independently re-verified against a real PR opened the new, no-fork way. Also still not independently re-verified for `/accept-photo-pr` and `/accept-recategorization`. |
+| 8.9 | A non-maintainer contributor uses `submitManifestChange` (now `POST /direct-manifest-change`) to propose a manifest fix | **Succeeds** -- by design, same "anyone can propose" posture as Tier 2.3/7.9; the real gate is 8.1-8.8 at merge time | Pending re-verification against the new no-fork mechanism -- the original fork-based version of this test was never independently re-run before the propose side changed (2026-09-22) |
 
 **Not covered by this tier:** the Maintainer Portal's review UI
 (`review-panel.js`'s full-page color-coded diff view) is a display/UX
